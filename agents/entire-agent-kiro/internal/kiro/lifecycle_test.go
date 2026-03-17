@@ -127,3 +127,30 @@ func TestParseHookStopUsesCachedSessionIDAndClearsCache(t *testing.T) {
 		t.Fatalf("session cache file should be removed after stop, got err=%v", err)
 	}
 }
+
+func TestParseHookStopWithoutCachedSessionIDUsesNonPredictableFallback(t *testing.T) {
+	repoRoot := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+
+	event, err := New().ParseHook(HookNameStop, []byte(`{"cwd":"/tmp/my-repo"}`))
+	if err != nil {
+		t.Fatalf("ParseHook(stop) error = %v", err)
+	}
+	if event == nil {
+		t.Fatal("expected TurnEnd event")
+	}
+	if event.Type != 3 {
+		t.Fatalf("event.Type = %d, want %d", event.Type, 3)
+	}
+	if event.SessionID == "" {
+		t.Fatal("session_id should not be empty")
+	}
+	if event.SessionID == "my-repo" || event.SessionID == "stub-session-000" {
+		t.Fatalf("session_id = %q, want generated non-predictable fallback", event.SessionID)
+	}
+
+	wantRef := filepath.Join(repoRoot, ".entire", "tmp", event.SessionID+".json")
+	if event.SessionRef != wantRef {
+		t.Fatalf("session_ref = %q, want %q", event.SessionRef, wantRef)
+	}
+}

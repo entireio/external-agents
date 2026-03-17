@@ -78,7 +78,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	case HookNameStop:
 		sessionID := a.readCachedSessionID()
 		if sessionID == "" {
-			sessionID = fallbackSessionID(raw.CWD)
+			sessionID = fallbackStopSessionID()
 		}
 		sessionDir, err := a.GetSessionDir(protocol.RepoRoot())
 		if err != nil {
@@ -444,11 +444,8 @@ func (a *Agent) sessionIDCachePath() string {
 	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", sessionIDFile)
 }
 
-func fallbackSessionID(cwd string) string {
-	if cwd != "" {
-		return filepath.Base(cwd)
-	}
-	return "stub-session-000"
+func fallbackStopSessionID() string {
+	return generateSessionID()
 }
 
 func generateSessionID() string {
