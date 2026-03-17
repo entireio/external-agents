@@ -1,11 +1,12 @@
 package kiro
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
+	"github.com/obra/external-agents/agents/entire-agent-kiro/internal/protocol"
 )
 
 type Agent struct{}
@@ -49,10 +50,13 @@ func (a *Agent) GetSessionID(input *protocol.HookInputJSON) string {
 	return "stub-session-000"
 }
 
-func (a *Agent) ReadSession(input *protocol.HookInputJSON) protocol.AgentSessionJSON {
+func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {
 	sessionID := a.GetSessionID(input)
 	repoRoot := protocol.RepoRoot()
-	sessionDir := a.GetSessionDir(repoRoot)
+	sessionDir, err := a.GetSessionDir(repoRoot)
+	if err != nil {
+		return protocol.AgentSessionJSON{}, err
+	}
 	sessionRef := ""
 	if input != nil && input.SessionRef != "" {
 		sessionRef = input.SessionRef
@@ -63,9 +67,10 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) protocol.AgentSession
 	var nativeData []byte
 	if sessionRef != "" {
 		data, err := os.ReadFile(sessionRef)
-		if err == nil {
-			nativeData = data
+		if err != nil {
+			return protocol.AgentSessionJSON{}, fmt.Errorf("failed to read transcript: %w", err)
 		}
+		nativeData = data
 	}
 
 	return protocol.AgentSessionJSON{
@@ -78,7 +83,7 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) protocol.AgentSession
 		ModifiedFiles: []string{},
 		NewFiles:      []string{},
 		DeletedFiles:  []string{},
-	}
+	}, nil
 }
 
 func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {

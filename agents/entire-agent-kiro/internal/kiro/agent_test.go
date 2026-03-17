@@ -3,9 +3,10 @@ package kiro
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
+	"github.com/obra/external-agents/agents/entire-agent-kiro/internal/protocol"
 )
 
 func TestDetectUsesRepoRoot(t *testing.T) {
@@ -39,10 +40,13 @@ func TestReadSessionLoadsNativeData(t *testing.T) {
 		t.Fatalf("write session ref: %v", err)
 	}
 
-	got := New().ReadSession(&protocol.HookInputJSON{
+	got, err := New().ReadSession(&protocol.HookInputJSON{
 		SessionID:  "session-123",
 		SessionRef: sessionRef,
 	})
+	if err != nil {
+		t.Fatalf("ReadSession() error = %v", err)
+	}
 
 	if got.SessionID != "session-123" {
 		t.Fatalf("session_id = %q, want %q", got.SessionID, "session-123")
@@ -61,6 +65,20 @@ func TestReadSessionLoadsNativeData(t *testing.T) {
 	}
 	if got.ModifiedFiles == nil || got.NewFiles == nil || got.DeletedFiles == nil {
 		t.Fatal("file lists should be initialized")
+	}
+}
+
+func TestReadSessionReturnsErrorWhenTranscriptReadFails(t *testing.T) {
+	repoRoot := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+
+	_, err := New().ReadSession(&protocol.HookInputJSON{
+		SessionID:  "session-123",
+		SessionRef: filepath.Join(repoRoot, ".entire", "tmp", "missing.json"),
+	})
+
+	if err == nil || !strings.Contains(err.Error(), "failed to read transcript") {
+		t.Fatalf("ReadSession() error = %v, want failed to read transcript", err)
 	}
 }
 

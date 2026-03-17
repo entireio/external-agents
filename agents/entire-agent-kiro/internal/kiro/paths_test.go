@@ -9,7 +9,11 @@ func TestGetSessionDir(t *testing.T) {
 	repoPath := t.TempDir()
 	want := filepath.Join(repoPath, ".entire", "tmp")
 
-	if got := New().GetSessionDir(repoPath); got != want {
+	got, err := New().GetSessionDir(repoPath)
+	if err != nil {
+		t.Fatalf("GetSessionDir() error = %v", err)
+	}
+	if got != want {
 		t.Fatalf("GetSessionDir() = %q, want %q", got, want)
 	}
 }

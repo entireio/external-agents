@@ -2,13 +2,12 @@ package kiro
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
+	"github.com/obra/external-agents/agents/entire-agent-kiro/internal/protocol"
 )
 
 const (
@@ -21,6 +20,8 @@ const (
 	vscodeSettingsFile  = "settings.json"
 	trustedCommandsKey  = "kiroAgent.trustedCommands"
 	prodTrustedCommand  = "entire hooks *"
+	localDevCommandBase = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
+	localDevTrustedCmd  = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
 	prodHookCommandBase = "entire hooks kiro "
 )
 
@@ -67,10 +68,14 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	case HookNamePreToolUse, HookNamePostToolUse:
 		return nil, nil
 	case HookNameStop:
+		sessionDir, err := a.GetSessionDir(protocol.RepoRoot())
+		if err != nil {
+			return nil, err
+		}
 		return &protocol.EventJSON{
 			Type:       3,
 			SessionID:  sessionID,
-			SessionRef: a.ResolveSessionFile(a.GetSessionDir(protocol.RepoRoot()), sessionID),
+			SessionRef: a.ResolveSessionFile(sessionDir, sessionID),
 			Timestamp:  time.Now().UTC().Format(time.RFC3339),
 		}, nil
 	default:
@@ -78,19 +83,19 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	}
 }
 
-func (a *Agent) InstallHooks(_ bool, force bool) (int, error) {
+func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
 	repoRoot := protocol.RepoRoot()
-	if !force && allHooksInstalled(repoRoot) && trustedCommandsPresent(repoRoot) {
+	if !force && allHooksInstalled(repoRoot, localDev) && trustedCommandsPresent(repoRoot, localDev) {
 		return 0, nil
 	}
 
-	if err := writeCLIHooks(repoRoot); err != nil {
+	if err := writeCLIHooks(repoRoot, localDev); err != nil {
 		return 0, err
 	}
-	if err := writeIDEHooks(repoRoot); err != nil {
+	if err := writeIDEHooks(repoRoot, localDev); err != nil {
 		return 0, err
 	}
-	if err := installTrustedCommands(repoRoot); err != nil {
+	if err := installTrustedCommands(repoRoot, localDev); err != nil {
 		return 0, err
 	}
 
@@ -136,11 +141,12 @@ func defaultHookNames() []string {
 	}
 }
 
-func writeCLIHooks(repoRoot string) error {
+func writeCLIHooks(repoRoot string, localDev bool) error {
 	hooksPath := filepath.Join(repoRoot, ".kiro", hooksDir, hooksFileName)
 	if err := os.MkdirAll(filepath.Dir(hooksPath), 0o750); err != nil {
 		return err
 	}
+	commandBase := hookCommandBase(localDev)
 
 	file := kiroAgentFile{
 		Name: "entire",
@@ -150,11 +156,11 @@ func writeCLIHooks(repoRoot string) error {
 			"thinking", "todo", "delegate",
 		},
 		Hooks: kiroHooks{
-			AgentSpawn:       []kiroHookEntry{{Command: prodHookCommandBase + HookNameAgentSpawn}},
-			UserPromptSubmit: []kiroHookEntry{{Command: prodHookCommandBase + HookNameUserPromptSubmit}},
-			PreToolUse:       []kiroHookEntry{{Command: prodHookCommandBase + HookNamePreToolUse}},
-			PostToolUse:      []kiroHookEntry{{Command: prodHookCommandBase + HookNamePostToolUse}},
-			Stop:             []kiroHookEntry{{Command: prodHookCommandBase + HookNameStop}},
+			AgentSpawn:       []kiroHookEntry{{Command: commandBase + HookNameAgentSpawn}},
+			UserPromptSubmit: []kiroHookEntry{{Command: commandBase + HookNameUserPromptSubmit}},
+			PreToolUse:       []kiroHookEntry{{Command: commandBase + HookNamePreToolUse}},
+			PostToolUse:      []kiroHookEntry{{Command: commandBase + HookNamePostToolUse}},
+			Stop:             []kiroHookEntry{{Command: commandBase + HookNameStop}},
 		},
 	}
 
@@ -165,11 +171,12 @@ func writeCLIHooks(repoRoot string) error {
 	return os.WriteFile(hooksPath, data, 0o600)
 }
 
-func writeIDEHooks(repoRoot string) error {
+func writeIDEHooks(repoRoot string, localDev bool) error {
 	dir := filepath.Join(repoRoot, ".kiro", ideHooksDir)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
+	commandBase := hookCommandBase(localDev)
 
 	for _, def := range ideHookDefs {
 		hook := kiroIDEHookFile{
@@ -182,7 +189,7 @@ func writeIDEHooks(repoRoot string) error {
 			},
 			Then: kiroIDEHookThen{
 				Type:    "runCommand",
-				Command: prodHookCommandBase + def.CLIVerb,
+				Command: commandBase + def.CLIVerb,
 			},
 		}
 		data, err := marshalJSON(hook)
@@ -198,17 +205,18 @@ func writeIDEHooks(repoRoot string) error {
 	return nil
 }
 
-func allHooksInstalled(repoRoot string) bool {
+func allHooksInstalled(repoRoot string, localDev bool) bool {
 	cliPath := filepath.Join(repoRoot, ".kiro", hooksDir, hooksFileName)
+	commandBase := hookCommandBase(localDev)
 	if data, err := os.ReadFile(cliPath); err == nil {
 		var file kiroAgentFile
 		if json.Unmarshal(data, &file) == nil &&
-			hookCommandExists(file.Hooks.AgentSpawn, prodHookCommandBase+HookNameAgentSpawn) &&
-			hookCommandExists(file.Hooks.UserPromptSubmit, prodHookCommandBase+HookNameUserPromptSubmit) &&
-			hookCommandExists(file.Hooks.PreToolUse, prodHookCommandBase+HookNamePreToolUse) &&
-			hookCommandExists(file.Hooks.PostToolUse, prodHookCommandBase+HookNamePostToolUse) &&
-			hookCommandExists(file.Hooks.Stop, prodHookCommandBase+HookNameStop) &&
-			allIDEHooksPresent(repoRoot) {
+			hookCommandExists(file.Hooks.AgentSpawn, commandBase+HookNameAgentSpawn) &&
+			hookCommandExists(file.Hooks.UserPromptSubmit, commandBase+HookNameUserPromptSubmit) &&
+			hookCommandExists(file.Hooks.PreToolUse, commandBase+HookNamePreToolUse) &&
+			hookCommandExists(file.Hooks.PostToolUse, commandBase+HookNamePostToolUse) &&
+			hookCommandExists(file.Hooks.Stop, commandBase+HookNameStop) &&
+			allIDEHooksPresent(repoRoot, localDev) {
 			return true
 		}
 	}
@@ -224,7 +232,8 @@ func hookCommandExists(entries []kiroHookEntry, command string) bool {
 	return false
 }
 
-func allIDEHooksPresent(repoRoot string) bool {
+func allIDEHooksPresent(repoRoot string, localDev bool) bool {
+	commandBase := hookCommandBase(localDev)
 	for _, def := range ideHookDefs {
 		path := filepath.Join(repoRoot, ".kiro", ideHooksDir, def.Filename+ideHookFileSuffix)
 		data, err := os.ReadFile(path)
@@ -235,14 +244,14 @@ func allIDEHooksPresent(repoRoot string) bool {
 		if err := json.Unmarshal(data, &hook); err != nil {
 			return false
 		}
-		if hook.Then.Command != prodHookCommandBase+def.CLIVerb {
+		if hook.Then.Command != commandBase+def.CLIVerb {
 			return false
 		}
 	}
 	return true
 }
 
-func trustedCommandsPresent(repoRoot string) bool {
+func trustedCommandsPresent(repoRoot string, localDev bool) bool {
 	settingsPath := filepath.Join(repoRoot, vscodeSettingsDir, vscodeSettingsFile)
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
@@ -260,15 +269,16 @@ func trustedCommandsPresent(repoRoot string) bool {
 	if err := json.Unmarshal(raw, &commands); err != nil {
 		return false
 	}
+	want := trustedCommand(localDev)
 	for _, command := range commands {
-		if command == prodTrustedCommand {
+		if command == want {
 			return true
 		}
 	}
 	return false
 }
 
-func installTrustedCommands(repoRoot string) error {
+func installTrustedCommands(repoRoot string, localDev bool) error {
 	settingsPath := filepath.Join(repoRoot, vscodeSettingsDir, vscodeSettingsFile)
 
 	settings, err := readSettings(settingsPath)
@@ -279,12 +289,13 @@ func installTrustedCommands(repoRoot string) error {
 	if err != nil {
 		return err
 	}
+	want := trustedCommand(localDev)
 	for _, command := range commands {
-		if command == prodTrustedCommand {
+		if command == want {
 			return writeSettings(settingsPath, settings)
 		}
 	}
-	commands = append(commands, prodTrustedCommand)
+	commands = append(commands, want)
 	raw, err := json.Marshal(commands)
 	if err != nil {
 		return err
@@ -295,11 +306,14 @@ func installTrustedCommands(repoRoot string) error {
 
 func uninstallTrustedCommands(repoRoot string) error {
 	settingsPath := filepath.Join(repoRoot, vscodeSettingsDir, vscodeSettingsFile)
-	settings, err := readSettings(settingsPath)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(settingsPath); err != nil {
+		if os.IsNotExist(err) {
 			return nil
 		}
+		return err
+	}
+	settings, err := readSettings(settingsPath)
+	if err != nil {
 		return err
 	}
 	commands, err := readTrustedCommands(settings)
@@ -308,7 +322,7 @@ func uninstallTrustedCommands(repoRoot string) error {
 	}
 	filtered := commands[:0]
 	for _, command := range commands {
-		if command != prodTrustedCommand {
+		if command != prodTrustedCommand && command != localDevTrustedCmd {
 			filtered = append(filtered, command)
 		}
 	}
@@ -322,6 +336,20 @@ func uninstallTrustedCommands(repoRoot string) error {
 		settings[trustedCommandsKey] = raw
 	}
 	return writeSettings(settingsPath, settings)
+}
+
+func hookCommandBase(localDev bool) string {
+	if localDev {
+		return localDevCommandBase
+	}
+	return prodHookCommandBase
+}
+
+func trustedCommand(localDev bool) string {
+	if localDev {
+		return localDevTrustedCmd
+	}
+	return prodTrustedCommand
 }
 
 func readSettings(path string) (map[string]json.RawMessage, error) {

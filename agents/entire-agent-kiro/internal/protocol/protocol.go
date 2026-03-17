@@ -10,7 +10,7 @@ import (
 )
 
 type sessionDirResolver interface {
-	GetSessionDir(repoPath string) string
+	GetSessionDir(repoPath string) (string, error)
 }
 
 type sessionFileResolver interface {
@@ -22,7 +22,7 @@ type sessionIDProvider interface {
 }
 
 type sessionReader interface {
-	ReadSession(*HookInputJSON) AgentSessionJSON
+	ReadSession(*HookInputJSON) (AgentSessionJSON, error)
 }
 
 type sessionWriter interface {
@@ -93,7 +93,11 @@ func HandleGetSessionDir(args []string, stdout io.Writer, resolver sessionDirRes
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	return WriteJSON(stdout, SessionDirResponse{SessionDir: resolver.GetSessionDir(*repoPath)})
+	sessionDir, err := resolver.GetSessionDir(*repoPath)
+	if err != nil {
+		return err
+	}
+	return WriteJSON(stdout, SessionDirResponse{SessionDir: sessionDir})
 }
 
 func HandleResolveSessionFile(args []string, stdout io.Writer, resolver sessionFileResolver) error {
@@ -112,7 +116,11 @@ func HandleReadSession(stdin io.Reader, stdout io.Writer, reader sessionReader) 
 	if err != nil {
 		return err
 	}
-	return WriteJSON(stdout, reader.ReadSession(input))
+	session, err := reader.ReadSession(input)
+	if err != nil {
+		return err
+	}
+	return WriteJSON(stdout, session)
 }
 
 func HandleWriteSession(stdin io.Reader, writer sessionWriter) error {

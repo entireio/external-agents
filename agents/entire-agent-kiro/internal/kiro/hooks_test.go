@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -69,6 +70,42 @@ func TestInstallHooksIsIdempotentUnlessForced(t *testing.T) {
 	}
 }
 
+func TestInstallHooksLocalDevUsesLocalCommands(t *testing.T) {
+	repoRoot := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+
+	if _, err := New().InstallHooks(true, false); err != nil {
+		t.Fatalf("InstallHooks() error = %v", err)
+	}
+
+	cliPath := filepath.Join(repoRoot, ".kiro", "agents", "entire.json")
+	cliData, err := os.ReadFile(cliPath)
+	if err != nil {
+		t.Fatalf("read cli hooks: %v", err)
+	}
+	if !strings.Contains(string(cliData), `go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro stop`) {
+		t.Fatalf("cli hooks = %s", cliData)
+	}
+
+	idePath := filepath.Join(repoRoot, ".kiro", "hooks", "entire-stop.kiro.hook")
+	ideData, err := os.ReadFile(idePath)
+	if err != nil {
+		t.Fatalf("read ide hook: %v", err)
+	}
+	if !strings.Contains(string(ideData), `go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro stop`) {
+		t.Fatalf("ide hook = %s", ideData)
+	}
+
+	settingsPath := filepath.Join(repoRoot, ".vscode", "settings.json")
+	settingsData, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	if !strings.Contains(string(settingsData), `go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *`) {
+		t.Fatalf("settings = %s", settingsData)
+	}
+}
+
 func TestUninstallHooksRemovesEntireArtifactsAndPreservesOtherSettings(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
@@ -114,6 +151,20 @@ func TestUninstallHooksRemovesEntireArtifactsAndPreservesOtherSettings(t *testin
 	}
 	if len(commands) != 1 || commands[0] != "custom-tool run" {
 		t.Fatalf("trusted commands after uninstall = %#v, want [\"custom-tool run\"]", commands)
+	}
+}
+
+func TestUninstallHooksWithoutSettingsFileDoesNotCreateOne(t *testing.T) {
+	repoRoot := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+
+	if err := New().UninstallHooks(); err != nil {
+		t.Fatalf("UninstallHooks() error = %v", err)
+	}
+
+	settingsPath := filepath.Join(repoRoot, ".vscode", "settings.json")
+	if _, err := os.Stat(settingsPath); !os.IsNotExist(err) {
+		t.Fatalf("settings.json should not be created, got err=%v", err)
 	}
 }
 

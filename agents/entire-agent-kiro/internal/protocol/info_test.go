@@ -3,8 +3,8 @@ package protocol_test
 import (
 	"testing"
 
-	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/kiro"
-	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
+	"github.com/obra/external-agents/agents/entire-agent-kiro/internal/kiro"
+	"github.com/obra/external-agents/agents/entire-agent-kiro/internal/protocol"
 )
 
 func TestInfoResponseShape(t *testing.T) {
