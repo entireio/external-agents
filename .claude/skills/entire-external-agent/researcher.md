@@ -13,15 +13,12 @@ Ensure the following parameters are available (from the orchestrator or user):
 
 Read the protocol specification to understand what subcommands and response formats the binary must implement.
 
-**If inside the Entire CLI repo:**
-1. Read `docs/architecture/external-agent-protocol.md` — full protocol spec (subcommands, JSON schemas, capabilities)
-2. Read `cmd/entire/cli/agent/external/types.go` — JSON response type definitions
-3. Read `cmd/entire/cli/agent/external/external.go` — how the CLI invokes each subcommand (args, stdin, expected stdout)
+**Protocol spec:**
+1. Read `https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md` — full protocol spec (subcommands, JSON schemas, capabilities)
+2. Read `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/types.go` — JSON response type definitions
+3. Read `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/external.go` — how the CLI invokes each subcommand (args, stdin, expected stdout)
 
-**If standalone (protocol spec not found locally):**
-1. Ask the user for the spec location (URL, file path, or repo path)
-2. Read the spec from the provided location
-3. If a URL is provided, fetch it with the WebFetch tool
+If the user provides a different protocol spec location explicitly, read that instead.
 
 Key things to note:
 - Which subcommands are always required vs. capability-gated
@@ -185,7 +182,7 @@ Fill in every section with concrete values from the investigation. Don't leave p
 
 ## Phase 4: Commit
 
-Use `/commit` to commit the `AGENT.md` file.
+Create a git commit for the `AGENT.md` file.
 
 ## Blocker Handling
 

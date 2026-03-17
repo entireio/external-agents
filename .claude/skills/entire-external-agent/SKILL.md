@@ -25,13 +25,12 @@ Collect these before starting (ask the user if not provided):
 | `PROJECT_DIR` | Where to create the project | Default: `./entire-agent-<AGENT_SLUG>` |
 | `CAPABILITIES` | Which optional capabilities to implement | Derived from research phase |
 
-## Standalone Detection
+## Protocol Spec
 
-If `docs/architecture/external-agent-protocol.md` is not found in the current repo, this plugin is being used standalone. In that case:
+Use the protocol specification at:
+`https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md`
 
-1. Ask the user: "I can't find the protocol spec. Please provide one of: (a) URL to the spec, (b) file path, or (c) path to a clone of the Entire CLI repo."
-2. Store the provided location and pass it to each phase as `PROTOCOL_SPEC_LOCATION`.
-3. Each phase will read the spec from that location instead of the default repo path.
+If a user provides a different protocol spec location explicitly, use that instead and pass it to each phase as `PROTOCOL_SPEC_LOCATION`.
 
 ## Pipeline
 
@@ -45,7 +44,7 @@ Read and follow the research procedure from `.claude/skills/entire-external-agen
 
 **Expected output:** `<PROJECT_DIR>/AGENT.md` — agent research one-pager with protocol mapping.
 
-**Commit gate:** After the research phase completes, use `/commit` to commit all files.
+**Commit gate:** After the research phase completes, create a git commit for the resulting files.
 
 **Gate:** If the agent lacks any mechanism for lifecycle hooks or session management, discuss with the user before proceeding. Some agents may only support a subset of the protocol.
 
@@ -57,7 +56,7 @@ Read and follow the scaffold procedure from `.claude/skills/entire-external-agen
 
 **Expected output:** Complete project directory at `<PROJECT_DIR>` with `Makefile`, stub handlers, and a binary that compiles and responds to `info`.
 
-**Commit gate:** After the scaffold compiles and `info` returns valid JSON, use `/commit` to commit all files.
+**Commit gate:** After the scaffold compiles and `info` returns valid JSON, create a git commit for the resulting files.
 
 ### Phase 3: Implement
 
@@ -67,7 +66,7 @@ Read and follow the implement procedure from `.claude/skills/entire-external-age
 
 **Expected output:** Fully implemented binary where all declared subcommands return real data.
 
-**Commit gate:** After each tier of subcommands is implemented and manually tested, use `/commit` to commit.
+**Commit gate:** After each tier of subcommands is implemented and manually tested, create a git commit.
 
 ### Phase 4: Validate
 
@@ -77,7 +76,7 @@ Read and follow the validate procedure from `.claude/skills/entire-external-agen
 
 **Expected output:** Conformance report with PASS/FAIL per subcommand and overall verdict.
 
-**Commit gate:** After all conformance tests pass, use `/commit` to commit any final fixes.
+**Commit gate:** After all conformance tests pass, create a git commit for any final fixes.
 
 ## Final Summary
 

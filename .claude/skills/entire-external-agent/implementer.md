@@ -29,9 +29,9 @@ For each subcommand:
 ### Step 1: Read the spec
 
 Read the protocol spec section for this subcommand:
-- **If inside the Entire CLI repo:** Read the relevant section of `docs/architecture/external-agent-protocol.md`
-- Read how `cmd/entire/cli/agent/external/external.go` calls it (what args it passes, what stdin format, what it expects on stdout)
-- Read the response type from `cmd/entire/cli/agent/external/types.go`
+- Read the relevant section of `https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md`
+- Read how `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/external.go` calls it (what args it passes, what stdin format, what it expects on stdout)
+- Read the response type from `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/types.go`
 
 ### Step 2: Read agent-specific notes
 
@@ -167,7 +167,7 @@ For each remaining declared capability, implement the corresponding subcommands 
 After completing each tier:
 1. Build and test all subcommands in the tier
 2. Run `mise run fmt && mise run lint` (if applicable to the language)
-3. Use `/commit` to commit
+3. Create a git commit
 
 ## Output
 

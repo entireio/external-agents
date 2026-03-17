@@ -6,9 +6,9 @@ Build standalone external agent binaries that implement the Entire CLI's externa
 
 | | `agent-integration` | `entire-external-agent` |
 |---|---|---|
-| **Output** | Built-in Go package in `cmd/entire/cli/agent/` | Standalone binary in any language |
+| **Output** | Built-in agent integration inside the Entire CLI codebase | Standalone binary in any language |
 | **Protocol** | Direct Go interface implementation | Subcommand-based protocol over stdin/stdout |
-| **Audience** | Internal contributors to the Entire CLI repo | Internal or external developers building agent plugins |
+| **Audience** | Contributors implementing built-in Entire CLI agents | Internal or external developers building agent plugins |
 | **Language** | Go only | Go, Python, TypeScript, Rust |
 
 ## Commands
@@ -28,7 +28,8 @@ See `.claude/skills/entire-external-agent/SKILL.md` for the orchestrator procedu
 
 ## Standalone Usage
 
-This plugin can be used outside the Entire CLI repo. When `docs/architecture/external-agent-protocol.md` is not found, the skills will ask for the protocol spec location (a URL, file path, or repo path) and adapt accordingly.
+This plugin can be used outside the Entire CLI repo. The skills should use the protocol spec at:
+`https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md`
 
 ```bash
 claude --plugin-dir /path/to/entire-external-agent/

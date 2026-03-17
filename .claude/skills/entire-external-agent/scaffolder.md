@@ -12,14 +12,11 @@ Ensure the following are available:
 
 **Do not use static templates.** Read the following files at runtime to generate code that matches the current protocol version:
 
-**If inside the Entire CLI repo:**
-1. Read `docs/architecture/external-agent-protocol.md` — subcommand specs, JSON schemas, capabilities
-2. Read `cmd/entire/cli/agent/external/types.go` — JSON response struct definitions
-3. Read `cmd/entire/cli/agent/external/external.go` — how the CLI calls each subcommand (args, stdin format, expected stdout)
-4. Optionally read `cmd/entire/cli/agent/external/capabilities.go` — how capabilities gate subcommand invocation
-
-**If standalone:**
-Read the protocol spec from the location provided in the research phase.
+**Protocol spec and CLI sources:**
+1. Read `https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md` — subcommand specs, JSON schemas, capabilities
+2. Read `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/types.go` — JSON response struct definitions
+3. Read `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/external.go` — how the CLI calls each subcommand (args, stdin format, expected stdout)
+4. Optionally read `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/capabilities.go` — how capabilities gate subcommand invocation
 
 **Always read:**
 5. Read `<PROJECT_DIR>/AGENT.md` — agent-specific decisions (capabilities, hook format, transcript location)
@@ -187,7 +184,7 @@ The `info` subcommand must return valid JSON immediately — this is what the CL
 
 ### internal/types.go
 
-Translate the response types from `cmd/entire/cli/agent/external/types.go` into the target language. Include JSON tags/annotations that match the protocol exactly.
+Translate the response types from `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/types.go` into the target language. Include JSON tags/annotations that match the protocol exactly.
 
 ### internal/protocol.go
 
@@ -241,7 +238,7 @@ Fix any issues before proceeding.
 
 ## Phase 5: Commit
 
-Use `/commit` to commit the entire scaffolded project.
+Create a git commit for the entire scaffolded project.
 
 ## Constraints
 

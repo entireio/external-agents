@@ -370,7 +370,7 @@ If any tests fail:
 rm -rf "$VALIDATE_DIR"
 ```
 
-If any fixes were made during validation, use `/commit` to commit them.
+If any fixes were made during validation, create a git commit for them.
 
 ## Constraints
 
