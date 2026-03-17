@@ -60,12 +60,21 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) protocol.AgentSession
 		sessionRef = a.ResolveSessionFile(sessionDir, sessionID)
 	}
 
+	var nativeData []byte
+	if sessionRef != "" {
+		data, err := os.ReadFile(sessionRef)
+		if err == nil {
+			nativeData = data
+		}
+	}
+
 	return protocol.AgentSessionJSON{
 		SessionID:     sessionID,
 		AgentName:     "kiro",
 		RepoPath:      repoRoot,
 		SessionRef:    sessionRef,
 		StartTime:     time.Now().UTC().Format(time.RFC3339),
+		NativeData:    nativeData,
 		ModifiedFiles: []string{},
 		NewFiles:      []string{},
 		DeletedFiles:  []string{},
