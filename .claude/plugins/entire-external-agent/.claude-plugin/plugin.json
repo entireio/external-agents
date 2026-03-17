@@ -1,0 +1,5 @@
+{
+  "name": "entire-external-agent",
+  "description": "Build standalone external agent binaries that implement the Entire CLI's external agent protocol",
+  "version": "1.0.0"
+}
