@@ -1,7 +1,10 @@
 package kiro
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +26,7 @@ const (
 	localDevCommandBase = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
 	localDevTrustedCmd  = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
 	prodHookCommandBase = "entire hooks kiro "
+	sessionIDFile       = "kiro-active-session"
 )
 
 type ideHookDef struct {
@@ -46,36 +50,46 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}
 	}
 
-	sessionID := "stub-session-000"
-	if raw.CWD != "" {
-		sessionID = filepath.Base(raw.CWD)
-	}
-
 	switch hookName {
 	case HookNameAgentSpawn:
+		sessionID := a.generateAndCacheSessionID()
 		return &protocol.EventJSON{
 			Type:      1,
 			SessionID: sessionID,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		}, nil
 	case HookNameUserPromptSubmit:
+		sessionID := a.readCachedSessionID()
+		if sessionID == "" {
+			sessionID = a.generateAndCacheSessionID()
+		}
+		prompt := raw.Prompt
+		if prompt == "" {
+			prompt = os.Getenv("USER_PROMPT")
+		}
 		return &protocol.EventJSON{
 			Type:      2,
 			SessionID: sessionID,
-			Prompt:    raw.Prompt,
+			Prompt:    prompt,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		}, nil
 	case HookNamePreToolUse, HookNamePostToolUse:
 		return nil, nil
 	case HookNameStop:
+		sessionID := a.readCachedSessionID()
+		if sessionID == "" {
+			sessionID = fallbackSessionID(raw.CWD)
+		}
 		sessionDir, err := a.GetSessionDir(protocol.RepoRoot())
 		if err != nil {
 			return nil, err
 		}
+		sessionRef := a.ResolveSessionFile(sessionDir, sessionID)
+		a.clearCachedSessionID()
 		return &protocol.EventJSON{
 			Type:       3,
 			SessionID:  sessionID,
-			SessionRef: a.ResolveSessionFile(sessionDir, sessionID),
+			SessionRef: sessionRef,
 			Timestamp:  time.Now().UTC().Format(time.RFC3339),
 		}, nil
 	default:
@@ -403,4 +417,44 @@ func marshalJSON(v any) ([]byte, error) {
 
 func isEntireIDEHook(hook kiroIDEHookFile) bool {
 	return strings.HasPrefix(hook.Name, "entire-") && strings.HasPrefix(hook.Then.Command, prodHookCommandBase)
+}
+
+func (a *Agent) generateAndCacheSessionID() string {
+	sessionID := generateSessionID()
+	cachePath := a.sessionIDCachePath()
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o750); err == nil {
+		_ = os.WriteFile(cachePath, []byte(sessionID), 0o600)
+	}
+	return sessionID
+}
+
+func (a *Agent) readCachedSessionID() string {
+	data, err := os.ReadFile(a.sessionIDCachePath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func (a *Agent) clearCachedSessionID() {
+	_ = os.Remove(a.sessionIDCachePath())
+}
+
+func (a *Agent) sessionIDCachePath() string {
+	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", sessionIDFile)
+}
+
+func fallbackSessionID(cwd string) string {
+	if cwd != "" {
+		return filepath.Base(cwd)
+	}
+	return "stub-session-000"
+}
+
+func generateSessionID() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("kiro-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf)
 }
