@@ -76,15 +76,20 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	case HookNamePreToolUse, HookNamePostToolUse:
 		return nil, nil
 	case HookNameStop:
+		cwd := raw.CWD
+		if cwd == "" {
+			cwd = protocol.RepoRoot()
+		}
 		sessionID := a.readCachedSessionID()
 		if sessionID == "" {
-			sessionID = fallbackStopSessionID()
+			nativeSessionID, err := a.querySessionID(cwd)
+			if err == nil && nativeSessionID != "" {
+				sessionID = nativeSessionID
+			} else {
+				sessionID = fallbackStopSessionID()
+			}
 		}
-		sessionDir, err := a.GetSessionDir(protocol.RepoRoot())
-		if err != nil {
-			return nil, err
-		}
-		sessionRef := a.ResolveSessionFile(sessionDir, sessionID)
+		sessionRef := a.captureTranscriptForStop(cwd, sessionID)
 		a.clearCachedSessionID()
 		return &protocol.EventJSON{
 			Type:       3,
