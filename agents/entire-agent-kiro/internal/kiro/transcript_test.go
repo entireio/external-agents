@@ -7,8 +7,64 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 )
+
+const testCLIAnalyzerTranscript = `{
+  "conversation_id": "test-conv-123",
+  "history": [
+    {
+      "user": {"content": {"Prompt": {"prompt": "Create a hello.go file"}}, "timestamp": "2026-01-01T00:00:00Z"},
+      "assistant": {"Response": {"message_id": "msg-1", "content": "I'll create that file for you."}}
+    },
+    {
+      "user": {"content": {"Prompt": {"prompt": "Now add a test"}}, "timestamp": "2026-01-01T00:01:00Z"},
+      "assistant": {"ToolUse": {"message_id": "msg-2", "tool_uses": [
+        {"id": "tu-1", "name": "fs_write", "args": {"path": "/repo/hello.go", "content": "package main"}}
+      ]}}
+    },
+    {
+      "user": {"content": {"ToolUseResults": {"tool_use_results": [{"id": "tu-1", "result": "ok"}]}}},
+      "assistant": {"ToolUse": {"message_id": "msg-3", "tool_uses": [
+        {"id": "tu-2", "name": "fs_write", "args": {"path": "/repo/hello_test.go", "content": "package main"}}
+      ]}}
+    },
+    {
+      "user": {"content": {"ToolUseResults": {"tool_use_results": [{"id": "tu-2", "result": "ok"}]}}},
+      "assistant": {"Response": {"message_id": "msg-4", "content": "Done! I created both files."}}
+    }
+  ]
+}`
+
+const testIDEAnalyzerTranscript = `{
+  "history": [
+    {
+      "message": {
+        "role": "user",
+        "content": [{"type": "text", "text": "Open the workspace"}]
+      }
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "I opened the workspace."
+      }
+    },
+    {
+      "message": {
+        "role": "user",
+        "content": [{"type": "text", "text": "Create app.js"}]
+      }
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "Created app.js."
+      }
+    }
+  ]
+}`
 
 func TestReadTranscript(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "transcript.json")
@@ -326,5 +382,162 @@ func seedSessionIDCache(t *testing.T, repoRoot string, sessionID string) {
 	}
 	if err := os.WriteFile(filepath.Join(cacheDir, sessionIDFile), []byte(sessionID), 0o600); err != nil {
 		t.Fatalf("write session id cache: %v", err)
+	}
+}
+
+func TestGetTranscriptPositionCountsCLIHistoryEntries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.json")
+	if err := os.WriteFile(path, []byte(testCLIAnalyzerTranscript), 0o600); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	position, err := New().GetTranscriptPosition(path)
+	if err != nil {
+		t.Fatalf("GetTranscriptPosition() error = %v", err)
+	}
+	if position != 4 {
+		t.Fatalf("position = %d, want %d", position, 4)
+	}
+}
+
+func TestGetTranscriptPositionHandlesPlaceholderTranscript(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "placeholder.json")
+	if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	position, err := New().GetTranscriptPosition(path)
+	if err != nil {
+		t.Fatalf("GetTranscriptPosition() error = %v", err)
+	}
+	if position != 0 {
+		t.Fatalf("position = %d, want %d", position, 0)
+	}
+}
+
+func TestExtractModifiedFilesFromCLITranscript(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.json")
+	if err := os.WriteFile(path, []byte(testCLIAnalyzerTranscript), 0o600); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	files, currentPosition, err := New().ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatalf("ExtractModifiedFiles() error = %v", err)
+	}
+
+	wantFiles := []string{"/repo/hello.go", "/repo/hello_test.go"}
+	if !slices.Equal(files, wantFiles) {
+		t.Fatalf("files = %v, want %v", files, wantFiles)
+	}
+	if currentPosition != 4 {
+		t.Fatalf("currentPosition = %d, want %d", currentPosition, 4)
+	}
+}
+
+func TestExtractPromptsFromCLITranscript(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.json")
+	if err := os.WriteFile(path, []byte(testCLIAnalyzerTranscript), 0o600); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	prompts, err := New().ExtractPrompts(path, 0)
+	if err != nil {
+		t.Fatalf("ExtractPrompts() error = %v", err)
+	}
+
+	want := []string{"Create a hello.go file", "Now add a test"}
+	if !slices.Equal(prompts, want) {
+		t.Fatalf("prompts = %v, want %v", prompts, want)
+	}
+}
+
+func TestExtractSummaryFromCLITranscript(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "transcript.json")
+	if err := os.WriteFile(path, []byte(testCLIAnalyzerTranscript), 0o600); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	summary, hasSummary, err := New().ExtractSummary(path)
+	if err != nil {
+		t.Fatalf("ExtractSummary() error = %v", err)
+	}
+	if !hasSummary {
+		t.Fatal("expected summary to be present")
+	}
+	if summary != "Done! I created both files." {
+		t.Fatalf("summary = %q, want %q", summary, "Done! I created both files.")
+	}
+}
+
+func TestIDETranscriptAnalyzerParsesPromptsAndSummary(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ide-transcript.json")
+	if err := os.WriteFile(path, []byte(testIDEAnalyzerTranscript), 0o600); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	position, err := New().GetTranscriptPosition(path)
+	if err != nil {
+		t.Fatalf("GetTranscriptPosition() error = %v", err)
+	}
+	if position != 2 {
+		t.Fatalf("position = %d, want %d", position, 2)
+	}
+
+	prompts, err := New().ExtractPrompts(path, 0)
+	if err != nil {
+		t.Fatalf("ExtractPrompts() error = %v", err)
+	}
+	wantPrompts := []string{"Open the workspace", "Create app.js"}
+	if !slices.Equal(prompts, wantPrompts) {
+		t.Fatalf("prompts = %v, want %v", prompts, wantPrompts)
+	}
+
+	summary, hasSummary, err := New().ExtractSummary(path)
+	if err != nil {
+		t.Fatalf("ExtractSummary() error = %v", err)
+	}
+	if !hasSummary {
+		t.Fatal("expected IDE summary to be present")
+	}
+	if summary != "Created app.js." {
+		t.Fatalf("summary = %q, want %q", summary, "Created app.js.")
+	}
+}
+
+func TestPlaceholderTranscriptAnalyzerReturnsNoFilesPromptsOrSummary(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "placeholder.json")
+	if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	files, currentPosition, err := New().ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatalf("ExtractModifiedFiles() error = %v", err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("files = %v, want empty", files)
+	}
+	if currentPosition != 0 {
+		t.Fatalf("currentPosition = %d, want %d", currentPosition, 0)
+	}
+
+	prompts, err := New().ExtractPrompts(path, 0)
+	if err != nil {
+		t.Fatalf("ExtractPrompts() error = %v", err)
+	}
+	if len(prompts) != 0 {
+		t.Fatalf("prompts = %v, want empty", prompts)
+	}
+
+	summary, hasSummary, err := New().ExtractSummary(path)
+	if err != nil {
+		t.Fatalf("ExtractSummary() error = %v", err)
+	}
+	if hasSummary {
+		t.Fatalf("hasSummary = true, want false with summary %q", summary)
+	}
+	if summary != "" {
+		t.Fatalf("summary = %q, want empty", summary)
 	}
 }

@@ -20,6 +20,11 @@ var runSQLiteCommand = func(args ...string) ([]byte, error) {
 	return exec.Command("sqlite3", args...).Output()
 }
 
+var kiroFileModificationTools = map[string]struct{}{
+	"fs_write": {},
+	"fs_edit":  {},
+}
+
 type ideSessionIndexEntry struct {
 	SessionID   string `json:"sessionId"`
 	DateCreated string `json:"dateCreated"`
@@ -234,24 +239,303 @@ func escapeSQLString(s string) string {
 }
 
 func (a *Agent) GetTranscriptPosition(path string) (int, error) {
-	data, err := os.ReadFile(path)
+	transcript, err := readAndParseTranscript(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
 		return 0, err
 	}
-	return len(data), nil
+	return len(transcript.History), nil
 }
 
-func (a *Agent) ExtractModifiedFiles(_ string, offset int) ([]string, int, error) {
-	return []string{}, offset, nil
+func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, error) {
+	transcript, err := readAndParseTranscript(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, 0, nil
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+
+	totalEntries := len(transcript.History)
+	if offset >= totalEntries {
+		return nil, totalEntries, nil
+	}
+
+	return extractModifiedFilesFromHistory(transcript.History[offset:]), totalEntries, nil
 }
 
-func (a *Agent) ExtractPrompts(_ string, _ int) ([]string, error) {
-	return []string{}, nil
+func (a *Agent) ExtractPrompts(path string, offset int) ([]string, error) {
+	transcript, err := readAndParseTranscript(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var prompts []string
+	for i := offset; i < len(transcript.History); i++ {
+		if prompt := extractUserPrompt(transcript.History[i].User.Content); prompt != "" {
+			prompts = append(prompts, prompt)
+		}
+	}
+	return prompts, nil
 }
 
-func (a *Agent) ExtractSummary(_ string) (string, bool, error) {
-	return "", false, nil
+func (a *Agent) ExtractSummary(path string) (string, bool, error) {
+	transcript, err := readAndParseTranscript(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+
+	summary := extractLastAssistantResponse(transcript.History)
+	return summary, summary != "", nil
+}
+
+func readAndParseTranscript(path string) (*kiroTranscript, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return parseTranscript(data)
+}
+
+func parseTranscript(data []byte) (*kiroTranscript, error) {
+	if len(data) == 0 {
+		return &kiroTranscript{}, nil
+	}
+
+	var transcript kiroTranscript
+	if err := json.Unmarshal(data, &transcript); err != nil {
+		return nil, fmt.Errorf("failed to parse kiro transcript: %w", err)
+	}
+	if isCLITranscript(&transcript) {
+		return &transcript, nil
+	}
+
+	if converted := tryParseIDETranscript(data); converted != nil {
+		return converted, nil
+	}
+
+	return &transcript, nil
+}
+
+func isCLITranscript(transcript *kiroTranscript) bool {
+	if len(transcript.History) == 0 {
+		return false
+	}
+	return len(transcript.History[0].User.Content) > 0 || len(transcript.History[0].Assistant) > 0
+}
+
+func tryParseIDETranscript(data []byte) *kiroTranscript {
+	var ide kiroIDETranscript
+	if err := json.Unmarshal(data, &ide); err != nil {
+		return nil
+	}
+	if len(ide.History) == 0 || ide.History[0].Message.Role == "" {
+		return nil
+	}
+	return convertIDETranscript(&ide)
+}
+
+func convertIDETranscript(ide *kiroIDETranscript) *kiroTranscript {
+	transcript := &kiroTranscript{}
+
+	var pendingUser *kiroIDEHistoryEntry
+	for i := range ide.History {
+		entry := &ide.History[i]
+		switch entry.Message.Role {
+		case "user":
+			if pendingUser != nil {
+				transcript.History = append(transcript.History, ideEntryToPaired(pendingUser, nil))
+			}
+			pendingUser = entry
+		case "assistant":
+			transcript.History = append(transcript.History, ideEntryToPaired(pendingUser, entry))
+			pendingUser = nil
+		}
+	}
+
+	if pendingUser != nil {
+		transcript.History = append(transcript.History, ideEntryToPaired(pendingUser, nil))
+	}
+
+	return transcript
+}
+
+func ideEntryToPaired(user, assistant *kiroIDEHistoryEntry) kiroHistoryEntry {
+	entry := kiroHistoryEntry{}
+
+	if user != nil {
+		prompt := extractIDEUserText(user.Message.Content)
+		if prompt != "" {
+			content, err := json.Marshal(kiroPromptContent{
+				Prompt: struct {
+					Prompt string `json:"prompt"`
+				}{Prompt: prompt},
+			})
+			if err == nil {
+				entry.User.Content = content
+			}
+		} else {
+			entry.User.Content = user.Message.Content
+		}
+	}
+
+	if assistant != nil {
+		text := extractIDEAssistantText(assistant.Message.Content)
+		if text != "" {
+			content, err := json.Marshal(kiroResponseContent{
+				Response: kiroResponsePayload{Content: text},
+			})
+			if err == nil {
+				entry.Assistant = content
+			}
+		} else {
+			entry.Assistant = assistant.Message.Content
+		}
+	}
+
+	return entry
+}
+
+func extractIDEUserText(content json.RawMessage) string {
+	if len(content) == 0 {
+		return ""
+	}
+
+	var blocks []kiroIDEContentBlock
+	if err := json.Unmarshal(content, &blocks); err == nil && len(blocks) > 0 {
+		for _, block := range blocks {
+			if block.Type == "text" && block.Text != "" {
+				return block.Text
+			}
+		}
+		return ""
+	}
+
+	var text string
+	if err := json.Unmarshal(content, &text); err == nil {
+		return text
+	}
+	return ""
+}
+
+func extractIDEAssistantText(content json.RawMessage) string {
+	if len(content) == 0 {
+		return ""
+	}
+
+	var text string
+	if err := json.Unmarshal(content, &text); err == nil {
+		return text
+	}
+
+	var blocks []kiroIDEContentBlock
+	if err := json.Unmarshal(content, &blocks); err == nil && len(blocks) > 0 {
+		for _, block := range blocks {
+			if block.Type == "text" && block.Text != "" {
+				return block.Text
+			}
+		}
+	}
+	return ""
+}
+
+func extractUserPrompt(content json.RawMessage) string {
+	if len(content) == 0 {
+		return ""
+	}
+
+	var promptContent kiroPromptContent
+	if err := json.Unmarshal(content, &promptContent); err == nil && promptContent.Prompt.Prompt != "" {
+		return promptContent.Prompt.Prompt
+	}
+	return ""
+}
+
+func extractModifiedFilesFromHistory(entries []kiroHistoryEntry) []string {
+	seen := make(map[string]bool)
+	var files []string
+
+	for i := range entries {
+		for _, path := range extractFilesFromAssistant(entries[i].Assistant) {
+			if path == "" || seen[path] {
+				continue
+			}
+			seen[path] = true
+			files = append(files, path)
+		}
+	}
+
+	return files
+}
+
+func extractFilesFromAssistant(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	var toolUseContent kiroToolUseContent
+	if err := json.Unmarshal(raw, &toolUseContent); err != nil || len(toolUseContent.ToolUse.ToolUses) == 0 {
+		return nil
+	}
+
+	var paths []string
+	for _, call := range toolUseContent.ToolUse.ToolUses {
+		if !isFileModificationTool(call.Name) {
+			continue
+		}
+		if path := extractFilePath(call.Args); path != "" {
+			paths = append(paths, path)
+		}
+	}
+	return paths
+}
+
+func isFileModificationTool(name string) bool {
+	_, ok := kiroFileModificationTools[name]
+	return ok
+}
+
+func extractFilePath(args json.RawMessage) string {
+	if len(args) == 0 {
+		return ""
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(args, &fields); err != nil {
+		return ""
+	}
+
+	for _, key := range []string{"path", "file_path", "filename"} {
+		raw, ok := fields[key]
+		if !ok {
+			continue
+		}
+		var path string
+		if err := json.Unmarshal(raw, &path); err == nil && path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
+func extractLastAssistantResponse(entries []kiroHistoryEntry) string {
+	for i := len(entries) - 1; i >= 0; i-- {
+		if len(entries[i].Assistant) == 0 {
+			continue
+		}
+
+		var responseContent kiroResponseContent
+		if err := json.Unmarshal(entries[i].Assistant, &responseContent); err == nil && responseContent.Response.Content != "" {
+			return responseContent.Response.Content
+		}
+	}
+	return ""
 }
