@@ -6,8 +6,8 @@
   "author": {
     "name": "Alisha"
   },
-  "homepage": "https://github.com/obra/external-agents",
-  "repository": "https://github.com/obra/external-agents",
+  "homepage": "https://github.com/entireio/external-agents",
+  "repository": "https://github.com/entireio/external-agents",
   "license": "MIT",
   "keywords": ["entire", "external-agent", "agent-protocol", "skills"],
   "skills": "./.claude/skills/",

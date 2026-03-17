@@ -10,7 +10,7 @@ Enable the `entire-external-agent` skill in Codex via native skill discovery.
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/obra/external-agents.git ~/.codex/external-agents
+   git clone https://github.com/entireio/external-agents.git ~/.codex/external-agents
    ```
 
 2. **Create the skills symlink:**

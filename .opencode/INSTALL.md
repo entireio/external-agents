@@ -10,7 +10,7 @@
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/obra/external-agents.git ~/.config/opencode/external-agents
+git clone https://github.com/entireio/external-agents.git ~/.config/opencode/external-agents
 ```
 
 ### 2. Register the plugin
