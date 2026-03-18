@@ -13,7 +13,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/obra/external-agents/agents/entire-agent-kiro/internal/protocol"
+	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
 )
 
 var runSQLiteCommand = func(args ...string) ([]byte, error) {

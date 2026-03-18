@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/obra/external-agents/agents/entire-agent-kiro/internal/protocol"
+	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
 )
 
 const (

@@ -1,6 +1,6 @@
 package kiro
 
-import "github.com/obra/external-agents/agents/entire-agent-kiro/internal/protocol"
+import "github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
 
 func (a *Agent) GetSessionDir(repoPath string) (string, error) {
 	return protocol.DefaultSessionDir(repoPath), nil
