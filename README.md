@@ -48,7 +48,7 @@ claude --plugin-dir /path/to/external-agents/.claude/plugins/entire-external-age
 Tell Codex:
 
 ```text
-Fetch and follow instructions from https://raw.githubusercontent.com/obra/external-agents/main/.codex/INSTALL.md
+Fetch and follow instructions from https://raw.githubusercontent.com/entireio/external-agents/main/.codex/INSTALL.md
 ```
 
 ### OpenCode
@@ -56,7 +56,7 @@ Fetch and follow instructions from https://raw.githubusercontent.com/obra/extern
 Tell OpenCode:
 
 ```text
-Fetch and follow instructions from https://raw.githubusercontent.com/obra/external-agents/main/.opencode/INSTALL.md
+Fetch and follow instructions from https://raw.githubusercontent.com/entireio/external-agents/main/.opencode/INSTALL.md
 ```
 
 ### Cursor
