@@ -43,7 +43,7 @@ This should print JSON describing the agent's capabilities.
 
 ```bash
 cd /path/to/your/project
-entire enable --agent kiro
+entire enable
 ```
 
 ### 5. Verify hooks are installed
