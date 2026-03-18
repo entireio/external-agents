@@ -1,112 +1,124 @@
-# entire-agent-kiro
+# Kiro External Agent for Entire CLI
 
-Standalone external-agent binary for Entire's Kiro integration.
+Enables Entire CLI checkpoints, rewind, and transcript capture for [Kiro](https://kiro.dev) coding sessions. Once installed, Entire automatically tracks your Kiro sessions — creating checkpoints on commits and capturing transcripts for review.
 
-## Status
+## Prerequisites
 
-Implemented and validated against the Entire external-agent protocol for:
+- **Entire CLI** installed and on `PATH`
+- **Kiro** (IDE or `kiro-cli-chat` CLI) installed
+- **Go 1.26+** (to build from source)
 
-- required subcommands
-- `hooks` capability subcommands
-- `transcript_analyzer` capability subcommands
+## Quick Start
 
-The binary exposes one logical `kiro` agent and supports both Kiro CLI and Kiro IDE integration paths.
+### 1. Build the binary
+
+```bash
+cd agents/entire-agent-kiro
+make build
+```
+
+This produces `./entire-agent-kiro` in the current directory.
+
+### 2. Install to PATH
+
+```bash
+cp ./entire-agent-kiro ~/.local/bin/
+```
+
+Or use Go install:
+
+```bash
+go install ./cmd/entire-agent-kiro
+```
+
+### 3. Verify the agent is discoverable
+
+```bash
+entire-agent-kiro info
+```
+
+This should print JSON describing the agent's capabilities.
+
+### 4. Enable the agent in your project
+
+```bash
+cd /path/to/your/project
+entire enable --agent kiro
+```
+
+### 5. Verify hooks are installed
+
+```bash
+entire-agent-kiro are-hooks-installed
+```
+
+Should return `{"installed": true}`.
+
+### 6. Start using Kiro
+
+Entire will now automatically capture checkpoints and transcripts during your Kiro sessions.
+
+## What Gets Installed
+
+When you run `entire enable --agent kiro`, the agent installs hooks in three locations:
+
+| Location | Purpose |
+|----------|---------|
+| `.kiro/agents/entire.json` | Agent configuration for Kiro CLI |
+| `.kiro/hooks/*.kiro.hook` | Lifecycle hooks (start, stop, commit) |
+| `.vscode/settings.json` | Trusted command entry for Kiro IDE |
+
+During a session, these hooks fire on lifecycle events (session start, stop, commit), allowing Entire to create checkpoints and capture what the AI agent did.
 
 ## Capabilities
 
-`entire-agent-kiro info` declares:
+| Capability | Supported | Description |
+|------------|-----------|-------------|
+| `hooks` | Yes | Installs and manages Kiro lifecycle hooks |
+| `transcript_analyzer` | Yes | Extracts modified files, prompts, and summaries from transcripts |
+| `transcript_preparer` | No | — |
+| `token_calculator` | No | — |
+| `text_generator` | No | — |
+| `hook_response_writer` | No | — |
+| `subagent_aware_extractor` | No | — |
 
-- `hooks: true`
-- `transcript_analyzer: true`
-- `transcript_preparer: false`
-- `token_calculator: false`
-- `text_generator: false`
-- `hook_response_writer: false`
-- `subagent_aware_extractor: false`
+## Supported Subcommands
 
-## Build
+All subcommands required by the [external agent protocol](https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md):
 
-```bash
-make build
-```
+**Core:** `info`, `detect`, `get-session-id`, `get-session-dir`, `resolve-session-file`, `read-session`, `write-session`, `format-resume-command`
 
-This produces `./entire-agent-kiro`.
+**Hooks:** `parse-hook`, `install-hooks`, `are-hooks-installed`, `uninstall-hooks`
 
-## Install
-
-Entire discovers external agents on `PATH` by binary name, so install the built binary somewhere on `PATH`.
-
-Example:
-
-```bash
-make build
-cp ./entire-agent-kiro ~/.local/bin/entire-agent-kiro
-```
-
-After installation, Entire should discover the agent as `kiro`.
-
-## Hook Install Side Effects
-
-`install-hooks` updates repo-local Kiro configuration in three places:
-
-- `.kiro/agents/entire.json`
-- `.kiro/hooks/*.kiro.hook`
-- `.vscode/settings.json`
-
-The trusted command entry added to VS Code settings is:
-
-- production: `entire hooks *`
-- local dev: `go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *`
-
-`uninstall-hooks` removes Entire-owned hook entries and trusted-command entries while preserving unrelated user settings.
+**Transcript:** `read-transcript`, `chunk-transcript`, `reassemble-transcript`, `get-transcript-position`, `extract-modified-files`, `extract-prompts`, `extract-summary`
 
 ## Development
 
 ```bash
-make test
-make build
+make build    # Build the binary
+make test     # Run all tests
+make clean    # Remove built binary
+
+# Run directly without installing:
 go run ./cmd/entire-agent-kiro info
 ```
 
-## Validation
+## Troubleshooting
 
-The passing validation flow used:
+**Agent not discovered by Entire**
+- Verify the binary is on your `PATH`: `which entire-agent-kiro`
+- Check detection: `entire-agent-kiro detect` (requires `ENTIRE_REPO_ROOT` to be set)
 
-1. `make build`
-2. a temporary git repository with:
-   - `ENTIRE_REPO_ROOT=<temp-repo>`
-   - `ENTIRE_PROTOCOL_VERSION=1`
-3. direct checks for all required protocol subcommands
-4. capability checks for `hooks` and `transcript_analyzer`
+**Hooks not firing**
+- Verify `.kiro/agents/entire.json` exists in your project
+- Check that `.kiro/hooks/` contains `*.kiro.hook` files
+- For Kiro IDE: verify `.vscode/settings.json` has the trusted command entry
 
-The validated surface was:
-
-- `info`
-- `detect`
-- `get-session-id`
-- `get-session-dir`
-- `resolve-session-file`
-- `read-session`
-- `write-session`
-- `read-transcript`
-- `chunk-transcript`
-- `reassemble-transcript`
-- `format-resume-command`
-- `parse-hook`
-- `install-hooks`
-- `are-hooks-installed`
-- `uninstall-hooks`
-- `get-transcript-position`
-- `extract-modified-files`
-- `extract-prompts`
-- `extract-summary`
-
-Latest validation result:
-
-- required checks: 10/10 PASS
-- capability checks: 12/12 PASS
-- total: 22 PASS, 0 FAIL
+**IDE vs CLI differences**
+- Kiro IDE uses VS Code's trusted command mechanism — hooks fire via `.vscode/settings.json`
+- Kiro CLI (`kiro-cli-chat`) reads hooks directly from `.kiro/hooks/`
+- Both paths are configured by `install-hooks`
 
 ## Protocol
 
-This project follows the Entire external-agent protocol implemented in the main CLI repository.
+This agent implements the [Entire external agent protocol](https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md).
