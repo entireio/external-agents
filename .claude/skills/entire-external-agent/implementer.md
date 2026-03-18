@@ -1,159 +1,241 @@
 # Implement Procedure
 
-Replace stub implementations with real logic for each subcommand, working in dependency order.
+Build the external agent binary using strict E2E-first TDD. E2E tests drive development at every step — run each tier, watch it fail, implement the minimum fix, repeat. Unit tests are written only after all E2E tiers pass, using real data from E2E runs as golden fixtures.
+
+> **Warning:** This phase involves iterative E2E test cycles with real agent invocations. Expect this to take 2-4 hours depending on agent complexity and API response times.
 
 ## Prerequisites
 
 Ensure the following are available:
 - `AGENT_NAME`, `AGENT_SLUG`, `LANGUAGE`, `PROJECT_DIR` — from orchestrator or user
-- `<PROJECT_DIR>/AGENT.md` — research one-pager
+- `<PROJECT_DIR>/AGENT.md` — research one-pager with E2E test prerequisites
 - Scaffolded project that compiles and responds to `info`
+- E2E test harness at `<PROJECT_DIR>/e2e/` that compiles
 
-## Implementation Order
+## Core Principle: E2E-First TDD
 
-Subcommands are organized into tiers by dependency. Implement each tier fully before moving to the next.
+1. **E2E tests are the spec.** The `e2e/` test harness defines what "working" means. You implement until tests pass.
+2. **Watch it fail first.** Every E2E tier starts by running the test and observing the failure. If you haven't seen the failure, you don't understand what needs fixing.
+3. **Minimum viable fix.** At each failure, implement only the code needed to make that specific assertion pass. Don't anticipate future tiers.
+4. **No unit tests during Steps 3-9.** Unit tests are written in Step 11 after all E2E tiers pass, using real data from E2E runs as golden fixtures.
+5. **Format and lint, don't unit test.** Between E2E tiers, run format/lint to keep code clean. No unit tests between tiers.
+6. **If you didn't watch it fail, you don't know if it tests the right thing.**
 
-| Tier | Subcommands | Description |
-|------|------------|-------------|
-| 1 | `info`, `detect` | Identity and detection |
-| 2 | `get-session-id`, `get-session-dir`, `resolve-session-file`, `read-session`, `write-session` | Session core |
-| 3 | `read-transcript`, `chunk-transcript`, `reassemble-transcript`, `format-resume-command` | Transcript and resume |
-| 4 | `parse-hook`, `install-hooks`, `uninstall-hooks`, `are-hooks-installed` | Hooks capability |
-| 5 | `get-transcript-position`, `extract-modified-files`, `extract-prompts`, `extract-summary` | Transcript analysis |
-| 6 | Remaining optional capabilities | As declared |
+**Do NOT write unit tests during Steps 3-9.** All unit test writing is consolidated in Step 11.
 
-## Per-Subcommand Cycle
+## Procedure
 
-For each subcommand:
+### Step 1: Read Protocol Spec + AGENT.md
 
-### Step 1: Read the spec
+Read these files before writing any code:
 
-Read the protocol spec section for this subcommand:
-- Read the relevant section of `https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md`
-- Read how `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/external.go` calls it (what args it passes, what stdin format, what it expects on stdout)
-- Read the response type from `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/types.go`
+1. Read `https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md` — full protocol spec
+2. Read `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/types.go` — JSON response types
+3. Read `https://github.com/entireio/cli/blob/main/cmd/entire/cli/agent/external/external.go` — how the CLI calls each subcommand
+4. Read `<PROJECT_DIR>/AGENT.md` — agent-specific hook mechanism, transcript format, config structure, E2E prerequisites
 
-### Step 2: Read agent-specific notes
+### Step 2: Verify Baseline
 
-Check `<PROJECT_DIR>/AGENT.md` for:
-- How the agent's native concept maps to this subcommand
-- Specific file paths, formats, or APIs to use
-- Known gaps or workarounds
-
-### Step 3: Implement real logic
-
-Replace the stub with a working implementation. Follow these guidelines:
-
-- **Parse all arguments** — use the language's flag/arg parser
-- **Read stdin when required** — parse JSON or raw bytes as specified
-- **Return the exact JSON schema** — field names, types, and structure must match `types.go`
-- **Handle errors** — write error messages to stderr and exit non-zero
-- **Use env vars** — read `ENTIRE_REPO_ROOT` and `ENTIRE_PROTOCOL_VERSION` from the environment
-
-### Step 4: Manual test
-
-Test each subcommand manually:
+Build the binary and run the first E2E test to confirm it fails for the right reason (agent behavior, not harness bug).
 
 ```bash
-# Subcommands with no stdin:
-./entire-agent-<slug> info
-./entire-agent-<slug> detect
-./entire-agent-<slug> get-session-dir --repo-path /tmp/test-repo
-
-# Subcommands with JSON stdin:
-echo '{"hook_type":"stop","session_id":"test-123","session_ref":"/tmp/transcript.jsonl","timestamp":"2026-01-01T00:00:00Z"}' | ./entire-agent-<slug> get-session-id
-echo '{"hook_type":"stop","session_id":"test-123","session_ref":"/tmp/transcript.jsonl","timestamp":"2026-01-01T00:00:00Z"}' | ./entire-agent-<slug> read-session
-
-# Subcommands with raw bytes stdin:
-echo 'raw transcript content' | ./entire-agent-<slug> chunk-transcript --max-size 1024
-
-# Verify JSON output:
-./entire-agent-<slug> info | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin), indent=2))"
+make build && make install
+make test:e2e:run TEST=TestHookInstallAndDetect
 ```
 
-### Step 5: Verify JSON schema
+**Expected:** Test fails because the agent binary returns stub data. If the test fails for a different reason (harness compilation error, missing binary, broken assertion), fix the harness first.
 
-Check that the output matches the expected schema:
-- All required fields are present
-- Field types are correct (string, int, bool, array, object)
-- Optional fields use the correct zero values or are omitted
+### Step 3: E2E Tier 1 — `TestHookInstallAndDetect`
 
-## Tier-Specific Guidance
+**What it exercises:**
+- `detect` — agent binary detection
+- `install-hooks` — hook installation via `entire enable`
+- `are-hooks-installed` — hook presence detection
+- Basic binary invocation and JSON response format
 
-### Tier 1: `info` and `detect`
+**Cycle:**
 
-**`info`:** Already returns valid JSON from scaffolding. Update with real values:
-- `name` — the agent's registry name (what `entire enable` uses)
-- `type` — human-readable agent type name
-- `description` — one-line description
-- `protected_dirs` — directories the agent uses that shouldn't be touched (e.g., `.cursor`)
-- `hook_names` — list of native hook names the agent supports
-- `capabilities` — match what AGENT.md declared
+1. Run: `make test:e2e:run TEST=TestHookInstallAndDetect`
+2. **Watch it FAIL** — read the failure output carefully
+3. Read the failure — what subcommand/behavior is missing?
+4. Implement the MINIMUM code to fix the failure
+5. Re-run until PASS
+6. `make build`
+7. Commit
 
-**`detect`:** Check whether the agent is available:
-- Look for the agent binary on `$PATH`
-- Check for the agent's config directory
-- Return `{"present": true}` or `{"present": false}`
+### Step 4: E2E Tier 2 — `TestSingleSessionManualCommit`
 
-### Tier 2: Session Core
+The foundational test. Exercises the full agent lifecycle: start session → agent prompt → agent produces files → user commits → checkpoint created.
 
-**`get-session-id`:** Parse HookInput JSON from stdin, extract `session_id` field.
+**What it exercises:**
+- `parse-hook` for all event types (session start, turn start, turn end, session end)
+- `get-session-id` — session ID extraction from hook input
+- `get-session-dir` / `resolve-session-file` — finding session/transcript files
+- `read-session` / `write-session` — session data management
+- `read-transcript` / `chunk-transcript` / `reassemble-transcript` — transcript handling
 
-**`get-session-dir`:** Return the directory where the agent stores sessions. Use `--repo-path` arg and the agent's session directory convention from AGENT.md.
+**Cycle:**
 
-**`resolve-session-file`:** Given `--session-dir` and `--session-id`, return the path to the session's transcript file.
+1. Run: `make test:e2e:run TEST=TestSingleSessionManualCommit`
+2. **Watch it FAIL** — read the failure output carefully
+3. Read the failure — which subcommand returns wrong data or errors?
+4. Implement the MINIMUM code to fix the failure
+5. Re-run until PASS
+6. `make build`
+7. Commit
 
-**`read-session`:** Parse HookInput from stdin, construct and return an AgentSession JSON object. Use AGENT.md for how to populate each field.
+### Step 5: E2E Tier 3 — `TestCheckpointDeepValidation`
 
-**`write-session`:** Read AgentSession JSON from stdin. Persist it as needed (or no-op if the agent doesn't support session writing). Exit 0 on success.
+Validates transcript quality: JSONL validity, content hash correctness, prompt extraction accuracy.
 
-### Tier 3: Transcript and Resume
+**What it exercises:**
+- `get-transcript-position` — transcript file size/position
+- `extract-modified-files` — parsing transcript for file operations
+- `extract-prompts` — parsing transcript for user messages
+- `extract-summary` — parsing transcript for AI summaries
 
-**`read-transcript`:** Read the file at `--session-ref` and write raw bytes to stdout.
+**Cycle:**
 
-**`chunk-transcript`:** Read raw bytes from stdin, split into chunks of at most `--max-size` bytes, base64-encode each chunk, return JSON `{"chunks": [...]}`.
+1. Run: `make test:e2e:run TEST=TestCheckpointDeepValidation`
+2. **Watch it FAIL** — this test often exposes subtle transcript formatting bugs
+3. Implement the MINIMUM fix
+4. Re-run until PASS
+5. `make build`
+6. Commit
 
-**`reassemble-transcript`:** Read JSON `{"chunks": [...]}` from stdin, base64-decode each chunk, concatenate, write raw bytes to stdout.
+### Step 6: E2E Tier 4 — `TestMultipleTurnsManualCommit`
 
-**`format-resume-command`:** Return the command to resume the agent with `--session-id`. Use the agent's native resume mechanism from AGENT.md.
+Multi-turn session management. Two sequential prompts, one commit.
 
-### Tier 4: Hooks (if `hooks` capability declared)
+**What it exercises:**
+- Session persistence across multiple prompts
+- Transcript accumulation across turns
+- Checkpoint capturing both turns
 
-**`parse-hook`:** This is the most complex subcommand. It must:
-1. Read the `--hook` argument (native hook name)
-2. Read raw hook payload from stdin
-3. Map the native hook to a protocol Event type:
-   - 1 = SessionStart
-   - 2 = TurnStart
-   - 3 = TurnEnd
-   - 4 = Compaction
-   - 5 = SessionEnd
-   - 6 = SubagentStart
-   - 7 = SubagentEnd
-4. Parse agent-specific fields from the payload into the Event JSON
-5. Return the Event JSON, or `null` if the hook is irrelevant
+**Cycle:**
 
-Use AGENT.md's "Hook Mechanism" section for the hook name → Event type mapping.
+1. Run: `make test:e2e:run TEST=TestMultipleTurnsManualCommit`
+2. **Watch it FAIL**
+3. Implement the MINIMUM fix
+4. Re-run until PASS
+5. `make build`
+6. Commit
 
-**`install-hooks`:** Configure the target agent to invoke `entire hooks <agent-name> <hook-verb>` on lifecycle events. Read AGENT.md for the config file format and location. Handle `--local-dev` and `--force` flags. Return `{"hooks_installed": N}`.
+### Step 7: E2E Tier 5 — `TestSessionMetadata`
 
-**`uninstall-hooks`:** Remove the hooks installed by `install-hooks`. Exit 0 on success.
+Agent identification in checkpoint metadata.
 
-**`are-hooks-installed`:** Check if hooks are currently installed. Return `{"installed": true/false}`.
+**What it exercises:**
+- Session metadata has correct agent name
+- Session ID is properly stored
+- Agent type field is populated
 
-### Tier 5: Transcript Analysis (if `transcript_analyzer` capability declared)
+**Cycle:**
 
-**`get-transcript-position`:** Return the byte size of the transcript file at `--path`. Return `{"position": <size>}`.
+1. Run: `make test:e2e:run TEST=TestSessionMetadata`
+2. **Watch it FAIL**
+3. Implement the MINIMUM fix
+4. Re-run until PASS
+5. `make build`
+6. Commit
 
-**`extract-modified-files`:** Parse the transcript at `--path` starting from `--offset` bytes. Extract file paths that were modified by the agent. Return `{"files": [...], "current_position": <pos>}`.
+### Step 8: E2E Tier 6 — `TestInteractiveSession`
 
-**`extract-prompts`:** Parse the transcript at `--session-ref` starting from `--offset` bytes. Extract user prompt strings. Return `{"prompts": [...]}`.
+Tmux-based interactive mode. **Skip if the agent doesn't support interactive mode** (check AGENT.md's E2E prerequisites).
 
-**`extract-summary`:** Parse the transcript at `--session-ref`. Look for AI-generated summaries. Return `{"summary": "...", "has_summary": true/false}`.
+**What it exercises:**
+- Interactive session launch
+- Multi-step prompting within a session
+- Session end on exit
 
-### Tier 6: Remaining Capabilities
+**Cycle:**
 
-For each remaining declared capability, implement the corresponding subcommands following the same per-subcommand cycle. Reference the protocol spec for exact schemas.
+1. Check AGENT.md — if interactive mode is not supported, skip this tier
+2. Run: `make test:e2e:run TEST=TestInteractiveSession`
+3. **Watch it FAIL**
+4. Implement the MINIMUM fix
+5. Re-run until PASS
+6. `make build`
+7. Commit
+
+### Step 9: E2E Tier 7 — `TestRewind`
+
+Rewind functionality after a checkpoint.
+
+**What it exercises:**
+- Rewind command works on checkpoints created by this agent
+- State is properly restored after rewind
+
+**Cycle:**
+
+1. Run: `make test:e2e:run TEST=TestRewind`
+2. **Watch it FAIL**
+3. Implement the MINIMUM fix
+4. Re-run until PASS
+5. `make build`
+6. Commit
+
+### Step 10: Full E2E Suite Pass
+
+Run the complete E2E suite to catch any regressions:
+
+```bash
+make test:e2e
+```
+
+This runs every test, not just the ones targeted in Steps 3-9.
+
+**Important:** If some tests fail when running the full suite but pass individually, it may be a timing issue. Re-run each failing test individually before investigating:
+
+```bash
+make test:e2e:run TEST=TestFailingTestName
+```
+
+Fix any real failures before proceeding. The same cycle applies: read the failure, implement the minimum fix, re-run.
+
+All E2E tests must pass before writing unit tests.
+
+### Step 11: Write Unit Tests
+
+Now that all E2E tiers pass, write unit tests to lock in behavior. Use real data from E2E runs (captured JSON payloads, transcript snippets, config file contents) as golden fixtures.
+
+**Test files to create:**
+
+1. **`cmd/hooks_test.go`** (or language equivalent) — Test `install-hooks` (creates config, idempotent), `uninstall-hooks` (removes hooks), `are-hooks-installed` (detects presence). Use a temp directory to avoid touching real config.
+
+2. **`cmd/lifecycle_test.go`** — Test `parse-hook` for all event types. Use actual JSON payloads from E2E runs or AGENT.md examples. Test every event type mapping, null returns for unknown hook names, empty input, and malformed JSON.
+
+3. **`cmd/session_test.go`** — Test session subcommands (`get-session-id`, `read-session`, `write-session`) with actual JSON payloads.
+
+4. **`cmd/transcript_test.go`** — Test `read-transcript`, `chunk-transcript`, `reassemble-transcript` with sample data. Test transcript analyzer methods if implemented. Use transcript snippets from E2E runs as golden test data.
+
+5. **`cmd/info_test.go`** — Test `info` returns valid JSON with correct fields and `detect` returns expected results.
+
+**Where to find golden test data:**
+
+- E2E artifact directories contain captured transcripts, hook payloads, and config files
+- `AGENT.md` has example JSON payloads in the "Hook input" sections
+- The agent's actual config file format from E2E test repos
+
+Run: format + lint + test
+
+**Commit:** Create a git commit for the unit tests.
+
+### Step 12: Final Validation
+
+Run the complete validation:
+
+```bash
+make build     # Build
+make test      # Unit tests
+make test:e2e  # E2E tests
+```
+
+Summarize:
+- All E2E tiers passing (list which tests pass)
+- Unit test coverage (number of test functions, what they cover)
+- Any gaps or TODOs remaining
+- Commands to build and install the binary
 
 ## Standing Instructions
 
@@ -162,17 +244,19 @@ For each remaining declared capability, implement the corresponding subcommands 
 - **Validate JSON output** after each implementation — malformed JSON will cause the CLI to skip the agent.
 - **Handle missing files gracefully** — return appropriate error messages to stderr rather than panicking.
 
+## E2E Debugging Protocol
+
+At every E2E failure, follow this protocol:
+
+1. **Read the test output** — the assertion message often tells you exactly what's wrong
+2. **Check the agent binary output** — run the failing subcommand manually with the same args/stdin
+3. **Check Entire CLI logs** — look in the test repo's `.entire/logs/` directory
+4. **Implement the minimum fix** — don't over-engineer; fix only what the test demands
+5. **Re-run the failing test** — not the whole suite, just the one test
+
 ## Commit Strategy
 
 After completing each tier:
-1. Build and test all subcommands in the tier
-2. Run `mise run fmt && mise run lint` (if applicable to the language)
-3. Create a git commit
-
-## Output
-
-After all tiers are implemented, summarize:
-- Subcommands implemented (list each with a brief note)
-- Manual test results (which subcommands produce correct output)
-- Any subcommands that need further work
-- Commands to build and test the binary
+1. Build and verify the binary
+2. Run format and lint
+3. Create a git commit describing which tier was completed

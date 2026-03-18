@@ -176,6 +176,16 @@ Create `<PROJECT_DIR>/AGENT.md` (create the directory first if needed):
 
 ## Gaps & Limitations
 - ... (anything that doesn't map cleanly or requires workarounds)
+
+## E2E Test Prerequisites
+- Entire CLI binary: (how to obtain/path — default: `entire` from PATH or `E2E_ENTIRE_BIN` env)
+- Agent CLI binary: (name, path, how to install)
+- Non-interactive prompt command: (exact command + flags to send a prompt without interactive UI)
+- Interactive mode: (supported? exact command to launch interactive session)
+- Expected prompt pattern: (regex for tmux WaitFor — what the agent's prompt looks like)
+- Timeout multiplier: (1.0 for fast agents, higher for slow APIs)
+- Bootstrap steps: (any auth/setup needed before tests run)
+- Transient error patterns: (strings that indicate retryable API errors, e.g., "overloaded", "rate limit", "503", "529")
 ```
 
 Fill in every section with concrete values from the investigation. Don't leave placeholders. If a section doesn't apply, say so explicitly.
