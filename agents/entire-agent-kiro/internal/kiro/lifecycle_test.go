@@ -95,6 +95,19 @@ func TestParseHookPassThroughHooksReturnNil(t *testing.T) {
 	}
 }
 
+func TestParseHookToolInputAsObject(t *testing.T) {
+	payload := `{"hook_event_name":"pre-tool-use","tool_name":"write","tool_input":{"file_path":"/tmp/main.go","content":"package main"}}`
+	for _, hookName := range []string{HookNamePreToolUse, HookNamePostToolUse} {
+		event, err := New().ParseHook(hookName, []byte(payload))
+		if err != nil {
+			t.Fatalf("ParseHook(%s) with object tool_input error = %v", hookName, err)
+		}
+		if event != nil {
+			t.Fatalf("ParseHook(%s) = %#v, want nil", hookName, event)
+		}
+	}
+}
+
 func TestParseHookStopUsesCachedSessionIDAndClearsCache(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
