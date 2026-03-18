@@ -1,5 +1,5 @@
 ---
-description: "Implement real logic for each subcommand in a scaffolded external agent binary"
+description: "Implement real logic using E2E-first TDD (unit tests last)"
 ---
 
 # Implement Command
