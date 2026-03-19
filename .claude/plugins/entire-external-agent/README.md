@@ -1,6 +1,6 @@
 # External Agent Plugin
 
-Build standalone external agent binaries that implement the Entire CLI's external agent protocol using E2E-first TDD. These are standalone executables (`entire-agent-<name>`) that the CLI discovers on `$PATH` and communicates with via subcommands and JSON over stdin/stdout.
+Local plugin providing individual commands for building standalone external agent binaries that implement the Entire CLI's external agent protocol.
 
 ## How This Differs from `agent-integration`
 
@@ -20,11 +20,9 @@ Build standalone external agent binaries that implement the Entire CLI's externa
 | `/entire-external-agent:write-tests` | Scaffold the binary and create an e2e test harness |
 | `/entire-external-agent:implement` | Implement real logic using E2E-first TDD (unit tests last) |
 
-## Orchestrator
+## Related
 
-Run `/entire-external-agent` to execute all 3 phases sequentially (research, write-tests, implement) with shared parameters.
-
-See `.claude/skills/entire-external-agent/SKILL.md` for the orchestrator procedure.
+- Orchestrator skill: `.claude/skills/entire-external-agent/SKILL.md` (`/entire-external-agent` -- runs research, write-tests, then implement)
 
 ## Standalone Usage
 
