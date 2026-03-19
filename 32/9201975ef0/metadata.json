@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "329201975ef0",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": [
+    ".claude/plugins/.claude-plugin/marketplace.json",
+    ".claude/plugins/entire-external-agent/README.md",
+    ".claude/settings.json",
+    ".entire/.gitignore",
+    ".entire/logs/entire.log",
+    ".entire/settings.json",
+    ".opencode/plugins/entire.ts",
+    "e2e/fixtures.go",
+    "e2e/go.mod",
+    "e2e/harness.go",
+    "e2e/kiro_test.go",
+    "e2e/testenv.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/32/9201975ef0/0/metadata.json",
+      "transcript": "/32/9201975ef0/0/full.jsonl",
+      "content_hash": "/32/9201975ef0/0/content_hash.txt",
+      "prompt": "/32/9201975ef0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 8,
+    "cache_creation_tokens": 18347,
+    "cache_read_tokens": 135918,
+    "output_tokens": 1546,
+    "api_call_count": 6
+  }
+}
