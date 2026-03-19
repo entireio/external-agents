@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type sessionDirResolver interface {
@@ -187,6 +188,27 @@ func HandleFormatResumeCommand(args []string, stdout io.Writer, formatter resume
 	return WriteJSON(stdout, ResumeCommandResponse{Command: formatter.FormatResumeCommand(*sessionID)})
 }
 
+// readStdinWithTimeout reads from r but returns empty data if nothing arrives
+// within the timeout. This prevents blocking when an IDE keeps stdin open
+// without sending data (e.g., for hooks that have no payload).
+func readStdinWithTimeout(r io.Reader, timeout time.Duration) ([]byte, error) {
+	type result struct {
+		data []byte
+		err  error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		data, err := io.ReadAll(r)
+		ch <- result{data, err}
+	}()
+	select {
+	case res := <-ch:
+		return res.data, res.err
+	case <-time.After(timeout):
+		return nil, nil
+	}
+}
+
 func HandleParseHook(args []string, stdin io.Reader, stdout io.Writer, parser hookParser) error {
 	fs := flag.NewFlagSet("parse-hook", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -194,7 +216,7 @@ func HandleParseHook(args []string, stdin io.Reader, stdout io.Writer, parser ho
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	input, err := io.ReadAll(stdin)
+	input, err := readStdinWithTimeout(stdin, 100*time.Millisecond)
 	if err != nil {
 		return err
 	}

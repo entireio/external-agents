@@ -12,6 +12,7 @@ type DeclaredCapabilities struct {
 	TextGenerator          bool `json:"text_generator"`
 	HookResponseWriter     bool `json:"hook_response_writer"`
 	SubagentAwareExtractor bool `json:"subagent_aware_extractor"`
+	UsesTerminal           bool `json:"uses_terminal"`
 }
 
 type InfoResponse struct {

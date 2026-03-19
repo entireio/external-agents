@@ -40,8 +40,8 @@ func TestInstallHooksWritesCLIAndIDEHooksAndTrustedCommands(t *testing.T) {
 		t.Fatalf("unmarshal settings.json: %v", err)
 	}
 	commands := settings["kiroAgent.trustedCommands"]
-	if len(commands) != 1 || commands[0] != "entire hooks *" {
-		t.Fatalf("trusted commands = %#v, want [\"entire hooks *\"]", commands)
+	if len(commands) != 1 || commands[0] != "sh -c 'entire hooks *" {
+		t.Fatalf("trusted commands = %#v, want [\"sh -c 'entire hooks *\"]", commands)
 	}
 }
 
