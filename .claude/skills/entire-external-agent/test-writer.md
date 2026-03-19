@@ -1,6 +1,6 @@
 # Write-Tests Procedure
 
-Scaffold the external agent binary and create a self-contained E2E test harness. The harness exercises the full human workflow: `entire enable`, real agent invocation, hook firing, and checkpoint validation. Tests are expected to fail — they define the spec for the implement phase.
+Scaffold the external agent binary and add E2E tests to the shared repo-root `e2e/` harness. The harness auto-discovers all agents and exercises each one via protocol subcommands and full lifecycle integration (entire enable, agent invocation, checkpoint validation). Tests are expected to fail — they define the spec for the implement phase.
 
 ## Prerequisites
 
@@ -62,275 +62,142 @@ Each subcommand handler should:
 
 Create a git commit for the scaffolded project.
 
-## Step 2: Read CLI E2E Infrastructure as Reference
+## Step 2: Read the Shared E2E Harness
 
-Read the Entire CLI's E2E test infrastructure to understand the patterns we need to adapt for the self-contained harness. These are in the Entire CLI repo (or fetch from GitHub if not available locally):
+This repo already has a shared E2E harness at the repo root `e2e/` directory. Read these files to understand the patterns you must follow:
 
-1. `e2e/agents/agent.go` — Agent interface pattern (Output struct, Session interface, ExternalAgent interface)
-2. `e2e/agents/roger_roger.go` — External agent runner example (RunPrompt, StartSession, IsExternalAgent)
-3. `e2e/tests/external_agent_test.go` — External agent test scenarios (the actual test patterns we'll adapt)
-4. `e2e/testutil/repo.go` — SetupRepo pattern (temp dir, git init, entire enable, external_agents setting)
-5. `e2e/testutil/assertions.go` — Assertion helpers (WaitForCheckpoint, AssertCheckpointAdvanced, ValidateCheckpointDeep)
-6. `e2e/entire/entire.go` — CLI wrapper pattern (BinPath, Enable, RewindList, Rewind)
+1. `e2e/setup_test.go` — `TestMain` entry point: auto-discovers agents in `agents/`, builds binaries, adds them to PATH
+2. `e2e/testenv.go` — `TestEnv`: isolated filesystem environment with `AgentRunner`, `WriteFile`, `ReadFile`, `GitInit` helpers
+3. `e2e/harness.go` — `AgentRunner`: executes agent subcommands via `Run`, `RunJSON`, `MustSucceed`, `MustFail`
+4. `e2e/fixtures.go` — Test input builders: `HookInput`, `ParseHookInput`, `KiroTranscript` (with `AddPrompt`, `AddResponse`, `AddPromptWithFileEdit`)
+5. `e2e/entire.go` — CLI wrappers: `EntireEnable`, `EntireDisable`, `EntireRewindList`, `EntireRewind`, `EntireRunErr`
+6. `e2e/lifecycle.go` — `LifecycleEnv`: full lifecycle environment (git repo + `entire enable` + `WaitForCheckpoint` + `GetCheckpointTrailer`)
+7. `e2e/kiro_test.go` — Example subcommand tests (identity, sessions, hooks, transcript analysis)
+8. `e2e/kiro_lifecycle_test.go` — Example lifecycle tests (single/multi prompt, detect+enable, rewind, session persistence)
 
-**Key patterns to adapt:**
-- `SetupRepo` creates a temp git repo, writes `.entire/settings.json` with `external_agents: true`, runs `entire enable`
-- `ExternalAgent` interface marks agents discovered via the external agent protocol
-- `ForEachAgent` runs each test per registered agent with timeout scaling and artifact capture
-- `WaitForCheckpoint` polls until checkpoint branch advances (post-commit hook is async)
-- `ValidateCheckpointDeep` checks transcript content, content hash, and prompt extraction
+**Key patterns to follow:**
+- All E2E files use `//go:build e2e` build tag and `package e2e`
+- `TestMain` auto-discovers agents by scanning `agents/entire-agent-*` directories for `cmd/<name>/main.go`
+- `NewTestEnv(t, "entire-agent-<slug>")` creates an isolated env with the built agent binary
+- `NewLifecycleEnv(t, "<slug>")` creates a full git repo with `entire enable` already run
+- Subcommand tests use `t.Parallel()` and `AgentRunner.RunJSON` for structured assertions
+- Lifecycle tests call `requireEntire(t)` and `requireKiroCLI(t)` (or equivalent) to skip/fail gracefully
+- `WaitForCheckpoint` polls until the `entire/checkpoints/v1` branch appears
+- Fixture builders (e.g. `KiroTranscript`) use the fluent pattern for easy test data construction
 
-## Step 3: Create E2E Test Harness
+## Step 3: Add Tests to the Shared E2E Harness
 
-Create a self-contained `e2e/` directory in `<PROJECT_DIR>` with its own Go module. This avoids circular dependencies with the agent binary module.
+Tests go in the existing `e2e/` directory at the repo root. The harness already provides all infrastructure — you only need to add test files and (optionally) agent-specific fixture builders.
 
-### `e2e/go.mod`
+### How auto-discovery works
 
-```go
-module <module-path>/e2e
+`TestMain` in `e2e/setup_test.go` scans `agents/entire-agent-*` for directories with `cmd/<name>/main.go`, builds each binary, and stores them in `agentBinaries`. Your new agent is discovered automatically once the scaffold from Step 1 compiles.
 
-go 1.23
+### Create `e2e/<slug>_test.go` — Subcommand Tests
 
-require (
-    github.com/stretchr/testify v1.9.0
-)
-```
-
-Run `cd e2e && go mod tidy` after creating.
-
-### `e2e/harness.go` — SetupRepo
-
-Adapted from CLI's `e2e/testutil/repo.go`. Creates a fresh git repo and enables the agent.
+These exercise each protocol subcommand directly. Follow the pattern in `e2e/kiro_test.go`:
 
 ```go
 //go:build e2e
 
 package e2e
 
-// RepoState holds working state for a single test repo.
-type RepoState struct {
-    AgentSlug        string
-    Dir              string
-    ArtifactDir      string
-    HeadBefore       string
-    CheckpointBefore string
+import "testing"
+
+// --- Identity ---
+
+func Test<Name>_Info(t *testing.T) {
+    t.Parallel()
+    env := NewTestEnv(t, "entire-agent-<slug>")
+    // Use env.Runner.RunJSON to decode the info response
+    // Assert protocol_version, name, capabilities, etc.
 }
 
-// SetupRepo creates a fresh git repository, enables the agent, and returns state.
-//
-// Steps:
-// 1. Create temp dir (use os.MkdirTemp, NOT t.TempDir — too nested for agents)
-// 2. Resolve symlinks (macOS: /var -> /private/var)
-// 3. git init, seed commit, user config
-// 4. Write .entire/settings.json with {"external_agents": true}
-// 5. Run entire enable --agent <slug>
-// 6. Patch settings for debug logging
-// 7. Record HEAD and checkpoint refs
-// 8. Register cleanup (artifact capture + repo removal)
-// 9. Return *RepoState
-func SetupRepo(t *testing.T, agentSlug string) *RepoState {
-    // Implementation follows the CLI's SetupRepo pattern
+func Test<Name>_Detect_Present(t *testing.T) {
+    t.Parallel()
+    env := NewTestEnv(t, "entire-agent-<slug>")
+    // Create the agent's marker directory (e.g. .<slug>/)
+    // Assert detect returns present: true
 }
+
+func Test<Name>_Detect_Absent(t *testing.T) {
+    t.Parallel()
+    env := NewTestEnv(t, "entire-agent-<slug>")
+    // Assert detect returns present: false (no marker directory)
+}
+
+// --- Sessions ---
+// Test get-session-id, get-session-dir, resolve-session-file, write+read-session
+
+// --- Hooks ---
+// Test parse-hook for each hook type, install-hooks, uninstall-hooks, are-hooks-installed
+
+// --- Transcript ---
+// Test read-transcript, chunk+reassemble-transcript round-trip
+
+// --- Transcript Analysis (if capability declared) ---
+// Test get-transcript-position, extract-modified-files, extract-prompts, extract-summary
 ```
 
-### `e2e/entire.go` — CLI Wrapper
+**Key patterns:**
+- Use `NewTestEnv(t, "entire-agent-<slug>")` for isolated environments
+- Create convenience constructors like `NewKiroTestEnv` if multiple tests share setup
+- Use `env.Runner.RunJSON` for structured output, `MustSucceed`/`MustFail` for exit code checks
+- All subcommand tests use `t.Parallel()` for speed
 
-Adapted from CLI's `e2e/entire/entire.go`. Wraps Entire CLI invocations.
+### Create `e2e/<slug>_lifecycle_test.go` — Lifecycle Tests
+
+These exercise the full integration. Follow the pattern in `e2e/kiro_lifecycle_test.go`:
 
 ```go
 //go:build e2e
 
 package e2e
 
-// EntireBin returns the path to the entire binary.
-// Checks E2E_ENTIRE_BIN env var, falls back to "entire" from PATH.
-func EntireBin() string {}
+import "testing"
 
-// Enable runs `entire enable --agent <name>` in dir.
-func Enable(t *testing.T, dir, agent string) {}
+func TestLifecycle_<Name>_SinglePromptManualCommit(t *testing.T) {
+    requireEntire(t)
+    // require<Name>CLI(t)  — add a similar helper for your agent's CLI
+    t.Parallel()
 
-// RewindList runs `entire rewind --list` and parses JSON output.
-func RewindList(t *testing.T, dir string) []RewindPoint {}
-
-// Rewind runs `entire rewind --to <id>`.
-func Rewind(t *testing.T, dir, id string) error {}
-```
-
-### `e2e/assertions.go` — Checkpoint Assertions
-
-Adapted from CLI's `e2e/testutil/assertions.go`. Provides checkpoint and metadata validation.
-
-```go
-//go:build e2e
-
-package e2e
-
-// WaitForCheckpoint polls until the checkpoint branch advances, or fails after timeout.
-func WaitForCheckpoint(t *testing.T, s *RepoState, timeout time.Duration) {}
-
-// AssertCheckpointAdvanced asserts the checkpoint branch moved forward.
-func AssertCheckpointAdvanced(t *testing.T, s *RepoState) {}
-
-// AssertHasCheckpointTrailer returns the checkpoint ID from the commit trailer.
-func AssertHasCheckpointTrailer(t *testing.T, dir, ref string) string {}
-
-// AssertCheckpointExists asserts the checkpoint metadata directory exists.
-func AssertCheckpointExists(t *testing.T, dir, cpID string) {}
-
-// AssertCheckpointMetadataComplete validates all required metadata fields.
-func AssertCheckpointMetadataComplete(t *testing.T, dir, cpID string) {}
-
-// ValidateCheckpointDeep performs comprehensive checkpoint validation.
-func ValidateCheckpointDeep(t *testing.T, dir string, opts DeepOpts) {}
-
-// DeepOpts configures deep checkpoint validation.
-type DeepOpts struct {
-    CheckpointID    string
-    Strategy        string
-    FilesTouched    []string
-    ExpectedPrompts []string
-}
-```
-
-### `e2e/agent.go` — Agent Runner
-
-Uses AGENT.md's "E2E Test Prerequisites" section to invoke the agent binary.
-
-```go
-//go:build e2e
-
-package e2e
-
-// RunPrompt executes a non-interactive prompt against the agent binary.
-// Uses the command and flags from AGENT.md's E2E prerequisites.
-func RunPrompt(ctx context.Context, dir, prompt string) (Output, error) {}
-
-// StartSession launches an interactive tmux-based session (if supported).
-// Returns nil if the agent doesn't support interactive mode.
-func StartSession(ctx context.Context, dir string) (*TmuxSession, error) {}
-
-// Output captures command execution results.
-type Output struct {
-    Command  string
-    Stdout   string
-    Stderr   string
-    ExitCode int
-}
-```
-
-### `e2e/e2e_test.go` — Test Scenarios
-
-Adapted from CLI's `e2e/tests/external_agent_test.go`. These are the spec that drives the implement phase.
-
-```go
-//go:build e2e
-
-package e2e
-
-import (
-    "context"
-    "testing"
-    "time"
-)
-
-// TestHookInstallAndDetect verifies that `entire enable` succeeds and hooks
-// are properly installed for the agent.
-func TestHookInstallAndDetect(t *testing.T) {
-    s := SetupRepo(t, agentSlug)
-    // Verify enable succeeded (SetupRepo calls it)
-    // Verify hooks are installed by checking agent config
-    // Verify detect returns present: true
-}
-
-// TestSingleSessionManualCommit exercises the full agent lifecycle:
-// start session -> agent creates file -> user commits -> checkpoint created.
-func TestSingleSessionManualCommit(t *testing.T) {
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-    defer cancel()
-
-    s := SetupRepo(t, agentSlug)
+    env := NewLifecycleEnv(t, "<slug>")
 
     // Run a prompt that creates a file
     // Assert the file exists
-    // git add . && git commit
-    // AssertNewCommits
+    // git add + commit
     // WaitForCheckpoint
-    // AssertCheckpointAdvanced
-    // AssertHasCheckpointTrailer -> cpID
-    // AssertCheckpointExists(cpID)
-    // AssertCheckpointMetadataComplete(cpID)
+    // Verify checkpoint trailer
 }
+```
 
-// TestCheckpointDeepValidation verifies transcript content, content hash,
-// and prompt extraction are correctly captured.
-func TestCheckpointDeepValidation(t *testing.T) {
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-    defer cancel()
+**Key patterns:**
+- Call `requireEntire(t)` (and a `require<Name>CLI(t)` helper) at the top — these skip the test gracefully when dependencies are missing
+- Use `NewLifecycleEnv(t, "<slug>")` which handles git init, seed commit, `.entire/settings.json`, and `entire enable`
+- Add a `Run<Name>Prompt` method on `LifecycleEnv` using the command from AGENT.md's E2E prerequisites
 
-    s := SetupRepo(t, agentSlug)
+### Add agent-specific fixture builders (if needed)
 
-    // Run a prompt
-    // git add . && git commit
-    // WaitForCheckpoint
-    // ValidateCheckpointDeep with expected prompts and files
-}
+If the agent has a custom transcript format, add a builder to `e2e/fixtures.go` following the `KiroTranscript` pattern:
 
-// TestMultipleTurnsManualCommit handles two sequential prompts, user commits once.
-func TestMultipleTurnsManualCommit(t *testing.T) {
-    ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-    defer cancel()
+```go
+type <Name>Transcript struct { /* ... */ }
+func New<Name>Transcript(id string) *<Name>Transcript { /* ... */ }
+func (t *<Name>Transcript) AddPrompt(prompt string) *<Name>Transcript { /* ... */ }
+func (t *<Name>Transcript) JSON(t *testing.T) string { /* ... */ }
+```
 
-    s := SetupRepo(t, agentSlug)
+### Add agent-specific environment helpers (if needed)
 
-    // Run first prompt (creates file A)
-    // Run second prompt (creates file B)
-    // git add . && git commit
-    // WaitForCheckpoint
-    // AssertCheckpointMetadataComplete
-    // Both files should appear in checkpoint
-}
+If the agent needs custom setup (e.g., Kiro needs `.kiro/` and `.entire/tmp/`), add a convenience constructor to `e2e/testenv.go`:
 
-// TestSessionMetadata verifies checkpoint session metadata identifies the agent.
-func TestSessionMetadata(t *testing.T) {
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-    defer cancel()
-
-    s := SetupRepo(t, agentSlug)
-
-    // Run a prompt
-    // git add . && git commit
-    // WaitForCheckpoint
-    // Read session metadata
-    // Assert agent field is set and matches
-    // Assert session_id is non-empty
-}
-
-// TestInteractiveSession exercises tmux-based interactive multi-step sessions.
-// Skip if the agent doesn't support interactive mode.
-func TestInteractiveSession(t *testing.T) {
-    // Check AGENT.md for interactive support
-    // If not supported, t.Skip
-    // StartSession
-    // Send prompt, WaitFor response
-    // Send second prompt, WaitFor response
-    // Close session
-    // git add . && git commit
-    // WaitForCheckpoint
-}
-
-// TestRewind verifies rewind functionality works after a checkpoint.
-func TestRewind(t *testing.T) {
-    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-    defer cancel()
-
-    s := SetupRepo(t, agentSlug)
-
-    // Run a prompt that creates a file
-    // git add . && git commit
-    // WaitForCheckpoint
-    // Get checkpoint ID
-    // Rewind to checkpoint
-    // Verify state is restored
+```go
+func New<Name>TestEnv(t *testing.T) *TestEnv {
+    t.Helper()
+    te := NewTestEnv(t, "entire-agent-<slug>")
+    te.MkdirAll(".<slug>")
+    te.MkdirAll(".entire/tmp")
+    return te
 }
 ```
 
@@ -338,65 +205,78 @@ func TestRewind(t *testing.T) {
 
 - **Build tag**: All E2E files must have `//go:build e2e` as the first line
 - **Package**: All files in `e2e/` use `package e2e`
-- **Agent slug**: Hardcode the agent slug (from AGENT.md) as a package-level constant
-- **Timeouts**: Use `context.WithTimeout` per test; scale by AGENT.md's timeout multiplier
+- **Naming**: Subcommand tests: `Test<Name>_<Subcommand>`. Lifecycle tests: `TestLifecycle_<Name>_<Scenario>`
+- **Timeouts**: Lifecycle tests use `WaitForCheckpoint(t, env, 30*time.Second)` for checkpoint polling
 - **Prompts**: Write prompts inline — include "Do not ask for confirmation" for agents that stall
-- **Assertions**: Use the harness assertion helpers, not raw git commands
-- **CLI operations**: Use `e2e.Enable`, `e2e.RewindList`, `e2e.Rewind` — never raw `exec.Command`
-- **No t.Parallel()**: Tests share state through the agent binary; run sequentially
-- **Transient errors**: Implement retry logic in `RunPrompt` using AGENT.md's transient error patterns
+- **Assertions**: Use harness helpers (`AssertFileExists`, `GetCheckpointTrailer`), not raw git commands
+- **CLI operations**: Use `EntireEnable`, `EntireRewindList`, `EntireRewind` — never raw `exec.Command`
+- **Parallelism**: Subcommand tests use `t.Parallel()`. Lifecycle tests use `t.Parallel()` per test (each gets its own temp repo)
+- **Graceful skipping**: Lifecycle tests call `requireEntire(t)` to skip when the entire CLI isn't available
 
 ## Step 4: Add Makefile Targets
 
-Add e2e test targets to the project Makefile:
+### Agent-level Makefile (`<PROJECT_DIR>/Makefile`)
+
+Add `build`, `test`, and `clean` targets for the agent binary:
 
 ```makefile
 BINARY := entire-agent-<AGENT_SLUG>
 
-.PHONY: build install test test\:e2e test\:e2e\:run clean
+.PHONY: build test clean
 
 build:
-	<language-specific build command>
-
-install: build
-	cp $(BINARY) $(GOPATH)/bin/ || cp $(BINARY) /usr/local/bin/
+	go build -o $(BINARY) ./cmd/entire-agent-<AGENT_SLUG>
 
 test:
-	<language-specific unit test command>
-
-test\:e2e: build install
-	cd e2e && go test -tags=e2e -v -timeout 30m ./...
-
-test\:e2e\:run: build install
-	cd e2e && go test -tags=e2e -v -timeout 30m -run $(TEST) ./...
+	go test ./...
 
 clean:
 	rm -f $(BINARY)
 ```
 
-The `test:e2e` target builds and installs the agent binary first (so it's on PATH), then runs the e2e tests.
+### Repo-root Makefile
 
-## Step 5: Verify Harness Compiles
+The repo-root `Makefile` already handles E2E test execution. Verify it includes:
 
-Run:
+```makefile
+test-e2e:
+	cd e2e && go test -tags=e2e -v -count=1 ./...
+
+test-e2e-lifecycle:
+	cd e2e && E2E_REQUIRE_LIFECYCLE=1 go test -tags=e2e -v -count=1 -run TestLifecycle ./...
+
+test-unit:
+	@for dir in agents/entire-agent-*/; do \
+		echo "Testing $$dir..."; \
+		cd $$dir && go test ./... && cd ../..; \
+	done
+
+test-all: test-unit test-e2e
+```
+
+The `test-e2e` target builds all agents automatically via `TestMain` — no need to build/install first.
+
+## Step 5: Verify Tests Compile
+
+Run from the repo root:
 ```bash
 cd e2e && go test -c -tags=e2e
 ```
 
-This must succeed (compiles the test binary). Tests are expected to fail when executed — they define the spec for the implement phase.
+This must succeed (compiles the test binary including the new agent's tests). Tests are expected to fail when executed — they define the spec for the implement phase.
 
 If the harness doesn't compile, fix issues before proceeding.
 
 ## Step 6: Commit
 
-Create a git commit for the e2e test harness.
+Create a git commit for the new E2E tests and the scaffolded binary.
 
 ## Output
 
 Summarize what was created:
 - Project structure (files created, capabilities declared)
-- E2E test harness (number of test scenarios, what they exercise)
+- E2E tests added (number of subcommand tests and lifecycle tests, what they exercise)
 - Confirmation that binary compiles and `info` returns valid JSON
-- Confirmation that e2e harness compiles (`go test -c -tags=e2e`)
-- Note that all e2e tests are expected to fail — the implement phase will make them pass
-- Commands to run: `make test:e2e:run TEST=TestHookInstallAndDetect`
+- Confirmation that E2E harness compiles with new tests (`go test -c -tags=e2e`)
+- Note that all E2E tests are expected to fail — the implement phase will make them pass
+- Commands to run: `make test-e2e` (all tests) or `cd e2e && go test -tags=e2e -v -run Test<Name>_Info ./...` (single test)

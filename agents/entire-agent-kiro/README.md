@@ -96,11 +96,49 @@ All subcommands required by the [external agent protocol](https://github.com/ent
 
 ```bash
 make build    # Build the binary
-make test     # Run all tests
+make test     # Run unit tests
 make clean    # Remove built binary
 
 # Run directly without installing:
 go run ./cmd/entire-agent-kiro info
+```
+
+## E2E Tests
+
+E2E tests live in the shared `e2e/` directory at the repo root (not inside this agent's directory). The harness auto-discovers and builds all agents, then runs tests against each.
+
+### Subcommand tests (`e2e/kiro_test.go`)
+
+Exercise each protocol subcommand directly — no external dependencies needed:
+
+- **Identity**: `info`, `detect` (present/absent)
+- **Sessions**: `get-session-id`, `get-session-dir`, `resolve-session-file`, `write-session`/`read-session` round-trip
+- **Transcript**: `read-transcript`, `chunk-transcript`/`reassemble-transcript` round-trip
+- **Hooks**: `parse-hook` (spawn, prompt-submit, pre-tool-use, stop), `install-hooks`/`uninstall-hooks`/`are-hooks-installed`, idempotent install
+- **Transcript analysis**: `get-transcript-position`, `extract-modified-files`, `extract-prompts`, `extract-summary`
+- **Other**: `format-resume-command`, unknown subcommand handling
+
+### Lifecycle tests (`e2e/kiro_lifecycle_test.go`)
+
+Full integration tests requiring `entire` CLI and `kiro-cli-chat`:
+
+- **SinglePromptManualCommit** — agent creates file → commit → checkpoint with trailer
+- **MultiplePromptsManualCommit** — two prompts → single commit → checkpoint covers both
+- **DetectAndEnable** — `entire enable` succeeds when `.kiro/` exists
+- **HooksInstalledAfterEnable** — `are-hooks-installed` confirms hooks after enable
+- **RewindPreCommit** — create file A → checkpoint → create file B → rewind → B is gone
+- **RewindAfterCommit** — two commits → rewind to first → second file is gone
+- **SessionPersistence** — session file created in `.entire/tmp/` after prompt
+
+### Running
+
+```bash
+# From the repo root:
+make test-e2e                # All E2E tests (lifecycle tests skip if deps missing)
+make test-e2e-lifecycle      # Lifecycle tests only (fails if deps missing)
+
+# Run a specific test:
+cd e2e && go test -tags=e2e -v -count=1 -run TestKiro_Info ./...
 ```
 
 ## Troubleshooting

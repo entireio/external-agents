@@ -63,11 +63,55 @@ Fetch and follow instructions from https://raw.githubusercontent.com/entireio/ex
 
 This repo includes a Cursor plugin manifest at `.cursor-plugin/plugin.json` that points Cursor at the shared skill and command directories.
 
+## E2E Tests
+
+The `e2e/` directory contains a shared test harness that exercises all external agents. Tests are split into two tiers:
+
+- **Subcommand tests** (`kiro_test.go`) — exercise each protocol subcommand directly against the agent binary (identity, sessions, transcript, hooks, transcript analysis). These run without any external dependencies beyond the agent binary itself.
+- **Lifecycle tests** (`kiro_lifecycle_test.go`) — exercise the full integration flow: `entire enable`, agent prompt execution, git commit, checkpoint creation, and rewind. These require the `entire` CLI and the agent's own CLI (e.g. `kiro-cli-chat`) to be available.
+
+### Running Tests
+
+```bash
+# Run all E2E tests (subcommand-level only; lifecycle tests skip if deps missing)
+make test-e2e
+
+# Run lifecycle tests (fails instead of skipping if entire/kiro-cli-chat are missing)
+make test-e2e-lifecycle
+
+# Run unit tests for all agents
+make test-unit
+
+# Run everything
+make test-all
+```
+
+### Test Harness Architecture
+
+The shared harness auto-discovers and builds all agents in `agents/` via `TestMain`:
+
+| File | Purpose |
+|------|---------|
+| `e2e/setup_test.go` | `TestMain` entry point — discovers agents, builds binaries, configures PATH |
+| `e2e/testenv.go` | `TestEnv` — isolated filesystem environment with agent binary runner |
+| `e2e/harness.go` | `AgentRunner` — executes agent subcommands, captures stdout/stderr/exit code |
+| `e2e/fixtures.go` | Test input builders: `HookInput`, `ParseHookInput`, `KiroTranscript` |
+| `e2e/entire.go` | CLI wrappers: `EntireEnable`, `EntireDisable`, `EntireRewindList`, `EntireRewind` |
+| `e2e/lifecycle.go` | `LifecycleEnv` — full lifecycle environment (git repo + `entire enable` + checkpoint helpers) |
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `E2E_ENTIRE_BIN` | Path to the `entire` binary (defaults to `entire` from PATH) |
+| `E2E_REQUIRE_LIFECYCLE` | Set to `1` to fail (instead of skip) when lifecycle dependencies are missing |
+
 ## Repository Layout
 
 ```
 agents/                          # Standalone external agent projects
   entire-agent-kiro/             # Kiro agent (Go binary)
+e2e/                             # Shared E2E test harness for all agents
 .claude/plugins/                 # Claude Code plugin for building agents
 .claude/skills/entire-external-agent/  # Skill files (research, test-writer, implementer)
 .codex/                          # Codex installation guide

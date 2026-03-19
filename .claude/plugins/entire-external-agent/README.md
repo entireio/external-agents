@@ -8,7 +8,7 @@ Local plugin providing individual commands for building standalone external agen
 |---|---|---|
 | **Output** | Built-in agent integration inside the Entire CLI codebase | Standalone binary in any language |
 | **Protocol** | Direct Go interface implementation | Subcommand-based protocol over stdin/stdout |
-| **Testing** | Uses CLI's built-in `ForEachAgent` E2E framework | Self-contained `e2e/` test harness in the agent project |
+| **Testing** | Uses CLI's built-in `ForEachAgent` E2E framework | Shared `e2e/` harness at the repo root (auto-discovers all agents) |
 | **Audience** | Contributors implementing built-in Entire CLI agents | Internal or external developers building agent plugins |
 | **Language** | Go only | Go, Python, TypeScript, Rust |
 
