@@ -311,7 +311,7 @@ func installTrustedCommands(repoRoot string, localDev bool) error {
 	want := trustedCommand(localDev)
 	for _, command := range commands {
 		if command == want {
-			return writeSettings(settingsPath, settings)
+			return nil
 		}
 	}
 	commands = append(commands, want)

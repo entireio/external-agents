@@ -70,25 +70,23 @@ func NewKiroTranscript(id string) *KiroTranscript {
 	return &KiroTranscript{ConversationID: id}
 }
 
+func marshalPromptContent(prompt string) json.RawMessage {
+	content, _ := json.Marshal(map[string]interface{}{
+		"Prompt": map[string]string{"prompt": prompt},
+	})
+	return content
+}
+
 // AddPrompt adds a user prompt entry with no assistant response.
 func (kt *KiroTranscript) AddPrompt(prompt string) *KiroTranscript {
-	promptContent := map[string]interface{}{
-		"Prompt": map[string]string{"prompt": prompt},
-	}
-	content, _ := json.Marshal(promptContent)
 	kt.History = append(kt.History, kiroHistoryEntry{
-		User: kiroUserMessage{Content: content},
+		User: kiroUserMessage{Content: marshalPromptContent(prompt)},
 	})
 	return kt
 }
 
 // AddPromptWithFileEdit adds a user prompt paired with an assistant response that contains a file edit tool use.
 func (kt *KiroTranscript) AddPromptWithFileEdit(prompt, filePath string) *KiroTranscript {
-	promptContent := map[string]interface{}{
-		"Prompt": map[string]string{"prompt": prompt},
-	}
-	userContent, _ := json.Marshal(promptContent)
-
 	toolUse := map[string]interface{}{
 		"ToolUse": map[string]interface{}{
 			"message_id": "msg-001",
@@ -104,7 +102,7 @@ func (kt *KiroTranscript) AddPromptWithFileEdit(prompt, filePath string) *KiroTr
 	assistantContent, _ := json.Marshal(toolUse)
 
 	kt.History = append(kt.History, kiroHistoryEntry{
-		User:      kiroUserMessage{Content: userContent},
+		User:      kiroUserMessage{Content: marshalPromptContent(prompt)},
 		Assistant: assistantContent,
 	})
 	return kt
@@ -112,10 +110,7 @@ func (kt *KiroTranscript) AddPromptWithFileEdit(prompt, filePath string) *KiroTr
 
 // AddResponse adds a user prompt paired with an assistant text response.
 func (kt *KiroTranscript) AddResponse(prompt, response string) *KiroTranscript {
-	promptContent := map[string]interface{}{
-		"Prompt": map[string]string{"prompt": prompt},
-	}
-	userContent, _ := json.Marshal(promptContent)
+	userContent := marshalPromptContent(prompt)
 
 	responseContent := map[string]interface{}{
 		"Response": map[string]interface{}{

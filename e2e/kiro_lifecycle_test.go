@@ -73,7 +73,7 @@ func TestLifecycle_DetectAndEnable(t *testing.T) {
 
 	dir := t.TempDir()
 	homeDir := t.TempDir()
-	env := lifecycleEnv(dir, homeDir)
+	env := baseEnv(dir, homeDir)
 
 	// Init a git repo with a .kiro/ directory.
 	runGit(t, dir, env, "init")

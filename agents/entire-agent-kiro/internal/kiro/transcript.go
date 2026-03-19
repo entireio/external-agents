@@ -206,17 +206,25 @@ func (a *Agent) cacheTranscriptPath(cwd string, sessionID string) (string, error
 	return a.ResolveSessionFile(sessionDir, sessionID), nil
 }
 
-func kiroCLIDataDBPath() (string, error) {
+func kiroDataDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
 	switch runtime.GOOS {
 	case "darwin":
-		return filepath.Join(home, "Library", "Application Support", "kiro-cli", "data.sqlite3"), nil
+		return filepath.Join(home, "Library", "Application Support"), nil
 	default:
-		return filepath.Join(home, ".local", "share", "kiro-cli", "data.sqlite3"), nil
+		return filepath.Join(home, ".local", "share"), nil
 	}
+}
+
+func kiroCLIDataDBPath() (string, error) {
+	dataDir, err := kiroDataDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dataDir, "kiro-cli", "data.sqlite3"), nil
 }
 
 func ideWorkspaceSessionsDir(cwd string) (string, error) {
@@ -372,7 +380,7 @@ func ideEntryToPaired(user, assistant *kiroIDEHistoryEntry) kiroHistoryEntry {
 	entry := kiroHistoryEntry{}
 
 	if user != nil {
-		prompt := extractIDEUserText(user.Message.Content)
+		prompt := extractIDEText(user.Message.Content, true)
 		if prompt != "" {
 			content, err := json.Marshal(kiroPromptContent{
 				Prompt: struct {
@@ -388,7 +396,7 @@ func ideEntryToPaired(user, assistant *kiroIDEHistoryEntry) kiroHistoryEntry {
 	}
 
 	if assistant != nil {
-		text := extractIDEAssistantText(assistant.Message.Content)
+		text := extractIDEText(assistant.Message.Content, false)
 		if text != "" {
 			content, err := json.Marshal(kiroResponseContent{
 				Response: kiroResponsePayload{Content: text},
@@ -404,47 +412,45 @@ func ideEntryToPaired(user, assistant *kiroIDEHistoryEntry) kiroHistoryEntry {
 	return entry
 }
 
-func extractIDEUserText(content json.RawMessage) string {
+// extractIDEText extracts text from a json.RawMessage that may be either a
+// plain string or an array of content blocks. When blocksFirst is true, it
+// tries to parse as blocks before falling back to a plain string (user
+// messages); otherwise it tries plain string first (assistant messages).
+func extractIDEText(content json.RawMessage, blocksFirst bool) string {
 	if len(content) == 0 {
 		return ""
 	}
 
-	var blocks []kiroIDEContentBlock
-	if err := json.Unmarshal(content, &blocks); err == nil && len(blocks) > 0 {
-		for _, block := range blocks {
-			if block.Type == "text" && block.Text != "" {
-				return block.Text
+	tryBlocks := func() string {
+		var blocks []kiroIDEContentBlock
+		if err := json.Unmarshal(content, &blocks); err == nil && len(blocks) > 0 {
+			for _, block := range blocks {
+				if block.Type == "text" && block.Text != "" {
+					return block.Text
+				}
 			}
 		}
 		return ""
 	}
 
-	var text string
-	if err := json.Unmarshal(content, &text); err == nil {
-		return text
-	}
-	return ""
-}
-
-func extractIDEAssistantText(content json.RawMessage) string {
-	if len(content) == 0 {
+	tryString := func() string {
+		var text string
+		if err := json.Unmarshal(content, &text); err == nil {
+			return text
+		}
 		return ""
 	}
 
-	var text string
-	if err := json.Unmarshal(content, &text); err == nil {
-		return text
-	}
-
-	var blocks []kiroIDEContentBlock
-	if err := json.Unmarshal(content, &blocks); err == nil && len(blocks) > 0 {
-		for _, block := range blocks {
-			if block.Type == "text" && block.Text != "" {
-				return block.Text
-			}
+	if blocksFirst {
+		if s := tryBlocks(); s != "" {
+			return s
 		}
+		return tryString()
 	}
-	return ""
+	if s := tryString(); s != "" {
+		return s
+	}
+	return tryBlocks()
 }
 
 func extractUserPrompt(content json.RawMessage) string {

@@ -30,7 +30,7 @@ func NewLifecycleEnv(t *testing.T, agentName string) *LifecycleEnv {
 	dir := t.TempDir()
 	homeDir := t.TempDir()
 
-	env := lifecycleEnv(dir, homeDir)
+	env := baseEnv(dir, homeDir)
 
 	le := &LifecycleEnv{
 		Dir:     dir,
@@ -206,13 +206,3 @@ func requireKiroCLI(t *testing.T) {
 	}
 }
 
-// lifecycleEnv builds the environment variable slice for lifecycle tests.
-// It includes the current PATH so that `entire` and `kiro-cli-chat` can be found.
-func lifecycleEnv(repoRoot, homeDir string) []string {
-	return []string{
-		fmt.Sprintf("ENTIRE_REPO_ROOT=%s", repoRoot),
-		fmt.Sprintf("HOME=%s", homeDir),
-		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
-		"LANG=en_US.UTF-8",
-	}
-}
