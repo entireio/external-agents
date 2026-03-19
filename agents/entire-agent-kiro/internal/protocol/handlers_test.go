@@ -3,8 +3,10 @@ package protocol
 import (
 	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
+	"time"
 )
 
 type testSessionDirResolver struct {
@@ -70,6 +72,58 @@ type testResumeFormatter struct{}
 
 func (testResumeFormatter) FormatResumeCommand(sessionID string) string {
 	return "resume " + sessionID
+}
+
+type testHookParser struct {
+	event *EventJSON
+	err   error
+}
+
+func (p testHookParser) ParseHook(_ string, _ []byte) (*EventJSON, error) {
+	return p.event, p.err
+}
+
+func (p testHookParser) InstallHooks(_ bool, _ bool) (int, error) { return 0, nil }
+func (p testHookParser) UninstallHooks() error                    { return nil }
+func (p testHookParser) AreHooksInstalled() bool                  { return false }
+
+func TestHandleParseHookWithBlockingStdin(t *testing.T) {
+	// Simulate IDE behavior: stdin pipe is open but never written to or closed.
+	r, _ := io.Pipe() // writer intentionally not closed
+
+	var stdout bytes.Buffer
+	done := make(chan error, 1)
+	go func() {
+		done <- HandleParseHook([]string{"--hook", "agentStop"}, r, &stdout, testHookParser{})
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("HandleParseHook() error = %v", err)
+		}
+		// Should produce "null\n" since empty input yields nil event from mock
+		if got := stdout.String(); got != "null\n" {
+			t.Fatalf("stdout = %q, want %q", got, "null\n")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("HandleParseHook blocked on stdin — timeout exceeded 2s")
+	}
+}
+
+func TestHandleParseHookWithNormalStdin(t *testing.T) {
+	input := `{"session_id":"s1"}`
+	var stdout bytes.Buffer
+	parser := testHookParser{
+		event: &EventJSON{SessionID: "s1", Type: 1},
+	}
+	err := HandleParseHook([]string{"--hook", "agentStop"}, strings.NewReader(input), &stdout, parser)
+	if err != nil {
+		t.Fatalf("HandleParseHook() error = %v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"session_id":"s1"`) {
+		t.Fatalf("stdout = %s, want session_id s1", got)
+	}
 }
 
 func TestHandleGetSessionDirPropagatesResolverError(t *testing.T) {
