@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "c84852f00024",
+  "session_id": "130c7a5b-784a-46b4-a59d-fb6d5f519045",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-19T17:50:32.246317Z",
+  "branch": "code-review",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-kiro/internal/kiro/hooks.go",
+    "agents/entire-agent-kiro/internal/kiro/transcript.go"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "9529513618c7",
+  "token_usage": {
+    "input_tokens": 41,
+    "cache_creation_tokens": 102193,
+    "cache_read_tokens": 1130969,
+    "output_tokens": 12952,
+    "api_call_count": 32
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-19T17:50:32.078018Z",
+    "agent_lines": 11,
+    "human_added": 28,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 39,
+    "agent_percentage": 28.205128205128204
+  }
+}
