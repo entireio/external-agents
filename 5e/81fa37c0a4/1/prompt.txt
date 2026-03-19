@@ -1,0 +1,1 @@
+if I'm running kiro specific e2e tests and I don't have kiro cli or entire installed it should tell me. not this All 7 lifecycle tests skip gracefully when entire/kiro-cli-chat not available
