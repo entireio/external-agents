@@ -3,3 +3,7 @@ update all relevant readmes with the E2E tests. and make sure to look at the @.c
 ---
 
 update all relevant readmes with the E2E tests. and make sure to look at the @.claude/plugins/entire-external-agent/commands/write-tests.md to see if that needs updating as well
+
+---
+
+commit
