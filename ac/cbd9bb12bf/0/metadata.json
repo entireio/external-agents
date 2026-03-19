@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "accbd9bb12bf",
+  "session_id": "ac25b691-daf7-4da8-afa0-0b32d83c517c",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-19T17:19:38.58128Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".claude/plugins/entire-external-agent/README.md",
+    ".claude/skills/entire-external-agent/test-writer.md",
+    "README.md",
+    "agents/entire-agent-kiro/README.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-6[1m]",
+  "turn_id": "4a9623583fbf",
+  "token_usage": {
+    "input_tokens": 3274,
+    "cache_creation_tokens": 131797,
+    "cache_read_tokens": 851849,
+    "output_tokens": 11628,
+    "api_call_count": 19
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-19T17:19:38.473489Z",
+    "agent_lines": 215,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 215,
+    "agent_percentage": 100
+  }
+}
