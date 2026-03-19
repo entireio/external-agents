@@ -22,9 +22,9 @@ const (
 	vscodeSettingsDir   = ".vscode"
 	vscodeSettingsFile  = "settings.json"
 	trustedCommandsKey  = "kiroAgent.trustedCommands"
-	prodTrustedCommand  = "entire hooks *"
+	prodTrustedCommand  = "sh -c 'entire hooks *"
 	localDevCommandBase = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
-	localDevTrustedCmd  = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
+	localDevTrustedCmd  = "sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
 	prodHookCommandBase = "entire hooks kiro "
 	sessionIDFile       = "kiro-active-session"
 )
@@ -208,7 +208,7 @@ func writeIDEHooks(repoRoot string, localDev bool) error {
 			},
 			Then: kiroIDEHookThen{
 				Type:    "runCommand",
-				Command: commandBase + def.CLIVerb,
+				Command: shellWrappedCommand(commandBase + def.CLIVerb),
 			},
 		}
 		data, err := marshalJSON(hook)
@@ -263,7 +263,7 @@ func allIDEHooksPresent(repoRoot string, localDev bool) bool {
 		if err := json.Unmarshal(data, &hook); err != nil {
 			return false
 		}
-		if hook.Then.Command != commandBase+def.CLIVerb {
+		if hook.Then.Command != shellWrappedCommand(commandBase+def.CLIVerb) {
 			return false
 		}
 	}
@@ -364,6 +364,15 @@ func hookCommandBase(localDev bool) string {
 	return prodHookCommandBase
 }
 
+// shellWrappedCommand wraps a hook command in "sh -c" with a /dev/null stdin
+// redirect. IDEs typically run hook commands directly without a shell, so a
+// bare "</dev/null" suffix is passed as a literal argument instead of being
+// interpreted as a redirect. Wrapping in sh ensures the redirect works.
+// The command content is built from compile-time constants (not user input).
+func shellWrappedCommand(cmd string) string {
+	return "sh -c '" + cmd + " </dev/null'"
+}
+
 func trustedCommand(localDev bool) string {
 	if localDev {
 		return localDevTrustedCmd
@@ -421,7 +430,9 @@ func marshalJSON(v any) ([]byte, error) {
 }
 
 func isEntireIDEHook(hook kiroIDEHookFile) bool {
-	return strings.HasPrefix(hook.Name, "entire-") && strings.HasPrefix(hook.Then.Command, prodHookCommandBase)
+	return strings.HasPrefix(hook.Name, "entire-") &&
+		(strings.HasPrefix(hook.Then.Command, prodHookCommandBase) ||
+			strings.HasPrefix(hook.Then.Command, localDevCommandBase))
 }
 
 func (a *Agent) generateAndCacheSessionID() string {
