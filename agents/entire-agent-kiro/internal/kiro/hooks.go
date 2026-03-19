@@ -162,7 +162,7 @@ func defaultHookNames() []string {
 
 func writeCLIHooks(repoRoot string, localDev bool) error {
 	hooksPath := filepath.Join(repoRoot, ".kiro", hooksDir, hooksFileName)
-	if err := os.MkdirAll(filepath.Dir(hooksPath), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(hooksPath), 0o700); err != nil {
 		return err
 	}
 	commandBase := hookCommandBase(localDev)
@@ -192,7 +192,7 @@ func writeCLIHooks(repoRoot string, localDev bool) error {
 
 func writeIDEHooks(repoRoot string, localDev bool) error {
 	dir := filepath.Join(repoRoot, ".kiro", ideHooksDir)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	commandBase := hookCommandBase(localDev)
@@ -411,7 +411,7 @@ func readTrustedCommands(settings map[string]json.RawMessage) ([]string, error) 
 }
 
 func writeSettings(path string, settings map[string]json.RawMessage) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	data, err := marshalJSON(settings)
@@ -438,7 +438,7 @@ func isEntireIDEHook(hook kiroIDEHookFile) bool {
 func (a *Agent) generateAndCacheSessionID() string {
 	sessionID := generateSessionID()
 	cachePath := a.sessionIDCachePath()
-	if err := os.MkdirAll(filepath.Dir(cachePath), 0o750); err == nil {
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o700); err == nil {
 		_ = os.WriteFile(cachePath, []byte(sessionID), 0o600)
 	}
 	return sessionID

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -216,6 +217,31 @@ func TestEnsureIDETranscriptCopiesLatestWorkspaceSession(t *testing.T) {
 	}
 	if string(data) != `{"history":[{"message":{"role":"assistant","content":"new"}}]}` {
 		t.Fatalf("cached IDE transcript = %q", string(data))
+	}
+}
+
+func TestEnsureIDETranscriptRejectsPathTraversal(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"../../etc/passwd","title":"Evil","dateCreated":"2026-01-01T00:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+
+	_, err := New().ensureIDETranscript(cwd, "stable-session")
+	if err == nil {
+		t.Fatal("expected error for path-traversal session ID, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid session ID") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

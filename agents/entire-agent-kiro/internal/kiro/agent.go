@@ -91,7 +91,7 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if session.SessionRef == "" {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(session.SessionRef), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Dir(session.SessionRef), 0o700); err != nil {
 		return err
 	}
 	return os.WriteFile(session.SessionRef, session.NativeData, 0o600)

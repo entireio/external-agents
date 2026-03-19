@@ -154,7 +154,12 @@ func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error
 		return sessions[i].DateCreated > sessions[j].DateCreated
 	})
 
-	transcriptPath := filepath.Join(sessionsDir, sessions[0].SessionID+".json")
+	ideSessionID := sessions[0].SessionID
+	if !filepath.IsLocal(ideSessionID + ".json") {
+		return "", fmt.Errorf("invalid session ID: %q", ideSessionID)
+	}
+
+	transcriptPath := filepath.Join(sessionsDir, ideSessionID+".json")
 	transcriptData, err := os.ReadFile(transcriptPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read IDE transcript %s: %w", transcriptPath, err)
@@ -200,7 +205,7 @@ func (a *Agent) cacheTranscriptPath(cwd string, sessionID string) (string, error
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(sessionDir, 0o750); err != nil {
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
 		return "", fmt.Errorf("failed to create cache dir: %w", err)
 	}
 	return a.ResolveSessionFile(sessionDir, sessionID), nil

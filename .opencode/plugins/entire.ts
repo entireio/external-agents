@@ -37,7 +37,7 @@ export const EntirePlugin: Plugin = async ({ $, directory }) => {
   function callHookSync(hookName: string, payload: Record<string, unknown>) {
     try {
       const json = JSON.stringify(payload)
-      Bun.spawnSync(["sh", "-c", `${ENTIRE_CMD} hooks opencode ${hookName}`], {
+      Bun.spawnSync([ENTIRE_CMD, "hooks", "opencode", hookName], {
         cwd: directory,
         stdin: new TextEncoder().encode(json + "\n"),
         stdout: "ignore",
