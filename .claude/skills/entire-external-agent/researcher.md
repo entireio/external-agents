@@ -110,9 +110,61 @@ Based on the mapping, determine which capabilities the binary should declare:
 - `hook_response_writer` — Does the agent support writing messages back via hooks?
 - `subagent_aware_extractor` — Does the agent spawn subagents with their own transcripts?
 
-## Phase 3: Write the One-Pager
+## Phase 3: Verification Script
 
-Create `<PROJECT_DIR>/AGENT.md` (create the directory first if needed):
+Docs tend to be out of date. Before writing the one-pager, create a verification script that captures real payloads from the target agent to confirm Phase 2 findings.
+
+Based on Phase 2 findings, create an **agent-specific** test script:
+
+```
+<PROJECT_DIR>/scripts/verify-<AGENT_SLUG>.sh
+```
+
+The script is tailored to the specific agent's hook mechanism (not a generic template). Adapt the hook wiring section based on what Phase 2 discovered.
+
+**Script structure:**
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+AGENT_NAME="..."
+AGENT_SLUG="..."
+AGENT_BIN="..."
+PROBE_DIR="<PROJECT_DIR>/.probe-${AGENT_SLUG}-$(date +%s)"
+```
+
+**Required sections:**
+
+1. **Static checks** — Re-runnable binary/version/help checks from Phase 2
+2. **Hook wiring** — Create workspace-local config that intercepts the agent's hooks and dumps stdin JSON to `$PROBE_DIR/captures/<event-name>-<timestamp>.json`. Use the agent's native hook config format discovered in Phase 2.
+3. **Run modes:**
+   - `--run-cmd '<cmd>'` — Automated: launch agent with a non-interactive prompt, wait, collect captures
+   - `--manual-live` — Interactive: user runs agent manually, presses Enter when done
+4. **Capture collection** — List and pretty-print all captured payload files
+5. **Cleanup** — Restore original config (unless `--keep-config`)
+6. **Verdict** — PASS/WARN/FAIL per lifecycle event + summary
+
+**Important:** The hook wiring must be non-destructive — back up any existing config before modifying, and restore it on cleanup.
+
+### Phase 3a: Execute & Analyze
+
+Run the script and analyze the captured payloads:
+
+1. **Execute**: `chmod +x <PROJECT_DIR>/scripts/verify-<AGENT_SLUG>.sh && <PROJECT_DIR>/scripts/verify-<AGENT_SLUG>.sh --manual-live`
+2. **For each captured payload**: show the file path, decoded JSON, and which protocol subcommand it informs
+3. **Update Phase 2 findings**: If captured payloads differ from documentation (field names, nesting, missing fields), update the mapping table with ground-truth values from the captures
+4. **Lifecycle mapping**: native hook name → protocol event type, validated against real captures
+
+If the script cannot be run (agent not installed, auth required, sandbox restrictions), follow the Blocker Handling procedure and note in the one-pager that findings are doc-based only and not verified.
+
+## Phase 4: Write the One-Pager
+
+Create `<PROJECT_DIR>/AGENT.md` (create the directory first if needed).
+
+**Important:** Use ground-truth values from verification script captures (Phase 3a) wherever available. If a field was verified by real payloads, mark it as `(verified)`. If based only on docs/probing, mark it as `(unverified)`.
+
+Template:
 
 ```markdown
 # <AGENT_NAME> — External Agent Research
@@ -177,6 +229,12 @@ Create `<PROJECT_DIR>/AGENT.md` (create the directory first if needed):
 ## Gaps & Limitations
 - ... (anything that doesn't map cleanly or requires workarounds)
 
+## Captured Payloads
+- Verification script: `<PROJECT_DIR>/scripts/verify-<AGENT_SLUG>.sh`
+- Capture directory: `<PROJECT_DIR>/.probe-<AGENT_SLUG>-*/captures/`
+- Verification status: VERIFIED (script ran, payloads captured) / UNVERIFIED (doc-based only)
+- Notable differences from docs: ... (any discrepancies found between docs and real payloads)
+
 ## E2E Test Prerequisites
 - Entire CLI binary: (how to obtain/path — default: `entire` from PATH or `E2E_ENTIRE_BIN` env)
 - Agent CLI binary: (name, path, how to install)
@@ -190,9 +248,9 @@ Create `<PROJECT_DIR>/AGENT.md` (create the directory first if needed):
 
 Fill in every section with concrete values from the investigation. Don't leave placeholders. If a section doesn't apply, say so explicitly.
 
-## Phase 4: Commit
+## Phase 5: Commit
 
-Create a git commit for the `AGENT.md` file.
+Create a git commit for the `AGENT.md` file and the verification script.
 
 ## Blocker Handling
 
@@ -205,6 +263,7 @@ If blocked at any point (auth, sandbox, binary not found):
 
 ## Constraints
 
-- **No implementation code.** This phase produces only `AGENT.md`.
-- **Non-destructive.** All probing is read-only — don't modify agent config.
+- **No implementation code.** This phase produces only `AGENT.md` and the verification script.
+- **Non-destructive.** All probing is read-only — don't modify agent config. The verification script backs up and restores any config it touches.
+- **Verify before documenting.** Prefer ground-truth from captured payloads over documentation claims. Mark unverified findings explicitly.
 - **Ask, don't assume.** If the hook mechanism is unclear, ask the user.
