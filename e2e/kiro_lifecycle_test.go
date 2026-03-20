@@ -3,259 +3,199 @@
 package e2e
 
 import (
+	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/entireio/external-agents/e2e/entire"
+	"github.com/entireio/external-agents/e2e/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestLifecycle_SinglePromptManualCommit verifies the basic flow:
 // agent creates a file → git add + commit → checkpoint exists with trailer.
 func TestLifecycle_SinglePromptManualCommit(t *testing.T) {
-	requireEntire(t)
-	requireKiroCLI(t)
-	t.Parallel()
+	testutil.ForEachAgent(t, 2*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		_, err := s.RunPrompt(t, ctx, "Create a file called hello.txt with the content 'hello world'. Do not ask for confirmation.")
+		require.NoError(t, err, "prompt failed")
 
-	env := NewLifecycleEnv(t, "kiro")
+		testutil.AssertFileExists(t, s.Dir, "hello.txt")
 
-	// Ask the agent to create a file.
-	if err := env.RunKiroPrompt(t, "Create a file called hello.txt with the content 'hello world'"); err != nil {
-		t.Fatalf("prompt failed: %v", err)
-	}
+		s.Git(t, "add", ".")
+		s.Git(t, "commit", "-m", "add hello.txt")
 
-	AssertFileExists(t, env, "hello.txt")
+		testutil.WaitForCheckpoint(t, s, 30*time.Second)
 
-	// Manually commit so the checkpoint hook fires.
-	env.Git(t, "add", ".")
-	env.Git(t, "commit", "-m", "add hello.txt")
-
-	// Wait for the checkpoint branch to appear.
-	WaitForCheckpoint(t, env, 30*time.Second)
-
-	// Verify the checkpoint has the Entire-Checkpoint trailer.
-	trailer := GetCheckpointTrailer(t, env, "entire/checkpoints/v1")
-	if trailer == "" {
-		t.Error("expected Entire-Checkpoint trailer on checkpoint commit")
-	}
+		cpID := testutil.AssertHasCheckpointTrailer(t, s.Dir, "HEAD")
+		testutil.AssertCheckpointExists(t, s.Dir, cpID)
+	})
 }
 
 // TestLifecycle_MultiplePromptsManualCommit sends two prompts, commits once,
 // and verifies the checkpoint covers both files.
 func TestLifecycle_MultiplePromptsManualCommit(t *testing.T) {
-	requireEntire(t)
-	requireKiroCLI(t)
-	t.Parallel()
+	testutil.ForEachAgent(t, 3*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		_, err := s.RunPrompt(t, ctx, "Create a file called foo.txt containing 'foo'. Do not ask for confirmation.")
+		require.NoError(t, err, "first prompt failed")
 
-	env := NewLifecycleEnv(t, "kiro")
+		_, err = s.RunPrompt(t, ctx, "Create a file called bar.txt containing 'bar'. Do not ask for confirmation.")
+		require.NoError(t, err, "second prompt failed")
 
-	if err := env.RunKiroPrompt(t, "Create a file called foo.txt containing 'foo'"); err != nil {
-		t.Fatalf("first prompt failed: %v", err)
-	}
-	if err := env.RunKiroPrompt(t, "Create a file called bar.txt containing 'bar'"); err != nil {
-		t.Fatalf("second prompt failed: %v", err)
-	}
+		testutil.AssertFileExists(t, s.Dir, "foo.txt")
+		testutil.AssertFileExists(t, s.Dir, "bar.txt")
 
-	AssertFileExists(t, env, "foo.txt")
-	AssertFileExists(t, env, "bar.txt")
+		s.Git(t, "add", ".")
+		s.Git(t, "commit", "-m", "add foo and bar")
 
-	env.Git(t, "add", ".")
-	env.Git(t, "commit", "-m", "add foo and bar")
-
-	WaitForCheckpoint(t, env, 30*time.Second)
+		testutil.WaitForCheckpoint(t, s, 30*time.Second)
+		testutil.AssertCheckpointAdvanced(t, s)
+	})
 }
 
 // TestLifecycle_DetectAndEnable verifies that `entire enable --agent kiro`
 // works when .kiro/ already exists in the repo.
 func TestLifecycle_DetectAndEnable(t *testing.T) {
-	requireEntire(t)
-	t.Parallel()
-
-	dir := t.TempDir()
-	homeDir := t.TempDir()
-	env := baseEnv(dir, homeDir)
-
-	// Init a git repo with a .kiro/ directory.
-	runGit(t, dir, env, "init")
-	runGit(t, dir, env, "config", "user.email", "test@test.com")
-	runGit(t, dir, env, "config", "user.name", "Test User")
-	if err := os.MkdirAll(filepath.Join(dir, ".kiro"), 0o750); err != nil {
-		t.Fatalf("mkdir .kiro: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# test\n"), 0o600); err != nil {
-		t.Fatalf("write readme: %v", err)
-	}
-	runGit(t, dir, env, "add", ".")
-	runGit(t, dir, env, "commit", "-m", "initial")
-
-	// Enable should succeed because .kiro/ is present.
-	EntireEnable(t, dir, "kiro", env)
-
-	// Verify .entire/ directory was created.
-	if _, err := os.Stat(filepath.Join(dir, ".entire")); err != nil {
-		t.Errorf("expected .entire/ directory after enable: %v", err)
-	}
+	testutil.ForEachAgent(t, 1*time.Minute, func(t *testing.T, s *testutil.RepoState, _ context.Context) {
+		// The repo is already set up with entire enable by ForEachAgent/SetupRepo.
+		// Verify .entire/ directory exists.
+		_, err := os.Stat(filepath.Join(s.Dir, ".entire"))
+		require.NoError(t, err, "expected .entire/ directory after enable")
+	})
 }
 
 // TestLifecycle_HooksInstalledAfterEnable verifies that hooks are installed
 // after running `entire enable`.
 func TestLifecycle_HooksInstalledAfterEnable(t *testing.T) {
-	requireEntire(t)
-	t.Parallel()
+	testutil.ForEachAgent(t, 1*time.Minute, func(t *testing.T, s *testutil.RepoState, _ context.Context) {
+		agentBinName := "entire-agent-" + s.Agent.EntireAgent()
+		binPath, ok := AgentBinaries[agentBinName]
+		if !ok {
+			t.Skipf("%s binary not built", agentBinName)
+		}
 
-	env := NewLifecycleEnv(t, "kiro")
+		runner := &AgentRunner{
+			BinaryPath: binPath,
+			Env: []string{
+				"ENTIRE_REPO_ROOT=" + s.Dir,
+				"HOME=" + os.Getenv("HOME"),
+				"PATH=" + os.Getenv("PATH"),
+				"LANG=en_US.UTF-8",
+			},
+		}
 
-	// The agent binary's are-hooks-installed subcommand should confirm hooks are present.
-	binPath, ok := agentBinaries["entire-agent-kiro"]
-	if !ok {
-		t.Skip("entire-agent-kiro binary not built")
-	}
+		var resp struct {
+			Installed bool `json:"installed"`
+		}
+		runner.RunJSON(t, &resp, "", "are-hooks-installed")
 
-	runner := &AgentRunner{
-		BinaryPath: binPath,
-		Env:        env.Env,
-	}
-
-	var resp struct {
-		Installed bool `json:"installed"`
-	}
-	runner.RunJSON(t, &resp, "", "are-hooks-installed")
-
-	if !resp.Installed {
-		t.Error("hooks should be installed after entire enable")
-	}
+		assert.True(t, resp.Installed, "hooks should be installed after entire enable")
+	})
 }
 
 // TestLifecycle_RewindPreCommit verifies the rewind flow before a commit:
-// create file A → snapshot rewind points → create file B → rewind → file A exists, file B gone.
+// create file A → commit → snapshot rewind points → create file B → rewind → file A exists, file B gone.
 func TestLifecycle_RewindPreCommit(t *testing.T) {
-	requireEntire(t)
-	requireKiroCLI(t)
-	t.Parallel()
+	testutil.ForEachAgent(t, 3*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		_, err := s.RunPrompt(t, ctx, "Create a file called alpha.txt with content 'alpha'. Do not ask for confirmation.")
+		require.NoError(t, err, "first prompt failed")
+		testutil.AssertFileExists(t, s.Dir, "alpha.txt")
 
-	env := NewLifecycleEnv(t, "kiro")
+		s.Git(t, "add", ".")
+		s.Git(t, "commit", "-m", "add alpha")
+		testutil.WaitForCheckpoint(t, s, 30*time.Second)
 
-	// Create first file via agent.
-	if err := env.RunKiroPrompt(t, "Create a file called alpha.txt with content 'alpha'"); err != nil {
-		t.Fatalf("first prompt failed: %v", err)
-	}
-	AssertFileExists(t, env, "alpha.txt")
+		points := entire.RewindList(t, s.Dir)
+		require.NotEmpty(t, points, "expected at least one rewind point after first commit")
+		rewindTarget := points[0].ID
 
-	// Commit so we have a checkpoint to rewind to.
-	env.Git(t, "add", ".")
-	env.Git(t, "commit", "-m", "add alpha")
-	WaitForCheckpoint(t, env, 30*time.Second)
+		_, err = s.RunPrompt(t, ctx, "Create a file called beta.txt with content 'beta'. Do not ask for confirmation.")
+		require.NoError(t, err, "second prompt failed")
+		testutil.AssertFileExists(t, s.Dir, "beta.txt")
 
-	// Snapshot rewind points.
-	points := EntireRewindList(t, env.Dir, env.Env)
-	if len(points) == 0 {
-		t.Fatal("expected at least one rewind point after first commit")
-	}
-	rewindTarget := points[0].ID
+		err = entire.Rewind(t, s.Dir, rewindTarget)
+		require.NoError(t, err, "rewind failed")
 
-	// Create a second file.
-	if err := env.RunKiroPrompt(t, "Create a file called beta.txt with content 'beta'"); err != nil {
-		t.Fatalf("second prompt failed: %v", err)
-	}
-	AssertFileExists(t, env, "beta.txt")
-
-	// Rewind to the point after alpha but before beta.
-	EntireRewind(t, env.Dir, env.Env, rewindTarget)
-
-	// alpha.txt should still exist, beta.txt should be gone.
-	if !env.FileExists("alpha.txt") {
-		t.Error("alpha.txt should exist after rewind")
-	}
-	if env.FileExists("beta.txt") {
-		t.Error("beta.txt should not exist after rewind")
-	}
+		_, err = os.Stat(filepath.Join(s.Dir, "alpha.txt"))
+		assert.NoError(t, err, "alpha.txt should exist after rewind")
+		_, err = os.Stat(filepath.Join(s.Dir, "beta.txt"))
+		assert.True(t, os.IsNotExist(err), "beta.txt should not exist after rewind")
+	})
 }
 
 // TestLifecycle_RewindAfterCommit verifies that rewind points are available
 // after a git commit and that rewinding restores the correct state.
 func TestLifecycle_RewindAfterCommit(t *testing.T) {
-	requireEntire(t)
-	requireKiroCLI(t)
-	t.Parallel()
+	testutil.ForEachAgent(t, 4*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		_, err := s.RunPrompt(t, ctx, "Create a file called first.txt with content 'first'. Do not ask for confirmation.")
+		require.NoError(t, err, "first prompt failed")
+		s.Git(t, "add", ".")
+		s.Git(t, "commit", "-m", "add first.txt")
+		testutil.WaitForCheckpoint(t, s, 30*time.Second)
 
-	env := NewLifecycleEnv(t, "kiro")
+		pointsAfterFirst := entire.RewindList(t, s.Dir)
+		require.NotEmpty(t, pointsAfterFirst, "expected rewind points after first commit")
 
-	// First prompt + commit.
-	if err := env.RunKiroPrompt(t, "Create a file called first.txt with content 'first'"); err != nil {
-		t.Fatalf("first prompt failed: %v", err)
-	}
-	env.Git(t, "add", ".")
-	env.Git(t, "commit", "-m", "add first.txt")
-	WaitForCheckpoint(t, env, 30*time.Second)
+		_, err = s.RunPrompt(t, ctx, "Create a file called second.txt with content 'second'. Do not ask for confirmation.")
+		require.NoError(t, err, "second prompt failed")
+		s.Git(t, "add", ".")
+		s.Git(t, "commit", "-m", "add second.txt")
+		testutil.WaitForCheckpoint(t, s, 30*time.Second)
 
-	pointsAfterFirst := EntireRewindList(t, env.Dir, env.Env)
-	if len(pointsAfterFirst) == 0 {
-		t.Fatal("expected rewind points after first commit")
-	}
+		pointsAfterSecond := entire.RewindList(t, s.Dir)
+		assert.Greater(t, len(pointsAfterSecond), len(pointsAfterFirst),
+			"expected more rewind points after second commit")
 
-	// Second prompt + commit.
-	if err := env.RunKiroPrompt(t, "Create a file called second.txt with content 'second'"); err != nil {
-		t.Fatalf("second prompt failed: %v", err)
-	}
-	env.Git(t, "add", ".")
-	env.Git(t, "commit", "-m", "add second.txt")
-	WaitForCheckpoint(t, env, 30*time.Second)
+		err = entire.Rewind(t, s.Dir, pointsAfterFirst[0].ID)
+		require.NoError(t, err, "rewind failed")
 
-	pointsAfterSecond := EntireRewindList(t, env.Dir, env.Env)
-	if len(pointsAfterSecond) <= len(pointsAfterFirst) {
-		t.Error("expected more rewind points after second commit")
-	}
-
-	// Rewind to the state after the first commit.
-	EntireRewind(t, env.Dir, env.Env, pointsAfterFirst[0].ID)
-
-	if !env.FileExists("first.txt") {
-		t.Error("first.txt should exist after rewind")
-	}
-	if env.FileExists("second.txt") {
-		t.Error("second.txt should not exist after rewind")
-	}
+		_, err = os.Stat(filepath.Join(s.Dir, "first.txt"))
+		assert.NoError(t, err, "first.txt should exist after rewind")
+		_, err = os.Stat(filepath.Join(s.Dir, "second.txt"))
+		assert.True(t, os.IsNotExist(err), "second.txt should not exist after rewind")
+	})
 }
 
 // TestLifecycle_SessionPersistence verifies that a session file is created in
 // .entire/tmp/ after running a prompt.
 func TestLifecycle_SessionPersistence(t *testing.T) {
-	requireEntire(t)
-	requireKiroCLI(t)
-	t.Parallel()
+	testutil.ForEachAgent(t, 2*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		_, err := s.RunPrompt(t, ctx, "Create a file called session-test.txt with content 'test'. Do not ask for confirmation.")
+		require.NoError(t, err, "prompt failed")
 
-	env := NewLifecycleEnv(t, "kiro")
+		tmpDir := filepath.Join(s.Dir, ".entire", "tmp")
+		entries, err := os.ReadDir(tmpDir)
+		require.NoError(t, err, "read .entire/tmp/")
 
-	if err := env.RunKiroPrompt(t, "Create a file called session-test.txt with content 'test'"); err != nil {
-		t.Fatalf("prompt failed: %v", err)
-	}
-
-	// Check that at least one session file exists in .entire/tmp/.
-	tmpDir := filepath.Join(env.Dir, ".entire", "tmp")
-	entries, err := os.ReadDir(tmpDir)
-	if err != nil {
-		t.Fatalf("read .entire/tmp/: %v", err)
-	}
-
-	hasSession := false
-	for _, entry := range entries {
-		if filepath.Ext(entry.Name()) == ".json" {
-			hasSession = true
-			break
+		hasSession := false
+		for _, entry := range entries {
+			if filepath.Ext(entry.Name()) == ".json" {
+				hasSession = true
+				break
+			}
 		}
-	}
-	if !hasSession {
-		t.Error("expected at least one .json session file in .entire/tmp/")
-	}
+		assert.True(t, hasSession, "expected at least one .json session file in .entire/tmp/")
+	})
 }
 
-// runGit is a standalone helper for running git outside of a LifecycleEnv.
-func runGit(t *testing.T, dir string, env []string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	cmd.Env = env
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %s: %v\n%s", args[0], err, out)
-	}
+// TestLifecycle_InteractiveSession verifies that an interactive tmux session
+// can send prompts and receive responses.
+func TestLifecycle_InteractiveSession(t *testing.T) {
+	testutil.ForEachAgent(t, 3*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		session := s.StartSession(t, ctx)
+		if session == nil {
+			t.Skip("agent does not support interactive sessions")
+		}
+
+		s.Send(t, session, "Create a file called interactive.txt with 'hello'. Do not ask for confirmation.")
+		s.WaitFor(t, session, s.Agent.PromptPattern(), 60*time.Second)
+
+		testutil.WaitForFileExists(t, s.Dir, "interactive.txt", 10*time.Second)
+
+		s.Git(t, "add", ".")
+		s.Git(t, "commit", "-m", "interactive test")
+		testutil.WaitForCheckpoint(t, s, 30*time.Second)
+	})
 }

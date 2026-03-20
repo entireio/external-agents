@@ -23,7 +23,7 @@ type TestEnv struct {
 func NewTestEnv(t *testing.T, agentName string) *TestEnv {
 	t.Helper()
 
-	binPath, ok := agentBinaries[agentName]
+	binPath, ok := AgentBinaries[agentName]
 	if !ok {
 		t.Fatalf("agent binary not found: %s (available: %v)", agentName, agentBinaryNames())
 	}
@@ -133,8 +133,8 @@ func baseEnv(repoRoot, homeDir string) []string {
 }
 
 func agentBinaryNames() []string {
-	names := make([]string, 0, len(agentBinaries))
-	for name := range agentBinaries {
+	names := make([]string, 0, len(AgentBinaries))
+	for name := range AgentBinaries {
 		names = append(names, name)
 	}
 	return names
