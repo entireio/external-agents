@@ -104,7 +104,7 @@ func (k *Kiro) RunPrompt(ctx context.Context, dir string, prompt string, opts ..
 func (k *Kiro) StartSession(ctx context.Context, dir string) (Session, error) {
 	name := fmt.Sprintf("kiro-test-%d", time.Now().UnixNano())
 
-	s, err := NewTmuxSession(name, dir, []string{"ENTIRE_TEST_TTY"}, k.Binary(), "chat", "--agent", "entire")
+	s, err := NewTmuxSession(name, dir, []string{"ENTIRE_TEST_TTY"}, k.Binary(), "chat", "--trust-all-tools", "--agent", "entire")
 	if err != nil {
 		return nil, err
 	}

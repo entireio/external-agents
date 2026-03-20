@@ -95,29 +95,31 @@ func TestLifecycle_HooksInstalledAfterEnable(t *testing.T) {
 	})
 }
 
-// TestLifecycle_RewindPreCommit verifies the rewind flow before a commit:
-// create file A → commit → snapshot rewind points → create file B → rewind → file A exists, file B gone.
+// TestLifecycle_RewindPreCommit verifies pre-commit shadow branch rewind:
+// agent creates file A → snapshot rewind points → agent creates file B → rewind → file A exists, file B gone.
+// No commits happen — this tests pure shadow branch rewind points.
 func TestLifecycle_RewindPreCommit(t *testing.T) {
 	testutil.ForEachAgent(t, 3*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
-		_, err := s.RunPrompt(t, ctx, "Create a file called alpha.txt with content 'alpha'. Do not ask for confirmation.")
+		// Agent creates file A (no commit).
+		_, err := s.RunPrompt(t, ctx, "Create a file called alpha.txt with content 'alpha'. Do not commit the file. Do not ask for confirmation.")
 		require.NoError(t, err, "first prompt failed")
 		testutil.AssertFileExists(t, s.Dir, "alpha.txt")
 
-		s.Git(t, "add", ".")
-		s.Git(t, "commit", "-m", "add alpha")
-		testutil.WaitForCheckpoint(t, s, 30*time.Second)
-
+		// Snapshot rewind points (shadow branch, is_logs_only=false).
 		points := entire.RewindList(t, s.Dir)
-		require.NotEmpty(t, points, "expected at least one rewind point after first commit")
+		require.NotEmpty(t, points, "expected at least one rewind point after first prompt")
 		rewindTarget := points[0].ID
 
-		_, err = s.RunPrompt(t, ctx, "Create a file called beta.txt with content 'beta'. Do not ask for confirmation.")
+		// Agent creates file B (no commit).
+		_, err = s.RunPrompt(t, ctx, "Create a file called beta.txt with content 'beta'. Do not commit the file. Do not ask for confirmation.")
 		require.NoError(t, err, "second prompt failed")
 		testutil.AssertFileExists(t, s.Dir, "beta.txt")
 
+		// Rewind to point after file A was created.
 		err = entire.Rewind(t, s.Dir, rewindTarget)
-		require.NoError(t, err, "rewind failed")
+		require.NoError(t, err, "rewind to %s should succeed", rewindTarget)
 
+		// File A should still exist, file B should be gone.
 		_, err = os.Stat(filepath.Join(s.Dir, "alpha.txt"))
 		assert.NoError(t, err, "alpha.txt should exist after rewind")
 		_, err = os.Stat(filepath.Join(s.Dir, "beta.txt"))
@@ -125,36 +127,53 @@ func TestLifecycle_RewindPreCommit(t *testing.T) {
 	})
 }
 
-// TestLifecycle_RewindAfterCommit verifies that rewind points are available
-// after a git commit and that rewinding restores the correct state.
+// TestLifecycle_RewindAfterCommit verifies that pre-commit shadow branch
+// rewind points become invalid after a user commit. Rewinding to an old
+// shadow branch ID should fail because condensation converts them to logs-only.
 func TestLifecycle_RewindAfterCommit(t *testing.T) {
-	testutil.ForEachAgent(t, 4*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
-		_, err := s.RunPrompt(t, ctx, "Create a file called first.txt with content 'first'. Do not ask for confirmation.")
-		require.NoError(t, err, "first prompt failed")
+	testutil.ForEachAgent(t, 3*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		// Agent creates a file (no commit).
+		_, err := s.RunPrompt(t, ctx, "Create a file called first.txt with content 'first'. Do not commit the file. Do not ask for confirmation.")
+		require.NoError(t, err, "prompt failed")
+		testutil.AssertFileExists(t, s.Dir, "first.txt")
+
+		// Get pre-commit rewind points and find a non-logs-only shadow point.
+		pointsBefore := entire.RewindList(t, s.Dir)
+		require.NotEmpty(t, pointsBefore, "expected rewind points before commit")
+
+		var shadowPoint *entire.RewindPoint
+		for i := range pointsBefore {
+			if !pointsBefore[i].IsLogsOnly {
+				shadowPoint = &pointsBefore[i]
+				break
+			}
+		}
+		require.NotNil(t, shadowPoint, "expected at least one non-logs-only shadow branch rewind point")
+		oldID := shadowPoint.ID
+
+		// User commits the file — triggers condensation.
 		s.Git(t, "add", ".")
 		s.Git(t, "commit", "-m", "add first.txt")
 		testutil.WaitForCheckpoint(t, s, 30*time.Second)
 
-		pointsAfterFirst := entire.RewindList(t, s.Dir)
-		require.NotEmpty(t, pointsAfterFirst, "expected rewind points after first commit")
+		// Old shadow point should no longer be listed as non-logs-only.
+		pointsAfter := entire.RewindList(t, s.Dir)
+		found := false
+		for _, p := range pointsAfter {
+			if p.ID == oldID && !p.IsLogsOnly {
+				found = true
+				break
+			}
+		}
+		assert.False(t, found, "old shadow branch rewind point %s should no longer be listed as non-logs-only", oldID)
 
-		_, err = s.RunPrompt(t, ctx, "Create a file called second.txt with content 'second'. Do not ask for confirmation.")
-		require.NoError(t, err, "second prompt failed")
-		s.Git(t, "add", ".")
-		s.Git(t, "commit", "-m", "add second.txt")
-		testutil.WaitForCheckpoint(t, s, 30*time.Second)
+		// Attempting to rewind to the old shadow branch ID should fail.
+		err = entire.Rewind(t, s.Dir, oldID)
+		assert.Error(t, err, "rewind to old shadow branch ID should fail after commit")
 
-		pointsAfterSecond := entire.RewindList(t, s.Dir)
-		assert.Greater(t, len(pointsAfterSecond), len(pointsAfterFirst),
-			"expected more rewind points after second commit")
-
-		err = entire.Rewind(t, s.Dir, pointsAfterFirst[0].ID)
-		require.NoError(t, err, "rewind failed")
-
-		_, err = os.Stat(filepath.Join(s.Dir, "first.txt"))
-		assert.NoError(t, err, "first.txt should exist after rewind")
-		_, err = os.Stat(filepath.Join(s.Dir, "second.txt"))
-		assert.True(t, os.IsNotExist(err), "second.txt should not exist after rewind")
+		// Working directory should be unchanged — file still committed.
+		testutil.AssertFileExists(t, s.Dir, "first.txt")
+		testutil.AssertNoShadowBranches(t, s.Dir)
 	})
 }
 
