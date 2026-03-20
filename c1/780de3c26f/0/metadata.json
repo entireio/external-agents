@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "c1780de3c26f",
+  "session_id": "012dbfb0-86fd-41e2-baf6-29dd614f08e4",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-20T19:05:04.271784Z",
+  "branch": "main",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "e2e/kiro_lifecycle_test.go",
+    "e2e/setup_test.go"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "444b473ae3af",
+  "token_usage": {
+    "input_tokens": 53,
+    "cache_creation_tokens": 112805,
+    "cache_read_tokens": 2763621,
+    "output_tokens": 27752,
+    "api_call_count": 37
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-20T19:05:04.088934Z",
+    "agent_lines": 120,
+    "human_added": 20,
+    "human_modified": 56,
+    "human_removed": 0,
+    "total_committed": 196,
+    "agent_percentage": 61.224489795918366
+  }
+}
