@@ -1,0 +1,1 @@
+update @.claude/skills/e2e-debug/SKILL.md to be useful in this repo. I copied it from my other repo
