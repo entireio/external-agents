@@ -3,9 +3,10 @@
   "checkpoint_id": "cf6ebb48757e",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 3,
+  "checkpoints_count": 4,
   "files_touched": [
-    "e2e/agents/kiro.go"
+    "e2e/agents/kiro.go",
+    "e2e/lifecycle_test.go"
   ],
   "sessions": [
     {
@@ -19,13 +20,19 @@
       "transcript": "/cf/6ebb48757e/1/full.jsonl",
       "content_hash": "/cf/6ebb48757e/1/content_hash.txt",
       "prompt": "/cf/6ebb48757e/1/prompt.txt"
+    },
+    {
+      "metadata": "/cf/6ebb48757e/2/metadata.json",
+      "transcript": "/cf/6ebb48757e/2/full.jsonl",
+      "content_hash": "/cf/6ebb48757e/2/content_hash.txt",
+      "prompt": "/cf/6ebb48757e/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 184,
-    "cache_creation_tokens": 162460,
-    "cache_read_tokens": 3768816,
-    "output_tokens": 27761,
-    "api_call_count": 60
+    "input_tokens": 200,
+    "cache_creation_tokens": 222208,
+    "cache_read_tokens": 4129378,
+    "output_tokens": 32100,
+    "api_call_count": 72
   }
 }
