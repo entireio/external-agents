@@ -3,7 +3,7 @@
   "checkpoint_id": "018c2b5cd218",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     ".claude/skills/entire-external-agent/SKILL.md",
     ".claude/skills/entire-external-agent/implement.md",
@@ -34,13 +34,19 @@
       "transcript": "/01/8c2b5cd218/2/full.jsonl",
       "content_hash": "/01/8c2b5cd218/2/content_hash.txt",
       "prompt": "/01/8c2b5cd218/2/prompt.txt"
+    },
+    {
+      "metadata": "/01/8c2b5cd218/3/metadata.json",
+      "transcript": "/01/8c2b5cd218/3/full.jsonl",
+      "content_hash": "/01/8c2b5cd218/3/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
-    "input_tokens": 36,
-    "cache_creation_tokens": 74125,
-    "cache_read_tokens": 841210,
-    "output_tokens": 9115,
-    "api_call_count": 26
+    "input_tokens": 42,
+    "cache_creation_tokens": 106590,
+    "cache_read_tokens": 952369,
+    "output_tokens": 11280,
+    "api_call_count": 30
   }
 }
