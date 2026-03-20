@@ -44,6 +44,27 @@ func NewTestEnv(t *testing.T, agentName string) *TestEnv {
 	}
 }
 
+// NewTestEnvWithBinary creates a test environment using an explicit binary path.
+// Use this from subpackages that build their own agent binary in TestMain.
+func NewTestEnvWithBinary(t *testing.T, binPath string) *TestEnv {
+	t.Helper()
+
+	dir := t.TempDir()
+	homeDir := t.TempDir()
+
+	env := baseEnv(dir, homeDir)
+
+	return &TestEnv{
+		t:       t,
+		Dir:     dir,
+		HomeDir: homeDir,
+		Runner: &AgentRunner{
+			BinaryPath: binPath,
+			Env:        env,
+		},
+	}
+}
+
 // NewKiroTestEnv creates a test environment with .kiro/ and .entire/tmp/ directories.
 func NewKiroTestEnv(t *testing.T) *TestEnv {
 	t.Helper()
