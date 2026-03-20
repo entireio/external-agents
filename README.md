@@ -28,9 +28,8 @@ This repo includes a skill that guides you through building a new external agent
 
 To use it:
 
-1. Clone this repo
-2. Install the plugin for your editor (see [Editor Plugin Installation](#editor-plugin-installation) below)
-3. Run `/entire-external-agent` and follow the prompts
+1. Install the plugin for your editor (see [Editor Plugin Installation](#editor-plugin-installation) below)
+2. Run `/entire-external-agent` and follow the prompts
 
 The skill files live in `.claude/skills/entire-external-agent/` if you want to read the details.
 
@@ -40,24 +39,27 @@ The skill files live in `.claude/skills/entire-external-agent/` if you want to r
 
 ```bash
 claude mcp add-from-claude-desktop  # if using Claude Desktop MCP servers
-claude --plugin-dir /path/to/external-agents/.claude/plugins/entire-external-agent
+claude --plugin-dir ./.claude/plugins/entire-external-agent
 ```
 
 ### Codex
 
-Tell Codex:
-
-```text
-Fetch and follow instructions from https://raw.githubusercontent.com/entireio/external-agents/main/.codex/INSTALL.md
+```bash
+mkdir -p ~/.agents/skills
+ln -sf "$(pwd)/.claude/skills" ~/.agents/skills/external-agents
 ```
+
+Restart Codex so it discovers the new skill directory.
 
 ### OpenCode
 
-Tell OpenCode:
-
-```text
-Fetch and follow instructions from https://raw.githubusercontent.com/entireio/external-agents/main/.opencode/INSTALL.md
+```bash
+mkdir -p ~/.config/opencode/plugins ~/.config/opencode/skills
+ln -sf "$(pwd)/.opencode/plugins/entire-external-agent.js" ~/.config/opencode/plugins/entire-external-agent.js
+ln -sf "$(pwd)/.claude/skills" ~/.config/opencode/skills/external-agents
 ```
+
+Restart OpenCode so it discovers the plugin and skill directory.
 
 ### Cursor
 

@@ -3,35 +3,18 @@
 ## Prerequisites
 
 - OpenCode installed
-- Git installed
+
+Run these commands from the repository root:
 
 ## Installation
 
-### 1. Clone the repository
-
 ```bash
-git clone https://github.com/entireio/external-agents.git ~/.config/opencode/external-agents
+mkdir -p ~/.config/opencode/plugins ~/.config/opencode/skills
+ln -sf "$(pwd)/.opencode/plugins/entire-external-agent.js" ~/.config/opencode/plugins/entire-external-agent.js
+ln -sf "$(pwd)/.claude/skills" ~/.config/opencode/skills/external-agents
 ```
 
-### 2. Register the plugin
-
-```bash
-mkdir -p ~/.config/opencode/plugins
-rm -f ~/.config/opencode/plugins/entire-external-agent.js
-ln -s ~/.config/opencode/external-agents/.opencode/plugins/entire-external-agent.js ~/.config/opencode/plugins/entire-external-agent.js
-```
-
-### 3. Symlink the shared skill directory
-
-```bash
-mkdir -p ~/.config/opencode/skills
-rm -rf ~/.config/opencode/skills/external-agents
-ln -s ~/.config/opencode/external-agents/.claude/skills ~/.config/opencode/skills/external-agents
-```
-
-### 4. Restart OpenCode
-
-Restart OpenCode so it discovers the plugin and the new skill directory.
+Restart OpenCode so it discovers the plugin and skill directory.
 
 ## Verify
 
@@ -39,6 +22,8 @@ Restart OpenCode so it discovers the plugin and the new skill directory.
 ls -l ~/.config/opencode/plugins/entire-external-agent.js
 ls -l ~/.config/opencode/skills/external-agents
 ```
+
+Both should be symlinks pointing into this repository.
 
 ## Usage
 
@@ -56,5 +41,5 @@ When the skill references Claude-oriented tools, map them to OpenCode equivalent
 ## Updating
 
 ```bash
-cd ~/.config/opencode/external-agents && git pull
+git pull
 ```

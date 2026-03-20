@@ -2,30 +2,16 @@
 
 Enable the `entire-external-agent` skill in Codex via native skill discovery.
 
-## Prerequisites
-
-- Git
+Run these commands from the repository root:
 
 ## Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/entireio/external-agents.git ~/.codex/external-agents
-   ```
+```bash
+mkdir -p ~/.agents/skills
+ln -sf "$(pwd)/.claude/skills" ~/.agents/skills/external-agents
+```
 
-2. **Create the skills symlink:**
-   ```bash
-   mkdir -p ~/.agents/skills
-   ln -s ~/.codex/external-agents/.claude/skills ~/.agents/skills/external-agents
-   ```
-
-   **Windows (PowerShell):**
-   ```powershell
-   New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.agents\skills"
-   cmd /c mklink /J "$env:USERPROFILE\.agents\skills\external-agents" "$env:USERPROFILE\.codex\external-agents\.claude\skills"
-   ```
-
-3. **Restart Codex** so it discovers the new skill directory.
+Restart Codex so it discovers the new skill directory.
 
 ## Verify
 
@@ -33,7 +19,7 @@ Enable the `entire-external-agent` skill in Codex via native skill discovery.
 ls -la ~/.agents/skills/external-agents
 ```
 
-You should see a symlink or junction pointing at `~/.codex/external-agents/.claude/skills`.
+You should see a symlink pointing at this repository's `.claude/skills` directory.
 
 ## Usage
 
@@ -42,7 +28,7 @@ Ask Codex to use the `entire-external-agent` skill when you want to research, sc
 ## Updating
 
 ```bash
-cd ~/.codex/external-agents && git pull
+git pull
 ```
 
 ## Uninstalling
