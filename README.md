@@ -26,44 +26,18 @@ This repo includes a skill that guides you through building a new external agent
 2. **Write tests** — generates E2E and unit tests against the external agent protocol
 3. **Implement** — builds the Go binary to pass all tests
 
-To use it:
+### Getting Started — Zero Setup
 
-1. Install the plugin for your editor (see [Editor Plugin Installation](#editor-plugin-installation) below)
-2. Run `/entire-external-agent` and follow the prompts
+Clone the repo and open it in your AI coding tool. Each tool auto-discovers the skill with no additional configuration:
+
+| Tool | How it discovers | What to say |
+|------|-----------------|-------------|
+| **Claude Code** | `.claude/skills/` directory | `/entire-external-agent` |
+| **Codex** | `AGENTS.md` at project root | "Build an external agent" |
+| **Cursor** | `.cursor/rules/` directory | "Build an external agent" |
+| **OpenCode** | `.opencode/plugins/` auto-loaded | "Build an external agent" |
 
 The skill files live in `.claude/skills/entire-external-agent/` if you want to read the details.
-
-## Editor Plugin Installation
-
-### Claude Code
-
-```bash
-claude mcp add-from-claude-desktop  # if using Claude Desktop MCP servers
-claude --plugin-dir ./.claude/plugins/entire-external-agent
-```
-
-### Codex
-
-```bash
-mkdir -p ~/.agents/skills
-ln -sf "$(pwd)/.claude/skills" ~/.agents/skills/external-agents
-```
-
-Restart Codex so it discovers the new skill directory.
-
-### OpenCode
-
-```bash
-mkdir -p ~/.config/opencode/plugins ~/.config/opencode/skills
-ln -sf "$(pwd)/.opencode/plugins/entire-external-agent.js" ~/.config/opencode/plugins/entire-external-agent.js
-ln -sf "$(pwd)/.claude/skills" ~/.config/opencode/skills/external-agents
-```
-
-Restart OpenCode so it discovers the plugin and skill directory.
-
-### Cursor
-
-This repo includes a Cursor plugin manifest at `.cursor-plugin/plugin.json` that points Cursor at the shared skill and command directories.
 
 ## E2E Tests
 
@@ -114,9 +88,8 @@ The shared harness auto-discovers and builds all agents in `agents/` via `TestMa
 agents/                          # Standalone external agent projects
   entire-agent-kiro/             # Kiro agent (Go binary)
 e2e/                             # Shared E2E test harness for all agents
-.claude/plugins/                 # Claude Code plugin for building agents
 .claude/skills/entire-external-agent/  # Skill files (research, test-writer, implementer)
-.codex/                          # Codex installation guide
-.opencode/                       # OpenCode installation guide + bootstrap plugin
-.cursor-plugin/                  # Cursor plugin manifest
+AGENTS.md                        # Codex auto-discovery
+.cursor/rules/                   # Cursor auto-discovery
+.opencode/plugins/               # OpenCode auto-discovery
 ```

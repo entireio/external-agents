@@ -1,15 +1,4 @@
 {
-  "extraKnownMarketplaces": {
-    "entire-external-agent-dev-tools": {
-      "source": {
-        "source": "directory",
-        "path": "./.claude/plugins"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "entire-external-agent@entire-external-agent-dev-tools": true
-  },
   "hooks": {
     "PostToolUse": [
       {

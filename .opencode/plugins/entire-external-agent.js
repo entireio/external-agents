@@ -1,45 +1,29 @@
-import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const normalizePath = (value, homeDir) => {
-  if (!value || typeof value !== 'string') {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (trimmed === '~') {
-    return homeDir;
-  }
-
-  if (trimmed.startsWith('~/')) {
-    return path.join(homeDir, trimmed.slice(2));
-  }
-
-  return path.resolve(trimmed);
-};
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(__dirname, '..', '..');
+const skillPath = path.join(
+  projectRoot,
+  '.claude',
+  'skills',
+  'entire-external-agent',
+  'SKILL.md'
+);
 
 export const EntireExternalAgentPlugin = async () => {
-  const homeDir = os.homedir();
-  const envConfigDir = normalizePath(process.env.OPENCODE_CONFIG_DIR, homeDir);
-  const configDir = envConfigDir || path.join(homeDir, '.config/opencode');
-  const skillPath = path.join(
-    configDir,
-    'skills',
-    'external-agents',
-    'entire-external-agent',
-    'SKILL.md'
-  );
-
   const bootstrap = `<EXTERNAL_AGENT_SKILL>
-The \`entire-external-agent\` skill is installed for this environment.
+The \`entire-external-agent\` skill is available in this project.
 
-Use OpenCode's native \`skill\` tool to load \`external-agents/entire-external-agent\` when the user wants to research, scaffold, implement, or validate an Entire CLI external agent.
+Use OpenCode's native \`skill\` tool to load the skill when the user wants to research, scaffold, implement, or validate an Entire CLI external agent.
 
-Installed skill path: \`${skillPath}\`
+Skill path: \`${skillPath}\`
+
+Available phases:
+- Full pipeline: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/SKILL.md')}\`
+- Research: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/researcher.md')}\`
+- Write tests: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/test-writer.md')}\`
+- Implement: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/implementer.md')}\`
 
 Tool mapping:
 - \`TodoWrite\` -> \`update_plan\`

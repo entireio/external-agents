@@ -1,0 +1,37 @@
+---
+description: Build standalone external agent binaries for the Entire CLI using E2E-first TDD
+alwaysApply: false
+---
+
+# External Agent Builder
+
+This repository includes a skill for building standalone external agent binaries that implement the Entire CLI's external agent protocol.
+
+## When to Activate
+
+Use this when the user asks to "build an external agent", "create an agent binary", "external agent plugin", or wants to research, scaffold, implement, or validate an Entire CLI external agent.
+
+## Skill Files
+
+Read these files for detailed procedures:
+
+- **Full pipeline:** `.claude/skills/entire-external-agent/SKILL.md` — runs all three phases sequentially
+- **Research:** `.claude/skills/entire-external-agent/researcher.md` — analyze the target agent
+- **Write tests:** `.claude/skills/entire-external-agent/test-writer.md` — scaffold binary + E2E harness
+- **Implement:** `.claude/skills/entire-external-agent/implementer.md` — E2E-first TDD, unit tests last
+
+## Protocol Spec
+
+The external agent protocol is defined at:
+`https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md`
+
+## Tool Mapping
+
+The skill files reference Claude Code tool names. Map them to Cursor equivalents:
+
+| Skill references | Cursor equivalent |
+|-----------------|-----------------|
+| `TodoWrite` | Cursor's task/plan tracking |
+| `Task` / subagent launches | Cursor's agent mode |
+| `Skill` tool | Read the skill file directly |
+| `Read`, `Write`, `Edit`, `Glob`, `Grep`, `Bash` | Native Cursor tools |
