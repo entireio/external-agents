@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.5.0",
+  "checkpoint_id": "7019bf5062bd",
+  "session_id": "f5a2606b-062c-4271-9e8f-de29e55aabe4",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-20T16:51:58.467509Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".claude/plugins/.claude-plugin/marketplace.json",
+    ".claude/plugins/entire-external-agent/.claude-plugin/plugin.json",
+    ".claude/plugins/entire-external-agent/README.md",
+    ".claude/plugins/entire-external-agent/commands/implement.md",
+    ".claude/plugins/entire-external-agent/commands/research.md",
+    ".claude/plugins/entire-external-agent/commands/write-tests.md",
+    ".claude/settings.json",
+    ".codex/INSTALL.md",
+    ".cursor-plugin/plugin.json",
+    ".cursor/rules/entire-external-agent.mdc",
+    ".opencode/INSTALL.md",
+    ".opencode/plugins/entire-external-agent.js",
+    "AGENTS.md",
+    "README.md"
+  ],
+  "agent": "Claude Code",
+  "turn_id": "ab2319800ca7",
+  "token_usage": {
+    "input_tokens": 19,
+    "cache_creation_tokens": 24967,
+    "cache_read_tokens": 478603,
+    "output_tokens": 6333,
+    "api_call_count": 15
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-20T16:51:58.423112Z",
+    "agent_lines": 104,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 104,
+    "agent_percentage": 100
+  }
+}
