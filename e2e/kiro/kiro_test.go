@@ -1,11 +1,13 @@
 //go:build e2e
 
-package e2e
+package kiro
 
 import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	e2e "github.com/entireio/external-agents/e2e"
 )
 
 // --- Identity ---
@@ -68,7 +70,7 @@ func TestKiro_Detect_Present(t *testing.T) {
 
 func TestKiro_Detect_Absent(t *testing.T) {
 	t.Parallel()
-	env := NewTestEnv(t, "entire-agent-kiro") // no .kiro/
+	env := e2e.NewTestEnvWithBinary(t, kiroBinary) // no .kiro/
 
 	var resp struct {
 		Present bool `json:"present"`
@@ -86,7 +88,7 @@ func TestKiro_GetSessionID(t *testing.T) {
 	t.Parallel()
 	env := NewKiroTestEnv(t)
 
-	input := HookInput{SessionID: "test-session-123"}
+	input := e2e.HookInput{SessionID: "test-session-123"}
 
 	var resp struct {
 		SessionID string `json:"session_id"`
@@ -102,7 +104,7 @@ func TestKiro_GetSessionID_Generated(t *testing.T) {
 	t.Parallel()
 	env := NewKiroTestEnv(t)
 
-	input := HookInput{}
+	input := e2e.HookInput{}
 
 	var resp struct {
 		SessionID string `json:"session_id"`
@@ -172,7 +174,7 @@ func TestKiro_WriteAndReadSession(t *testing.T) {
 	}
 
 	// Read it back
-	readInput := HookInput{
+	readInput := e2e.HookInput{
 		SessionID:  "sess-write-test",
 		SessionRef: sessionRef,
 	}
@@ -276,7 +278,7 @@ func TestKiro_ParseHook_PromptSubmit(t *testing.T) {
 	t.Parallel()
 	env := NewKiroTestEnv(t)
 
-	input := ParseHookInput{Prompt: "do the thing"}
+	input := e2e.ParseHookInput{Prompt: "do the thing"}
 
 	var resp struct {
 		Type      int    `json:"type"`
@@ -308,7 +310,7 @@ func TestKiro_ParseHook_Stop(t *testing.T) {
 	t.Parallel()
 	env := NewKiroTestEnv(t)
 
-	input := ParseHookInput{CWD: env.Dir}
+	input := e2e.ParseHookInput{CWD: env.Dir}
 
 	var resp struct {
 		Type      int    `json:"type"`
