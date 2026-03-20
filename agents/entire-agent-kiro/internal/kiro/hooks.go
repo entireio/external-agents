@@ -429,12 +429,6 @@ func marshalJSON(v any) ([]byte, error) {
 	return append(data, '\n'), nil
 }
 
-func isEntireIDEHook(hook kiroIDEHookFile) bool {
-	return strings.HasPrefix(hook.Name, "entire-") &&
-		(strings.HasPrefix(hook.Then.Command, prodHookCommandBase) ||
-			strings.HasPrefix(hook.Then.Command, localDevCommandBase))
-}
-
 func (a *Agent) generateAndCacheSessionID() string {
 	sessionID := generateSessionID()
 	cachePath := a.sessionIDCachePath()

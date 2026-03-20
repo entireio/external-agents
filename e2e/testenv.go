@@ -65,23 +65,6 @@ func NewTestEnvWithBinary(t *testing.T, binPath string) *TestEnv {
 	}
 }
 
-// NewKiroTestEnv creates a test environment with .kiro/ and .entire/tmp/ directories.
-func NewKiroTestEnv(t *testing.T) *TestEnv {
-	t.Helper()
-	te := NewTestEnv(t, "entire-agent-kiro")
-	te.MkdirAll(".kiro")
-	te.MkdirAll(".entire/tmp")
-	return te
-}
-
-// NewKiroGitEnv creates a Kiro test environment with git init.
-func NewKiroGitEnv(t *testing.T) *TestEnv {
-	t.Helper()
-	te := NewKiroTestEnv(t)
-	te.GitInit()
-	return te
-}
-
 // WriteFile writes content to a path relative to the test environment root.
 func (e *TestEnv) WriteFile(relPath, content string) {
 	e.t.Helper()
