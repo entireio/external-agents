@@ -1,3 +1,11 @@
+---
+name: implement
+description: >
+  Phase 3: Build the external agent binary using strict E2E-first TDD.
+  Use /entire-external-agent implement or /entire-external-agent:implement
+  when you only need the implementation phase.
+---
+
 # Implement Procedure
 
 Build the external agent binary using strict E2E-first TDD. E2E tests drive development at every step — run each tier, watch it fail, implement the minimum fix, repeat. Unit tests are written only after all E2E tiers pass, using real data from E2E runs as golden fixtures.

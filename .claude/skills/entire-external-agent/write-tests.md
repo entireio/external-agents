@@ -1,3 +1,12 @@
+---
+name: write-tests
+description: >
+  Phase 2: Scaffold the external agent binary and add E2E tests to the shared
+  harness. Tests define the spec for the implement phase.
+  Use /entire-external-agent write-tests or /entire-external-agent:write-tests
+  when you only need test scaffolding.
+---
+
 # Write-Tests Procedure
 
 Scaffold the external agent binary and add E2E tests to the shared repo-root `e2e/` harness. The harness auto-discovers all agents and exercises each one via protocol subcommands and full lifecycle integration (entire enable, agent invocation, checkpoint validation). Tests are expected to fail — they define the spec for the implement phase.

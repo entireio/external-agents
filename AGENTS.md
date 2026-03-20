@@ -7,9 +7,9 @@ This repository includes a skill that guides you through building standalone ext
 | Command | Skill file | Description |
 |---------|-----------|-------------|
 | Full pipeline | `.claude/skills/entire-external-agent/SKILL.md` | Run all three phases sequentially |
-| Research | `.claude/skills/entire-external-agent/researcher.md` | Analyze the target agent's capabilities and map to the protocol |
-| Write tests | `.claude/skills/entire-external-agent/test-writer.md` | Scaffold the binary and create E2E test harness |
-| Implement | `.claude/skills/entire-external-agent/implementer.md` | Build the binary using E2E-first TDD (unit tests last) |
+| Research | `.claude/skills/entire-external-agent/research.md` | Analyze the target agent's capabilities and map to the protocol |
+| Write tests | `.claude/skills/entire-external-agent/write-tests.md` | Scaffold the binary and create E2E test harness |
+| Implement | `.claude/skills/entire-external-agent/implement.md` | Build the binary using E2E-first TDD (unit tests last) |
 
 ## How to Use
 

@@ -21,9 +21,9 @@ Skill path: \`${skillPath}\`
 
 Available phases:
 - Full pipeline: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/SKILL.md')}\`
-- Research: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/researcher.md')}\`
-- Write tests: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/test-writer.md')}\`
-- Implement: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/implementer.md')}\`
+- Research: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/research.md')}\`
+- Write tests: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/write-tests.md')}\`
+- Implement: \`${path.join(projectRoot, '.claude/skills/entire-external-agent/implement.md')}\`
 
 Tool mapping:
 - \`TodoWrite\` -> \`update_plan\`

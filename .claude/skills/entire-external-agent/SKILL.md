@@ -3,8 +3,8 @@ name: entire-external-agent
 description: >
   Run all three external agent binary phases sequentially: research, write-tests,
   and implement using E2E-first TDD (unit tests written last).
-  For individual phases, use /entire-external-agent:research,
-  /entire-external-agent:write-tests, or /entire-external-agent:implement.
+  Accepts an optional argument to run a single phase: research, write-tests, or implement.
+  Usage: /entire-external-agent [phase] — omit phase to run full pipeline.
   Use when the user says "build external agent", "create agent binary",
   "external agent plugin", or wants to run the full pipeline end-to-end.
 ---
@@ -25,6 +25,17 @@ Collect these before starting (ask the user if not provided):
 | `PROJECT_DIR` | Where to create the project | Default: `./entire-agent-<AGENT_SLUG>` |
 | `CAPABILITIES` | Which optional capabilities to implement | Derived from research phase |
 | `ENTIRE_BIN` | Path to the Entire CLI binary | Default: `entire` from PATH, or `E2E_ENTIRE_BIN` env |
+
+## Phase Selection
+
+This skill accepts an optional argument to run a single phase:
+
+- `/entire-external-agent research` — Run only Phase 1 (research)
+- `/entire-external-agent write-tests` — Run only Phase 2 (scaffold + E2E tests)
+- `/entire-external-agent implement` — Run only Phase 3 (E2E-first TDD implementation)
+- `/entire-external-agent` (no argument) — Run all three phases sequentially
+
+If an argument is provided, skip directly to that phase's procedure. Parameters and prerequisites still apply — collect them before starting.
 
 ## Protocol Spec
 
@@ -51,7 +62,7 @@ Run these three phases in order. Each phase builds on the previous phase's outpu
 
 Discover the target agent's hook mechanism, transcript format, session management, and configuration. Map native concepts to protocol subcommands. Produces `<PROJECT_DIR>/AGENT.md` with protocol mapping and E2E prerequisites.
 
-Read and follow the research procedure from `.claude/skills/entire-external-agent/researcher.md`.
+Use the Read tool to read the file `.claude/skills/entire-external-agent/research.md` and follow the procedure it contains.
 
 **Expected output:** `<PROJECT_DIR>/AGENT.md` — agent research one-pager with protocol mapping and E2E test prerequisites.
 
@@ -63,7 +74,7 @@ Read and follow the research procedure from `.claude/skills/entire-external-agen
 
 Scaffold the binary with compilable stubs and create a self-contained `e2e/` test harness in the project directory. The harness exercises the full human workflow: `entire enable`, real agent invocation, hook firing, checkpoint validation. Tests are expected to fail at this stage — they define the spec.
 
-Read and follow the procedure from `.claude/skills/entire-external-agent/test-writer.md`.
+Use the Read tool to read the file `.claude/skills/entire-external-agent/write-tests.md` and follow the procedure it contains.
 
 **Expected output:** Complete project directory at `<PROJECT_DIR>` with compiled binary stubs and `e2e/` test harness that compiles but fails.
 
@@ -73,7 +84,7 @@ Read and follow the procedure from `.claude/skills/entire-external-agent/test-wr
 
 Build the real agent binary using strict E2E-first TDD. E2E tests drive development at every step — run each tier, watch it fail, implement the minimum fix, repeat. Unit tests are written only after all E2E tiers pass, using real data from E2E runs as golden fixtures.
 
-Read and follow the implement procedure from `.claude/skills/entire-external-agent/implementer.md`.
+Use the Read tool to read the file `.claude/skills/entire-external-agent/implement.md` and follow the procedure it contains.
 
 **Expected output:** Fully implemented binary where all E2E tests pass and unit tests lock in behavior.
 

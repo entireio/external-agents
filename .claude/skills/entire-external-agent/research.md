@@ -1,3 +1,11 @@
+---
+name: research
+description: >
+  Phase 1: Assess a target agent's capabilities and produce a protocol mapping
+  for building an external agent binary. Use /entire-external-agent research
+  or /entire-external-agent:research when you only need the research phase.
+---
+
 # Research Procedure
 
 Assess a target agent's capabilities and produce a protocol mapping for building an external agent binary.
