@@ -1,9 +1,11 @@
 {
   "cli_version": "0.5.0",
   "checkpoint_id": "018c2b5cd218",
+  "session_id": "0ab42e8f-1249-4ff2-818d-f038b06e1993",
   "strategy": "manual-commit",
+  "created_at": "2026-03-20T17:38:35.513817Z",
   "branch": "main",
-  "checkpoints_count": 1,
+  "checkpoints_count": 0,
   "files_touched": [
     ".claude/skills/entire-external-agent/SKILL.md",
     ".claude/skills/entire-external-agent/implement.md",
@@ -16,25 +18,22 @@
     ".opencode/plugins/entire-external-agent.js",
     "AGENTS.md"
   ],
-  "sessions": [
-    {
-      "metadata": "/01/8c2b5cd218/0/metadata.json",
-      "transcript": "/01/8c2b5cd218/0/full.jsonl",
-      "content_hash": "/01/8c2b5cd218/0/content_hash.txt",
-      "prompt": ""
-    },
-    {
-      "metadata": "/01/8c2b5cd218/1/metadata.json",
-      "transcript": "/01/8c2b5cd218/1/full.jsonl",
-      "content_hash": "/01/8c2b5cd218/1/content_hash.txt",
-      "prompt": "/01/8c2b5cd218/1/prompt.txt"
-    }
-  ],
+  "agent": "Claude Code",
+  "turn_id": "839d0aa9a35d",
   "token_usage": {
-    "input_tokens": 24,
-    "cache_creation_tokens": 52343,
-    "cache_read_tokens": 637379,
-    "output_tokens": 6608,
-    "api_call_count": 18
+    "input_tokens": 10,
+    "cache_creation_tokens": 14504,
+    "cache_read_tokens": 151862,
+    "output_tokens": 2041,
+    "api_call_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-20T17:38:35.487985Z",
+    "agent_lines": 863,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 863,
+    "agent_percentage": 100
   }
 }
