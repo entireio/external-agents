@@ -18,6 +18,8 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 |-------|-----------|--------|
 | [Kiro](agents/entire-agent-kiro/) | `agents/entire-agent-kiro/` | Implemented — hooks + transcript analysis |
 
+See each agent's own README for setup and usage instructions.
+
 ## Building a New External Agent
 
 This repo includes a skill that guides you through building a new external agent using an E2E-first TDD pipeline. The skill runs in three phases:
