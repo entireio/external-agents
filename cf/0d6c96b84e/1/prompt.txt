@@ -7,3 +7,11 @@ well it must be storing the data somewhere since I can close the sesstion in the
 ---
 
 give prompt to give frontend claude to fix kiro transcript parser
+
+---
+
+commit
+
+---
+
+commit
