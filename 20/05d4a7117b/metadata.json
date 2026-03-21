@@ -3,7 +3,7 @@
   "checkpoint_id": "2005d4a7117b",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "agents/entire-agent-kiro/internal/kiro/transcript.go",
     "agents/entire-agent-kiro/internal/kiro/transcript_test.go"
@@ -14,13 +14,19 @@
       "transcript": "/20/05d4a7117b/0/full.jsonl",
       "content_hash": "/20/05d4a7117b/0/content_hash.txt",
       "prompt": "/20/05d4a7117b/0/prompt.txt"
+    },
+    {
+      "metadata": "/20/05d4a7117b/1/metadata.json",
+      "transcript": "/20/05d4a7117b/1/full.jsonl",
+      "content_hash": "/20/05d4a7117b/1/content_hash.txt",
+      "prompt": "/20/05d4a7117b/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 9014,
-    "cache_creation_tokens": 227843,
-    "cache_read_tokens": 22096625,
-    "output_tokens": 68932,
-    "api_call_count": 152
+    "input_tokens": 9052,
+    "cache_creation_tokens": 311182,
+    "cache_read_tokens": 24033754,
+    "output_tokens": 89949,
+    "api_call_count": 180
   }
 }
