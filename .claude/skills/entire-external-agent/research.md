@@ -166,6 +166,76 @@ Run the script and analyze the captured payloads:
 
 If the script cannot be run (agent not installed, auth required, sandbox restrictions), follow the Blocker Handling procedure and note in the one-pager that findings are doc-based only and not verified.
 
+### Phase 3b: Verify Stored Data Completeness
+
+Hook payloads tell you *when* events fire, but not whether the agent's stored data (sessions, transcripts) actually contains usable content. IDEs often store placeholder text in session files while keeping the real data in a separate location (execution logs, databases, caches). **You must verify this before writing the one-pager.**
+
+#### Step 1: Use distinctive prompts in a test repo
+
+Create a test repo and run 2-3 prompts with greppable content:
+- Ask the agent to summarize a URL (produces a known response)
+- Ask it to create a file (produces tool calls + file writes)
+- Ask a follow-up question (produces a multi-turn session)
+
+These give you specific strings to search for across all storage locations.
+
+#### Step 2: Inspect session/transcript files for actual content
+
+Read the session files identified in Phase 2 and check each assistant message:
+- Does it contain the **actual response text** you saw in the UI, or just a placeholder like `"On it."`, `"Working..."`, `"Sure"`, or empty string?
+- Are **tool calls** recorded with their names, inputs, and outputs?
+- Is the `completion` / `response` / `content` field populated or empty?
+- Do `promptLogs` or similar fields contain the full model output?
+
+**If assistant content is placeholder-only, the agent stores real data elsewhere.** Proceed to Step 3.
+
+#### Step 3: Find ALL recently modified files
+
+Before running a prompt, create a timestamp marker. After the prompt completes, find everything the IDE touched:
+
+```bash
+touch /tmp/before-marker
+# ... run your prompt in the IDE ...
+find ~/Library/Application\ Support/<agent>/ -type f -newer /tmp/before-marker 2>/dev/null
+# Linux: find ~/.config/<agent>/ -type f -newer /tmp/before-marker
+```
+
+This reveals hidden storage that documentation may not mention — execution logs, per-turn action traces, content-addressed caches, etc.
+
+#### Step 4: Search for your distinctive response
+
+Grep the entire IDE data directory for the known response text from your test prompts:
+
+```bash
+grep -rl "your distinctive response text" ~/Library/Application\ Support/<agent>/ 2>/dev/null
+```
+
+This definitively locates where the real data lives. Read the matching files to understand their format.
+
+#### Step 5: Map the IDE's internal ID system
+
+Look for cross-referencing IDs that link session files to the real data:
+- Session IDs, execution IDs, conversation IDs, workspace IDs
+- How they cross-reference (e.g., session file has `executionId` → execution log has matching field)
+- Whether IDs are deterministic (computable from workspace path or session ID) or opaque (require scanning)
+- Whether directory names are hashes, base64-encoded paths, or opaque
+
+#### Step 6: Verify hook data flow
+
+Confirm hooks actually receive the data you expect:
+- Create a diagnostic hook that dumps everything to a file: `sh -c 'cat > /tmp/hook-dump-$(date +%s).json'`
+- For each hook type, check: Does stdin contain JSON? Are env vars set? Are args passed?
+- **Watch for stdin redirects** — some IDEs wrap hook commands in `sh -c '... </dev/null'` which blocks stdin data flow
+- If hooks receive empty input, determine if the IDE passes data via environment variables, command arguments, or not at all
+
+#### Step 7: Document findings
+
+Record what you found for the one-pager:
+- Primary storage: where session/conversation state lives (even if incomplete)
+- Secondary storage: where the real response/tool data lives (execution logs, databases, etc.)
+- Cross-reference mechanism: how to link primary → secondary (IDs, timestamps, etc.)
+- Hook data availability: what each hook type actually receives
+
 ## Phase 4: Write the One-Pager
 
 Create `<PROJECT_DIR>/AGENT.md` (create the directory first if needed).
@@ -218,6 +288,16 @@ Template:
 - Token usage field: (if available)
 - Example entry: `{"role": "user", "content": "..."}`
 
+## Data Storage Verification
+- Session files contain actual assistant content: YES / NO — PLACEHOLDER ONLY
+- If placeholder: what do session files contain instead? (e.g., "On it.", empty completion field)
+- Secondary storage location: (path pattern for execution logs, databases, etc. — or "none found")
+- Secondary storage format: (JSON per execution, SQLite, JSONL, etc.)
+- Cross-reference key: (how session entries link to secondary storage, e.g., executionId field)
+- Hook data flow verified: YES / BROKEN (does hook stdin/env actually contain expected data?)
+- If broken: what blocks data flow? (e.g., `</dev/null` redirect, missing env vars)
+- Verification method: (grep for known response, find recently modified files, diagnostic hook dump)
+
 ## Protocol Mapping
 | Subcommand | Native Concept | Implementation Notes | Feasibility |
 |-----------|---------------|---------------------|-------------|
@@ -236,6 +316,9 @@ Template:
 
 ## Gaps & Limitations
 - ... (anything that doesn't map cleanly or requires workarounds)
+- Note if session files contain placeholder content instead of real responses
+- Note if hooks receive empty stdin or missing env vars
+- Note if secondary storage requires directory scanning (opaque hashes, etc.)
 
 ## Captured Payloads
 - Verification script: `<PROJECT_DIR>/scripts/verify-<AGENT_SLUG>.sh`
