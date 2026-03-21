@@ -1,0 +1,41 @@
+need to do deep dive of transcript stuff for kiro ide. test repo is /Users/alisha/Projects/test-repos/kireide I don't see the agent responses or tool calls in the transcripts. see image of what was asked then look at /Users/alisha/Projects/test-repos/kireide/.entire/metadata folder
+
+---
+
+well it must be storing the data somewhere since I can close the sesstion in the ide and reopen it?
+
+---
+
+give prompt to give frontend claude to fix kiro transcript parser
+
+---
+
+commit
+
+---
+
+commit
+
+---
+
+push
+
+---
+
+there was a lot of thrashing to figure this out. is there anything that can be added to claude.md / agent.md to help with future external agent implementations
+
+---
+
+commit and push
+
+---
+
+no don't put in on branch with pr keep changes on main and push to main
+
+---
+
+time to do another deep dive. test repo is /Users/alisha/Projects/test-repos/kiroide. these are screenshots of the frontend. the first checkpoint the session is doubled and the second checkpoint shows the first checkpoints session instead of its session about creating hello world rust
+
+---
+
+wrong repo. this is the correct one /Users/alisha/Projects/test-repos/kiroide
