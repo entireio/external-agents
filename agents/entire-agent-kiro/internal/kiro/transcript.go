@@ -96,7 +96,7 @@ func (a *Agent) querySessionID(cwd string) (string, error) {
 	return "", nil
 }
 
-func (a *Agent) ensureCachedTranscript(cwd string, sessionID string) (string, error) {
+func (a *Agent) ensureCachedTranscript(cwd string, sessionID string, conversationID string) (string, error) {
 	db, err := kiroCLIDataDBPath()
 	if err != nil {
 		return "", err
@@ -105,18 +105,26 @@ func (a *Agent) ensureCachedTranscript(cwd string, sessionID string) (string, er
 		return "", fmt.Errorf("kiro database not found at %s: %w", db, err)
 	}
 
-	query := fmt.Sprintf(
-		"SELECT value FROM conversations_v2 WHERE key = '%s' ORDER BY updated_at DESC LIMIT 1",
-		escapeSQLString(cwd),
-	)
+	var query string
+	if conversationID != "" {
+		query = fmt.Sprintf(
+			"SELECT value FROM conversations_v2 WHERE json_extract(value, '$.conversation_id') = '%s' ORDER BY updated_at DESC LIMIT 1",
+			escapeSQLString(conversationID),
+		)
+	} else {
+		query = fmt.Sprintf(
+			"SELECT value FROM conversations_v2 WHERE key = '%s' ORDER BY updated_at DESC LIMIT 1",
+			escapeSQLString(cwd),
+		)
+	}
 
 	out, err := runSQLiteCommand(db, query)
 	if err != nil {
 		return "", fmt.Errorf("sqlite3 transcript query failed: %w", err)
 	}
 
-	transcript := strings.TrimSpace(string(out))
-	if transcript == "" {
+	raw := strings.TrimSpace(string(out))
+	if raw == "" {
 		return "", errors.New("no transcript found")
 	}
 
@@ -124,10 +132,85 @@ func (a *Agent) ensureCachedTranscript(cwd string, sessionID string) (string, er
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(cachePath, []byte(transcript), 0o600); err != nil {
+
+	data := []byte(raw)
+	if filtered, ok := a.trimTranscriptHistory([]byte(raw)); ok {
+		data = filtered
+	}
+
+	if err := os.WriteFile(cachePath, data, 0o600); err != nil {
 		return "", fmt.Errorf("failed to write cached transcript: %w", err)
 	}
 	return cachePath, nil
+}
+
+type transcriptOffset struct {
+	ConversationID string `json:"conversation_id"`
+	Position       int    `json:"position"`
+}
+
+func (a *Agent) transcriptOffsetPath() string {
+	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", "kiro-transcript-offset.json")
+}
+
+func readTranscriptOffset(path string) transcriptOffset {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return transcriptOffset{}
+	}
+	var offset transcriptOffset
+	if err := json.Unmarshal(data, &offset); err != nil {
+		return transcriptOffset{}
+	}
+	return offset
+}
+
+func writeTranscriptOffset(path string, offset transcriptOffset) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	data, err := json.Marshal(offset)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o600)
+}
+
+// trimTranscriptHistory trims already-checkpointed entries from a cumulative
+// kiro transcript using a stored offset. Returns the re-serialized trimmed
+// JSON and true if trimming was applied, or (nil, false) if the full
+// transcript should be used as-is.
+func (a *Agent) trimTranscriptHistory(raw []byte) ([]byte, bool) {
+	parsed, err := parseTranscript(raw)
+	if err != nil || len(parsed.History) == 0 {
+		return nil, false
+	}
+
+	offsetPath := a.transcriptOffsetPath()
+	prev := readTranscriptOffset(offsetPath)
+	totalLen := len(parsed.History)
+
+	trimFrom := 0
+	if prev.ConversationID == parsed.ConversationID && prev.Position > 0 && prev.Position <= totalLen {
+		trimFrom = prev.Position
+	}
+
+	// Always update the offset to the full (pre-trim) history length.
+	_ = writeTranscriptOffset(offsetPath, transcriptOffset{
+		ConversationID: parsed.ConversationID,
+		Position:       totalLen,
+	})
+
+	if trimFrom == 0 {
+		return nil, false
+	}
+
+	parsed.History = parsed.History[trimFrom:]
+	filtered, err := json.Marshal(parsed)
+	if err != nil {
+		return nil, false
+	}
+	return filtered, true
 }
 
 func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error) {
@@ -175,8 +258,8 @@ func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error
 	return cachePath, nil
 }
 
-func (a *Agent) captureTranscriptForStop(cwd string, sessionID string) string {
-	if sessionRef, err := a.ensureCachedTranscript(cwd, sessionID); err == nil && sessionRef != "" {
+func (a *Agent) captureTranscriptForStop(cwd string, sessionID string, conversationID string) string {
+	if sessionRef, err := a.ensureCachedTranscript(cwd, sessionID, conversationID); err == nil && sessionRef != "" {
 		return sessionRef
 	}
 	if sessionRef, err := a.ensureIDETranscript(cwd, sessionID); err == nil && sessionRef != "" {

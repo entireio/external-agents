@@ -26,7 +26,7 @@ const (
 	localDevCommandBase = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
 	localDevTrustedCmd  = "sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
 	prodHookCommandBase = "entire hooks kiro "
-	sessionIDFile       = "kiro-active-session"
+	sessionIDFile = "kiro-active-session"
 )
 
 type ideHookDef struct {
@@ -81,15 +81,15 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 			cwd = protocol.RepoRoot()
 		}
 		sessionID := a.readCachedSessionID()
+		conversationID, _ := a.querySessionID(cwd)
 		if sessionID == "" {
-			nativeSessionID, err := a.querySessionID(cwd)
-			if err == nil && nativeSessionID != "" {
-				sessionID = nativeSessionID
+			if conversationID != "" {
+				sessionID = conversationID
 			} else {
 				sessionID = fallbackStopSessionID()
 			}
 		}
-		sessionRef := a.captureTranscriptForStop(cwd, sessionID)
+		sessionRef := a.captureTranscriptForStop(cwd, sessionID, conversationID)
 		a.clearCachedSessionID()
 		return &protocol.EventJSON{
 			Type:       3,
@@ -453,6 +453,7 @@ func (a *Agent) clearCachedSessionID() {
 func (a *Agent) sessionIDCachePath() string {
 	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", sessionIDFile)
 }
+
 
 func fallbackStopSessionID() string {
 	return generateSessionID()

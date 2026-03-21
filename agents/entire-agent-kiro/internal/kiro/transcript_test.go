@@ -3,7 +3,9 @@ package kiro
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -156,7 +158,7 @@ func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 	})
 	defer restore()
 
-	cachePath, err := New().ensureCachedTranscript(repoRoot, "stable-session")
+	cachePath, err := New().ensureCachedTranscript(repoRoot, "stable-session", "")
 	if err != nil {
 		t.Fatalf("ensureCachedTranscript() error = %v", err)
 	}
@@ -170,6 +172,7 @@ func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read cached transcript: %v", err)
 	}
+	// No start time cached, so full transcript is written (re-serialized has no whitespace changes for empty history)
 	want := `{"conversation_id":"cli-session","history":[]}`
 	if string(data) != want {
 		t.Fatalf("cached transcript = %q, want %q", string(data), want)
@@ -253,13 +256,26 @@ func TestParseHookStopPrefersSQLiteTranscript(t *testing.T) {
 
 	db := createFakeKiroDB(t, home)
 	restore := stubSQLiteRunner(t, func(args ...string) ([]byte, error) {
-		if len(args) != 2 {
-			t.Fatalf("sqlite args = %#v, want [<db> <query>]", args)
+		// The stop hook now calls querySessionID (3 args: -json, db, query)
+		// and then ensureCachedTranscript (2 args: db, query).
+		switch len(args) {
+		case 3:
+			if args[0] != "-json" {
+				t.Fatalf("sqlite mode = %q, want %q", args[0], "-json")
+			}
+			if args[1] != db {
+				t.Fatalf("sqlite db = %q, want %q", args[1], db)
+			}
+			return []byte(`[{"json_extract(value, '$.conversation_id')":"cli-session"}]`), nil
+		case 2:
+			if args[0] != db {
+				t.Fatalf("sqlite db = %q, want %q", args[0], db)
+			}
+			return []byte(`{"conversation_id":"cli-session","history":[]}`), nil
+		default:
+			t.Fatalf("unexpected sqlite args count: %d", len(args))
+			return nil, nil
 		}
-		if args[0] != db {
-			t.Fatalf("sqlite db = %q, want %q", args[0], db)
-		}
-		return []byte(`{"conversation_id":"cli-session","history":[]}`), nil
 	})
 	defer restore()
 
@@ -565,5 +581,255 @@ func TestPlaceholderTranscriptAnalyzerReturnsNoFilesPromptsOrSummary(t *testing.
 	}
 	if summary != "" {
 		t.Fatalf("summary = %q, want empty", summary)
+	}
+}
+
+// buildTranscript creates a kiro CLI transcript with the given number of prompt entries.
+func buildTranscript(convID string, numPrompts int) []byte {
+	var entries []kiroHistoryEntry
+	for i := range numPrompts {
+		promptJSON, _ := json.Marshal(kiroPromptContent{
+			Prompt: struct {
+				Prompt string `json:"prompt"`
+			}{Prompt: fmt.Sprintf("prompt %d", i)},
+		})
+		entries = append(entries, kiroHistoryEntry{
+			User: kiroUserMessage{Content: promptJSON},
+		})
+	}
+	transcript := kiroTranscript{ConversationID: convID, History: entries}
+	data, _ := json.Marshal(transcript)
+	return data
+}
+
+func seedTranscriptOffset(t *testing.T, repoRoot string, convID string, position int) {
+	t.Helper()
+	offsetPath := filepath.Join(repoRoot, ".entire", "tmp", "kiro-transcript-offset.json")
+	if err := os.MkdirAll(filepath.Dir(offsetPath), 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	data, _ := json.Marshal(transcriptOffset{ConversationID: convID, Position: position})
+	if err := os.WriteFile(offsetPath, data, 0o600); err != nil {
+		t.Fatalf("write offset: %v", err)
+	}
+}
+
+func readTestTranscriptOffset(t *testing.T, repoRoot string) transcriptOffset {
+	t.Helper()
+	offsetPath := filepath.Join(repoRoot, ".entire", "tmp", "kiro-transcript-offset.json")
+	return readTranscriptOffset(offsetPath)
+}
+
+func TestEnsureCachedTranscriptTrimsWithOffset(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	transcriptData := buildTranscript("conv-1", 8)
+
+	db := createFakeKiroDB(t, home)
+	restore := stubSQLiteRunner(t, func(args ...string) ([]byte, error) {
+		if args[0] != db {
+			t.Fatalf("sqlite db = %q, want %q", args[0], db)
+		}
+		return transcriptData, nil
+	})
+	defer restore()
+
+	seedTranscriptOffset(t, repoRoot, "conv-1", 4)
+
+	cachePath, err := New().ensureCachedTranscript(repoRoot, "test-session", "")
+	if err != nil {
+		t.Fatalf("ensureCachedTranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+
+	var result kiroTranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+
+	if len(result.History) != 4 {
+		t.Fatalf("history length = %d, want 4 (entries 4-7)", len(result.History))
+	}
+
+	firstPrompt := extractUserPrompt(result.History[0].User.Content)
+	if firstPrompt != "prompt 4" {
+		t.Fatalf("first prompt = %q, want %q", firstPrompt, "prompt 4")
+	}
+
+	offset := readTestTranscriptOffset(t, repoRoot)
+	if offset.Position != 8 {
+		t.Fatalf("offset position = %d, want 8", offset.Position)
+	}
+}
+
+func TestEnsureCachedTranscriptFirstCapture(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	transcriptData := buildTranscript("conv-1", 4)
+
+	db := createFakeKiroDB(t, home)
+	restore := stubSQLiteRunner(t, func(args ...string) ([]byte, error) {
+		if args[0] != db {
+			t.Fatalf("sqlite db = %q, want %q", args[0], db)
+		}
+		return transcriptData, nil
+	})
+	defer restore()
+
+	// No offset file — full transcript should be written.
+	cachePath, err := New().ensureCachedTranscript(repoRoot, "test-session", "")
+	if err != nil {
+		t.Fatalf("ensureCachedTranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+
+	var result kiroTranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+
+	if len(result.History) != 4 {
+		t.Fatalf("history length = %d, want 4 (full transcript)", len(result.History))
+	}
+
+	offset := readTestTranscriptOffset(t, repoRoot)
+	if offset.ConversationID != "conv-1" || offset.Position != 4 {
+		t.Fatalf("offset = %+v, want {conv-1, 4}", offset)
+	}
+}
+
+func TestEnsureCachedTranscriptConversationIDChange(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	transcriptData := buildTranscript("new-conv", 3)
+
+	db := createFakeKiroDB(t, home)
+	restore := stubSQLiteRunner(t, func(args ...string) ([]byte, error) {
+		if args[0] != db {
+			t.Fatalf("sqlite db = %q, want %q", args[0], db)
+		}
+		return transcriptData, nil
+	})
+	defer restore()
+
+	// Offset from a different conversation.
+	seedTranscriptOffset(t, repoRoot, "old-conv", 5)
+
+	cachePath, err := New().ensureCachedTranscript(repoRoot, "test-session", "")
+	if err != nil {
+		t.Fatalf("ensureCachedTranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+
+	var result kiroTranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+
+	// Full transcript (no trimming) since conversation_id changed.
+	if len(result.History) != 3 {
+		t.Fatalf("history length = %d, want 3 (full, new conversation)", len(result.History))
+	}
+
+	offset := readTestTranscriptOffset(t, repoRoot)
+	if offset.ConversationID != "new-conv" || offset.Position != 3 {
+		t.Fatalf("offset = %+v, want {new-conv, 3}", offset)
+	}
+}
+
+func TestEnsureCachedTranscriptOffsetExceedsLength(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	transcriptData := buildTranscript("conv-1", 3)
+
+	db := createFakeKiroDB(t, home)
+	restore := stubSQLiteRunner(t, func(args ...string) ([]byte, error) {
+		if args[0] != db {
+			t.Fatalf("sqlite db = %q, want %q", args[0], db)
+		}
+		return transcriptData, nil
+	})
+	defer restore()
+
+	// Offset exceeds transcript length.
+	seedTranscriptOffset(t, repoRoot, "conv-1", 100)
+
+	cachePath, err := New().ensureCachedTranscript(repoRoot, "test-session", "")
+	if err != nil {
+		t.Fatalf("ensureCachedTranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+
+	var result kiroTranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+
+	// Full transcript (no trimming) since offset exceeds length.
+	if len(result.History) != 3 {
+		t.Fatalf("history length = %d, want 3 (full, offset exceeded)", len(result.History))
+	}
+
+	offset := readTestTranscriptOffset(t, repoRoot)
+	if offset.Position != 3 {
+		t.Fatalf("offset position = %d, want 3 (reset)", offset.Position)
+	}
+}
+
+func TestEnsureCachedTranscriptQueriesByConversationID(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	db := createFakeKiroDB(t, home)
+	var capturedQuery string
+	restore := stubSQLiteRunner(t, func(args ...string) ([]byte, error) {
+		if args[0] != db {
+			t.Fatalf("sqlite db = %q, want %q", args[0], db)
+		}
+		capturedQuery = args[1]
+		return []byte(`{"conversation_id":"target-conv","history":[]}`), nil
+	})
+	defer restore()
+
+	_, err := New().ensureCachedTranscript(repoRoot, "test-session", "target-conv")
+	if err != nil {
+		t.Fatalf("ensureCachedTranscript() error = %v", err)
+	}
+
+	if !strings.Contains(capturedQuery, "target-conv") {
+		t.Fatalf("query should contain conversation_id, got: %s", capturedQuery)
+	}
+	if !strings.Contains(capturedQuery, "json_extract") {
+		t.Fatalf("query should use json_extract for conversation_id, got: %s", capturedQuery)
 	}
 }

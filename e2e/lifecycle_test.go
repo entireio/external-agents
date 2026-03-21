@@ -31,6 +31,10 @@ func TestLifecycle_SinglePromptManualCommit(t *testing.T) {
 
 		cpID := testutil.AssertHasCheckpointTrailer(t, s.Dir, "HEAD")
 		testutil.AssertCheckpointExists(t, s.Dir, cpID)
+		testutil.ValidateCheckpointDeep(t, s.Dir, testutil.DeepCheckpointValidation{
+			CheckpointID:              cpID,
+			ExpectedTranscriptContent: []string{"hello"},
+		})
 	})
 }
 
