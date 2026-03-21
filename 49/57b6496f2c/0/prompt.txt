@@ -1,0 +1,17 @@
+look at my test kiro repo at /Users/alisha/Projects/test-repos/kirocli  the last checkpoint has the transcript from the checkpoint before. please debug and fix the external agent code
+
+---
+
+how would query db fix work?
+
+---
+
+what is CWD
+
+---
+
+hmm so it keeps one long history for the entire repo? but if I close and reopen the kiro cli chat it must create a new row?
+
+---
+
+I tested it in the /Users/alisha/Projects/test-repos/kirocli repo the last two checkpoints and neither have agent transcripts. also shouldn't the e2e tests be failing if there are no transcripts?

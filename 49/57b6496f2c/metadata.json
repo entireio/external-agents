@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "4957b6496f2c",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "agents/entire-agent-kiro/internal/kiro/hooks.go",
+    "agents/entire-agent-kiro/internal/kiro/transcript.go",
+    "agents/entire-agent-kiro/internal/kiro/transcript_test.go",
+    "e2e/lifecycle_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/49/57b6496f2c/0/metadata.json",
+      "transcript": "/49/57b6496f2c/0/full.jsonl",
+      "content_hash": "/49/57b6496f2c/0/content_hash.txt",
+      "prompt": "/49/57b6496f2c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 4478,
+    "cache_creation_tokens": 413292,
+    "cache_read_tokens": 21150928,
+    "output_tokens": 91362,
+    "api_call_count": 131
+  }
+}
