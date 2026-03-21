@@ -117,3 +117,45 @@ type kiroIDEContentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
 }
+
+// kiroIDESessionMeta holds the top-level fields we need from an IDE session
+// file (the full file has many more fields, but we only parse what we use).
+type kiroIDESessionMeta struct {
+	SessionID string               `json:"sessionId"`
+	History   []kiroIDEHistoryMeta `json:"history"`
+}
+
+type kiroIDEHistoryMeta struct {
+	Message     kiroIDEMessage `json:"message"`
+	ExecutionID string         `json:"executionId,omitempty"`
+}
+
+// Kiro IDE execution log types — execution logs live in a separate directory
+// from the session files and contain the full action trace (tool calls,
+// agent responses, file modifications) for each agent turn.
+
+type kiroExecutionIndex struct {
+	Executions []kiroExecutionIndexEntry `json:"executions"`
+}
+
+type kiroExecutionIndexEntry struct {
+	ExecutionID string `json:"executionId"`
+	Type        string `json:"type"`
+	Status      string `json:"status"`
+	StartTime   int64  `json:"startTime"`
+	EndTime     int64  `json:"endTime"`
+}
+
+type kiroExecutionLog struct {
+	ExecutionID   string                `json:"executionId"`
+	ChatSessionID string                `json:"chatSessionId"`
+	Status        string                `json:"status"`
+	Actions       []kiroExecutionAction `json:"actions"`
+}
+
+type kiroExecutionAction struct {
+	ActionType  string          `json:"actionType"`
+	ActionState string          `json:"actionState"`
+	Input       json.RawMessage `json:"input"`
+	Output      json.RawMessage `json:"output"`
+}

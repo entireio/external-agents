@@ -146,6 +146,7 @@ func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
 	t.Setenv("HOME", home)
 
+	stubData := buildTranscript("cli-session", 2)
 	db := createFakeKiroDB(t, home)
 	restore := stubSQLiteRunner(t, func(args ...string) ([]byte, error) {
 		if len(args) != 2 {
@@ -154,7 +155,7 @@ func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 		if args[0] != db {
 			t.Fatalf("sqlite db = %q, want %q", args[0], db)
 		}
-		return []byte(`{"conversation_id":"cli-session","history":[]}`), nil
+		return stubData, nil
 	})
 	defer restore()
 
@@ -172,10 +173,13 @@ func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read cached transcript: %v", err)
 	}
-	// No start time cached, so full transcript is written (re-serialized has no whitespace changes for empty history)
-	want := `{"conversation_id":"cli-session","history":[]}`
-	if string(data) != want {
-		t.Fatalf("cached transcript = %q, want %q", string(data), want)
+
+	var result kiroTranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+	if result.ConversationID != "cli-session" || len(result.History) != 2 {
+		t.Fatalf("cached transcript conv=%q history=%d, want cli-session/2", result.ConversationID, len(result.History))
 	}
 }
 
@@ -271,7 +275,7 @@ func TestParseHookStopPrefersSQLiteTranscript(t *testing.T) {
 			if args[0] != db {
 				t.Fatalf("sqlite db = %q, want %q", args[0], db)
 			}
-			return []byte(`{"conversation_id":"cli-session","history":[]}`), nil
+			return buildTranscript("cli-session", 1), nil
 		default:
 			t.Fatalf("unexpected sqlite args count: %d", len(args))
 			return nil, nil
@@ -296,8 +300,12 @@ func TestParseHookStopPrefersSQLiteTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read cached transcript: %v", err)
 	}
-	if string(data) != `{"conversation_id":"cli-session","history":[]}` {
-		t.Fatalf("cached transcript = %q", string(data))
+	var result kiroTranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+	if result.ConversationID != "cli-session" || len(result.History) != 1 {
+		t.Fatalf("cached transcript conv=%q history=%d, want cli-session/1", result.ConversationID, len(result.History))
 	}
 }
 
@@ -391,16 +399,20 @@ func createFakeKiroDB(t *testing.T, home string) string {
 	return db
 }
 
-func createIDEWorkspaceSessionsDir(t *testing.T, home string, cwd string) string {
+func kiroExtensionTestDir(t *testing.T, home string) string {
 	t.Helper()
-	encoded := base64.StdEncoding.EncodeToString([]byte(cwd))
-	var dir string
 	switch runtime.GOOS {
 	case "darwin":
-		dir = filepath.Join(home, "Library", "Application Support", "Kiro", "User", "globalStorage", "kiro.kiroagent", "workspace-sessions", encoded)
+		return filepath.Join(home, "Library", "Application Support", "Kiro", "User", "globalStorage", "kiro.kiroagent")
 	default:
-		dir = filepath.Join(home, ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent", "workspace-sessions", encoded)
+		return filepath.Join(home, ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent")
 	}
+}
+
+func createIDEWorkspaceSessionsDir(t *testing.T, home string, cwd string) string {
+	t.Helper()
+	encoded := strings.ReplaceAll(base64.StdEncoding.EncodeToString([]byte(cwd)), "=", "_")
+	dir := filepath.Join(kiroExtensionTestDir(t, home), "workspace-sessions", encoded)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatalf("mkdir sessions dir: %v", err)
 	}
@@ -804,6 +816,54 @@ func TestEnsureCachedTranscriptOffsetExceedsLength(t *testing.T) {
 	}
 }
 
+func TestEnsureCachedTranscriptNoNewEntriesReturnsFull(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	transcriptData := buildTranscript("conv-1", 4)
+
+	db := createFakeKiroDB(t, home)
+	restore := stubSQLiteRunner(t, func(args ...string) ([]byte, error) {
+		if args[0] != db {
+			t.Fatalf("sqlite db = %q, want %q", args[0], db)
+		}
+		return transcriptData, nil
+	})
+	defer restore()
+
+	// Offset matches total entries — no new content, but should return
+	// full cumulative transcript so the CLI always has a valid session_ref.
+	seedTranscriptOffset(t, repoRoot, "conv-1", 4)
+
+	cachePath, err := New().ensureCachedTranscript(repoRoot, "test-session", "")
+	if err != nil {
+		t.Fatalf("ensureCachedTranscript() should succeed with full transcript, got error: %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+
+	var result kiroTranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+
+	// Full transcript returned (no trimming since offset == total).
+	if len(result.History) != 4 {
+		t.Fatalf("history length = %d, want 4 (full cumulative transcript)", len(result.History))
+	}
+
+	// Offset should NOT advance (still 4).
+	offset := readTestTranscriptOffset(t, repoRoot)
+	if offset.Position != 4 {
+		t.Fatalf("offset position = %d, want 4 (should not advance)", offset.Position)
+	}
+}
+
 func TestEnsureCachedTranscriptQueriesByConversationID(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
@@ -817,7 +877,7 @@ func TestEnsureCachedTranscriptQueriesByConversationID(t *testing.T) {
 			t.Fatalf("sqlite db = %q, want %q", args[0], db)
 		}
 		capturedQuery = args[1]
-		return []byte(`{"conversation_id":"target-conv","history":[]}`), nil
+		return buildTranscript("target-conv", 1), nil
 	})
 	defer restore()
 
@@ -831,5 +891,641 @@ func TestEnsureCachedTranscriptQueriesByConversationID(t *testing.T) {
 	}
 	if !strings.Contains(capturedQuery, "json_extract") {
 		t.Fatalf("query should use json_extract for conversation_id, got: %s", capturedQuery)
+	}
+}
+
+func TestEnsureIDETranscriptWithModifiedBase64Encoding(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	// Create sessions dir using the REAL IDE encoding (= replaced with _)
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"ide-delete-session","title":"delete files","dateCreated":"2026-03-21T09:05:00Z","workspaceDirectory":"` + cwd + `"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	ideTranscript := `{"history":[{"message":{"role":"user","content":"please delete all the hello files"}},{"message":{"role":"assistant","content":"On it."}}]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "ide-delete-session.json"), []byte(ideTranscript), 0o600); err != nil {
+		t.Fatalf("write IDE transcript: %v", err)
+	}
+
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached IDE transcript: %v", err)
+	}
+	if !strings.Contains(string(data), "please delete all the hello files") {
+		t.Fatalf("cached IDE transcript should contain delete prompt, got: %s", string(data))
+	}
+}
+
+func TestCaptureTranscriptFallsToIDEWhenCLIUnavailable(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	// CLI DB is unavailable — forces IDE fallback
+	restore := stubSQLiteRunner(t, func(args ...string) ([]byte, error) {
+		return nil, errors.New("sqlite unavailable")
+	})
+	defer restore()
+
+	// Set up IDE workspace sessions with real transcript
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"ide-sess","title":"delete","dateCreated":"2026-03-21T09:05:00Z"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	ideTranscript := `{"history":[{"message":{"role":"user","content":"please delete all the hello files"}},{"message":{"role":"assistant","content":"Deleted."}}]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "ide-sess.json"), []byte(ideTranscript), 0o600); err != nil {
+		t.Fatalf("write IDE transcript: %v", err)
+	}
+
+	seedSessionIDCache(t, repoRoot, "test-session")
+
+	event, err := New().ParseHook(HookNameStop, []byte(`{"cwd":"`+cwd+`"}`))
+	if err != nil {
+		t.Fatalf("ParseHook(stop) error = %v", err)
+	}
+	if event == nil || event.SessionRef == "" {
+		t.Fatal("expected stop event with session ref")
+	}
+
+	data, err := os.ReadFile(event.SessionRef)
+	if err != nil {
+		t.Fatalf("read transcript: %v", err)
+	}
+	if !strings.Contains(string(data), "please delete all the hello files") {
+		t.Fatalf("transcript should contain IDE content, got: %s", string(data))
+	}
+}
+
+func TestCaptureTranscriptPrefersIDEOverCLI(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	// CLI DB returns a WRONG conversation (different from the IDE session)
+	createFakeKiroDB(t, home)
+	restore := stubSQLiteRunner(t, func(args ...string) ([]byte, error) {
+		switch len(args) {
+		case 3: // querySessionID
+			return []byte(`[{"json_extract(value, '$.conversation_id')":"cli-wrong-conv"}]`), nil
+		case 2: // ensureCachedTranscript
+			return buildTranscript("cli-wrong-conv", 3), nil
+		default:
+			return nil, errors.New("unexpected")
+		}
+	})
+	defer restore()
+
+	// IDE workspace has the CORRECT transcript
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"ide-correct","title":"python hello","dateCreated":"2026-03-21T10:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	ideTranscript := `{"history":[{"message":{"role":"user","content":"add python hello world - ide"}},{"message":{"role":"assistant","content":"Created hello.py"}}]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "ide-correct.json"), []byte(ideTranscript), 0o600); err != nil {
+		t.Fatalf("write IDE transcript: %v", err)
+	}
+
+	seedSessionIDCache(t, repoRoot, "test-session")
+
+	event, err := New().ParseHook(HookNameStop, []byte(`{"cwd":"`+cwd+`"}`))
+	if err != nil {
+		t.Fatalf("ParseHook(stop) error = %v", err)
+	}
+	if event == nil || event.SessionRef == "" {
+		t.Fatal("expected stop event with session ref")
+	}
+
+	data, err := os.ReadFile(event.SessionRef)
+	if err != nil {
+		t.Fatalf("read transcript: %v", err)
+	}
+	// IDE transcript should win over CLI
+	if !strings.Contains(string(data), "add python hello world - ide") {
+		t.Fatalf("should prefer IDE transcript, got: %s", string(data))
+	}
+}
+
+func TestPostToolUseHookCapturesToolCalls(t *testing.T) {
+	repoRoot := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+
+	input := `{"tool_name":"fs_write","tool_input":{"path":"/repo/hello.py","command":"create","file_text":"print('hello')"}}`
+	_, err := New().ParseHook(HookNamePostToolUse, []byte(input))
+	if err != nil {
+		t.Fatalf("ParseHook(post-tool-use) error = %v", err)
+	}
+
+	toolCallsPath := filepath.Join(repoRoot, ".entire", "tmp", toolCallsFile)
+	data, err := os.ReadFile(toolCallsPath)
+	if err != nil {
+		t.Fatalf("tool calls file not found: %v", err)
+	}
+	if !strings.Contains(string(data), "fs_write") {
+		t.Fatalf("tool calls should contain fs_write, got: %s", string(data))
+	}
+	if !strings.Contains(string(data), "/repo/hello.py") {
+		t.Fatalf("tool calls should contain file path, got: %s", string(data))
+	}
+}
+
+func TestEnsureIDETranscriptMergesToolCalls(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	// Set up IDE workspace session
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"ide-sess","title":"create hello","dateCreated":"2026-03-21T12:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	ideTranscript := `{"history":[{"message":{"role":"user","content":"create hello world python"}},{"message":{"role":"assistant","content":"On it."}}]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "ide-sess.json"), []byte(ideTranscript), 0o600); err != nil {
+		t.Fatalf("write IDE transcript: %v", err)
+	}
+
+	// Seed tool calls JSONL (simulating post-tool-use hooks that fired)
+	toolCallsDir := filepath.Join(repoRoot, ".entire", "tmp")
+	if err := os.MkdirAll(toolCallsDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	toolCallLine := `{"name":"fs_write","args":{"path":"/repo/hello.py","command":"create","file_text":"print('hello')"}}` + "\n"
+	if err := os.WriteFile(filepath.Join(toolCallsDir, toolCallsFile), []byte(toolCallLine), 0o600); err != nil {
+		t.Fatalf("write tool calls: %v", err)
+	}
+
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+
+	// Should be in CLI format with tool calls merged
+	var result kiroTranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+
+	// Extract modified files should find the tool call
+	files, _, err := New().ExtractModifiedFiles(cachePath, 0)
+	if err != nil {
+		t.Fatalf("ExtractModifiedFiles() error = %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("expected at least one modified file from merged tool calls")
+	}
+	if files[0] != "/repo/hello.py" {
+		t.Fatalf("files[0] = %q, want %q", files[0], "/repo/hello.py")
+	}
+
+	// Tool calls JSONL should be consumed (deleted)
+	if _, err := os.Stat(filepath.Join(toolCallsDir, toolCallsFile)); !os.IsNotExist(err) {
+		t.Fatal("tool calls JSONL should be deleted after consumption")
+	}
+}
+
+func TestEnsureIDETranscriptWithoutToolCalls(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"ide-sess","title":"hello","dateCreated":"2026-03-21T12:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	ideTranscript := `{"history":[{"message":{"role":"user","content":"hello"}},{"message":{"role":"assistant","content":"Hi!"}}]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "ide-sess.json"), []byte(ideTranscript), 0o600); err != nil {
+		t.Fatalf("write IDE transcript: %v", err)
+	}
+
+	// No tool calls file — should still work, caching IDE format as-is
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+	if !strings.Contains(string(data), "Hi!") {
+		t.Fatalf("cached transcript should contain IDE content, got: %s", string(data))
+	}
+}
+
+// --- Execution log enrichment tests ---
+
+func TestConvertExecutionActionsToHistoryEntries_SayOnly(t *testing.T) {
+	actions := []kiroExecutionAction{
+		{ActionType: "model", ActionState: "Success"},
+		{ActionType: "say", ActionState: "Success",
+			Output: json.RawMessage(`{"message":"Hello, I created the file for you."}`)},
+	}
+
+	entries := convertExecutionActionsToHistoryEntries(actions)
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries, want 1", len(entries))
+	}
+
+	resp := extractLastAssistantResponse(entries)
+	if resp != "Hello, I created the file for you." {
+		t.Fatalf("response = %q, want %q", resp, "Hello, I created the file for you.")
+	}
+}
+
+func TestConvertExecutionActionsToHistoryEntries_ToolCallsAndSay(t *testing.T) {
+	actions := []kiroExecutionAction{
+		{ActionType: "model", ActionState: "Success"},
+		{ActionType: "create", ActionState: "Success",
+			Input: json.RawMessage(`{"file":"hello.py","modifiedContent":"print('hello')"}`)},
+		{ActionType: "model", ActionState: "Success"},
+		{ActionType: "say", ActionState: "Success",
+			Output: json.RawMessage(`{"message":"Done! Run it with python hello.py."}`)},
+	}
+
+	entries := convertExecutionActionsToHistoryEntries(actions)
+	if len(entries) == 0 {
+		t.Fatal("expected at least one entry")
+	}
+
+	// Should extract modified files
+	files := extractModifiedFilesFromHistory(entries)
+	if len(files) == 0 {
+		t.Fatal("expected at least one modified file")
+	}
+	if files[0] != "hello.py" {
+		t.Fatalf("files[0] = %q, want %q", files[0], "hello.py")
+	}
+
+	// Should extract the say response
+	resp := extractLastAssistantResponse(entries)
+	if resp != "Done! Run it with python hello.py." {
+		t.Fatalf("response = %q", resp)
+	}
+}
+
+func TestConvertExecutionActionsToHistoryEntries_MultipleToolCalls(t *testing.T) {
+	actions := []kiroExecutionAction{
+		{ActionType: "create", ActionState: "Success",
+			Input: json.RawMessage(`{"file":"main.py","modifiedContent":"import os"}`)},
+		{ActionType: "create", ActionState: "Success",
+			Input: json.RawMessage(`{"file":"test_main.py","modifiedContent":"import pytest"}`)},
+		{ActionType: "say", ActionState: "Success",
+			Output: json.RawMessage(`{"message":"Created both files."}`)},
+	}
+
+	entries := convertExecutionActionsToHistoryEntries(actions)
+	files := extractModifiedFilesFromHistory(entries)
+	if len(files) != 2 {
+		t.Fatalf("got %d files, want 2", len(files))
+	}
+	if files[0] != "main.py" || files[1] != "test_main.py" {
+		t.Fatalf("files = %v", files)
+	}
+}
+
+func TestConvertExecutionActionsToHistoryEntries_EditAction(t *testing.T) {
+	actions := []kiroExecutionAction{
+		{ActionType: "edit", ActionState: "Success",
+			Input: json.RawMessage(`{"file":"app.go"}`)},
+		{ActionType: "say", ActionState: "Success",
+			Output: json.RawMessage(`{"message":"Updated app.go"}`)},
+	}
+
+	entries := convertExecutionActionsToHistoryEntries(actions)
+	files := extractModifiedFilesFromHistory(entries)
+	if len(files) != 1 || files[0] != "app.go" {
+		t.Fatalf("files = %v, want [app.go]", files)
+	}
+}
+
+func TestConvertExecutionActionsToHistoryEntries_NoActions(t *testing.T) {
+	entries := convertExecutionActionsToHistoryEntries(nil)
+	if len(entries) != 0 {
+		t.Fatalf("expected 0 entries for nil actions, got %d", len(entries))
+	}
+}
+
+func TestExtractIDESessionID(t *testing.T) {
+	data := []byte(`{"sessionId":"abc-123","history":[],"title":"test"}`)
+	got := extractIDESessionID(data)
+	if got != "abc-123" {
+		t.Fatalf("extractIDESessionID() = %q, want %q", got, "abc-123")
+	}
+}
+
+func TestExtractIDESessionID_Missing(t *testing.T) {
+	data := []byte(`{"history":[]}`)
+	got := extractIDESessionID(data)
+	if got != "" {
+		t.Fatalf("extractIDESessionID() = %q, want empty", got)
+	}
+}
+
+func TestExtractIDEExecutionIDs(t *testing.T) {
+	data := []byte(`{
+		"sessionId":"sess-1",
+		"history":[
+			{"message":{"role":"user","content":"hello"}},
+			{"message":{"role":"assistant","content":"On it."},"executionId":"exec-1"},
+			{"message":{"role":"user","content":"more"}},
+			{"message":{"role":"assistant","content":"On it."},"executionId":"exec-2"}
+		]
+	}`)
+	ids := extractIDEExecutionIDs(data)
+	if len(ids) != 2 || ids[0] != "exec-1" || ids[1] != "exec-2" {
+		t.Fatalf("extractIDEExecutionIDs() = %v, want [exec-1 exec-2]", ids)
+	}
+}
+
+func TestFindExecutionLogsForSession(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Create a fake workspace hash dir with execution logs
+	workspaceHash := "abcd1234abcd1234abcd1234abcd1234"
+	execLogsDir := createExecLogsDir(t, home, workspaceHash)
+
+	// Write execution log files
+	writeExecutionLog(t, execLogsDir, "logfile1", kiroExecutionLog{
+		ExecutionID:   "exec-1",
+		ChatSessionID: "target-session",
+		Status:        "succeed",
+		Actions: []kiroExecutionAction{
+			{ActionType: "say", ActionState: "Success",
+				Output: json.RawMessage(`{"message":"Hello world"}`)},
+		},
+	})
+	writeExecutionLog(t, execLogsDir, "logfile2", kiroExecutionLog{
+		ExecutionID:   "exec-other",
+		ChatSessionID: "other-session",
+		Status:        "succeed",
+	})
+
+	logs, err := findExecutionLogsForSession("target-session")
+	if err != nil {
+		t.Fatalf("findExecutionLogsForSession() error = %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("got %d logs, want 1", len(logs))
+	}
+	if logs["exec-1"] == nil {
+		t.Fatal("expected exec-1 in results")
+	}
+	if logs["exec-1"].Actions[0].ActionType != "say" {
+		t.Fatalf("action type = %q, want say", logs["exec-1"].Actions[0].ActionType)
+	}
+}
+
+func TestFindExecutionLogsForSession_NoMatch(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	workspaceHash := "abcd1234abcd1234abcd1234abcd1234"
+	execLogsDir := createExecLogsDir(t, home, workspaceHash)
+	writeExecutionLog(t, execLogsDir, "logfile1", kiroExecutionLog{
+		ExecutionID:   "exec-1",
+		ChatSessionID: "other-session",
+	})
+
+	logs, err := findExecutionLogsForSession("nonexistent-session")
+	if err != nil {
+		t.Fatalf("findExecutionLogsForSession() error = %v", err)
+	}
+	if len(logs) != 0 {
+		t.Fatalf("got %d logs, want 0", len(logs))
+	}
+}
+
+func TestEnrichIDETranscriptWithExecutionLogs(t *testing.T) {
+	ideData := []byte(`{
+		"sessionId":"sess-1",
+		"history":[
+			{"message":{"role":"user","content":[{"type":"text","text":"create hello.py"}]}},
+			{"message":{"role":"assistant","content":"On it."},"executionId":"exec-1"},
+			{"message":{"role":"user","content":[{"type":"text","text":"now commit"}]}},
+			{"message":{"role":"assistant","content":"On it."},"executionId":"exec-2"}
+		]
+	}`)
+
+	execLogs := map[string]*kiroExecutionLog{
+		"exec-1": {
+			ExecutionID:   "exec-1",
+			ChatSessionID: "sess-1",
+			Actions: []kiroExecutionAction{
+				{ActionType: "create", ActionState: "Success",
+					Input: json.RawMessage(`{"file":"hello.py","modifiedContent":"print('hi')"}`)},
+				{ActionType: "say", ActionState: "Success",
+					Output: json.RawMessage(`{"message":"Created hello.py for you!"}`)},
+			},
+		},
+		"exec-2": {
+			ExecutionID:   "exec-2",
+			ChatSessionID: "sess-1",
+			Actions: []kiroExecutionAction{
+				{ActionType: "say", ActionState: "Success",
+					Output: json.RawMessage(`{"message":"Committed the changes."}`)},
+			},
+		},
+	}
+
+	enriched := enrichIDETranscriptWithExecutionLogs(ideData, execLogs)
+	if enriched == nil {
+		t.Fatal("enrichIDETranscriptWithExecutionLogs() returned nil")
+	}
+
+	// Parse as CLI transcript format
+	transcript, err := parseTranscript(enriched)
+	if err != nil {
+		t.Fatalf("parseTranscript() error = %v", err)
+	}
+
+	// Should have 2 history entries (user/assistant pairs)
+	if len(transcript.History) < 2 {
+		t.Fatalf("got %d history entries, want >= 2", len(transcript.History))
+	}
+
+	// First turn should have the tool call (create hello.py)
+	files := extractModifiedFilesFromHistory(transcript.History)
+	if !slices.Contains(files, "hello.py") {
+		t.Fatalf("expected hello.py in modified files, got %v", files)
+	}
+
+	// Should have the actual response text
+	lastResp := extractLastAssistantResponse(transcript.History)
+	if lastResp != "Committed the changes." {
+		t.Fatalf("last response = %q, want %q", lastResp, "Committed the changes.")
+	}
+}
+
+func TestEnsureIDETranscriptWithExecutionLogs(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	// Set up IDE workspace session with executionId on assistant entries
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"ide-sess","title":"test","dateCreated":"2026-03-21T12:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	ideTranscript := `{
+		"sessionId":"ide-sess",
+		"history":[
+			{"message":{"role":"user","content":"create hello.py"}},
+			{"message":{"role":"assistant","content":"On it."},"executionId":"exec-1"}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "ide-sess.json"), []byte(ideTranscript), 0o600); err != nil {
+		t.Fatalf("write IDE transcript: %v", err)
+	}
+
+	// Set up execution logs
+	workspaceHash := "abcd1234abcd1234abcd1234abcd1234"
+	execLogsDir := createExecLogsDir(t, home, workspaceHash)
+	writeExecutionLog(t, execLogsDir, "log1", kiroExecutionLog{
+		ExecutionID:   "exec-1",
+		ChatSessionID: "ide-sess",
+		Status:        "succeed",
+		Actions: []kiroExecutionAction{
+			{ActionType: "create", ActionState: "Success",
+				Input: json.RawMessage(`{"file":"hello.py","modifiedContent":"print('hi')"}`)},
+			{ActionType: "say", ActionState: "Success",
+				Output: json.RawMessage(`{"message":"Created hello.py!"}`)},
+		},
+	})
+
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+
+	// Verify the cached transcript has real data
+	files, _, err := New().ExtractModifiedFiles(cachePath, 0)
+	if err != nil {
+		t.Fatalf("ExtractModifiedFiles() error = %v", err)
+	}
+	if !slices.Contains(files, "hello.py") {
+		t.Fatalf("expected hello.py in modified files, got %v", files)
+	}
+
+	summary, hasSummary, err := New().ExtractSummary(cachePath)
+	if err != nil {
+		t.Fatalf("ExtractSummary() error = %v", err)
+	}
+	if !hasSummary || summary != "Created hello.py!" {
+		t.Fatalf("summary = %q, hasSummary = %v", summary, hasSummary)
+	}
+}
+
+func TestEnsureIDETranscriptFallsBackToToolCallsWhenNoExecLogs(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"ide-sess","title":"test","dateCreated":"2026-03-21T12:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	ideTranscript := `{"sessionId":"ide-sess","history":[{"message":{"role":"user","content":"create hello"}},{"message":{"role":"assistant","content":"On it."}}]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "ide-sess.json"), []byte(ideTranscript), 0o600); err != nil {
+		t.Fatalf("write IDE transcript: %v", err)
+	}
+
+	// No execution logs dir — seed JSONL tool calls as fallback
+	toolCallsDir := filepath.Join(repoRoot, ".entire", "tmp")
+	if err := os.MkdirAll(toolCallsDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	toolCallLine := `{"name":"fs_write","args":{"path":"hello.py"}}` + "\n"
+	if err := os.WriteFile(filepath.Join(toolCallsDir, toolCallsFile), []byte(toolCallLine), 0o600); err != nil {
+		t.Fatalf("write tool calls: %v", err)
+	}
+
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+
+	// Should still find the tool call via JSONL fallback
+	files, _, err := New().ExtractModifiedFiles(cachePath, 0)
+	if err != nil {
+		t.Fatalf("ExtractModifiedFiles() error = %v", err)
+	}
+	if !slices.Contains(files, "hello.py") {
+		t.Fatalf("expected hello.py from JSONL fallback, got %v", files)
+	}
+}
+
+// --- Test helpers for execution logs ---
+
+func createExecLogsDir(t *testing.T, home string, workspaceHash string) string {
+	t.Helper()
+	dir := filepath.Join(kiroExtensionTestDir(t, home), workspaceHash, execLogsSubdir)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("mkdir exec logs dir: %v", err)
+	}
+	return dir
+}
+
+func writeExecutionLog(t *testing.T, dir string, filename string, log kiroExecutionLog) {
+	t.Helper()
+	data, err := json.Marshal(log)
+	if err != nil {
+		t.Fatalf("marshal execution log: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, filename), data, 0o600); err != nil {
+		t.Fatalf("write execution log: %v", err)
 	}
 }

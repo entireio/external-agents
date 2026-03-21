@@ -26,7 +26,8 @@ const (
 	localDevCommandBase = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
 	localDevTrustedCmd  = "sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
 	prodHookCommandBase = "entire hooks kiro "
-	sessionIDFile = "kiro-active-session"
+	sessionIDFile  = "kiro-active-session"
+	toolCallsFile  = "kiro-tool-calls.jsonl"
 )
 
 type ideHookDef struct {
@@ -73,7 +74,12 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 			Prompt:    prompt,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		}, nil
-	case HookNamePreToolUse, HookNamePostToolUse:
+	case HookNamePreToolUse:
+		return nil, nil
+	case HookNamePostToolUse:
+		if raw.ToolName != "" {
+			a.appendToolCall(raw.ToolName, raw.ToolInput)
+		}
 		return nil, nil
 	case HookNameStop:
 		cwd := raw.CWD
@@ -448,6 +454,50 @@ func (a *Agent) readCachedSessionID() string {
 
 func (a *Agent) clearCachedSessionID() {
 	_ = os.Remove(a.sessionIDCachePath())
+	_ = os.Remove(a.toolCallsPath())
+}
+
+func (a *Agent) appendToolCall(name string, input json.RawMessage) {
+	call := kiroToolCall{Name: name, Args: input}
+	line, err := json.Marshal(call)
+	if err != nil {
+		return
+	}
+	path := a.toolCallsPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_, _ = f.Write(append(line, '\n'))
+}
+
+func (a *Agent) readAndClearToolCalls() []kiroToolCall {
+	path := a.toolCallsPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	_ = os.Remove(path)
+
+	var calls []kiroToolCall
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var call kiroToolCall
+		if err := json.Unmarshal([]byte(line), &call); err == nil {
+			calls = append(calls, call)
+		}
+	}
+	return calls
+}
+
+func (a *Agent) toolCallsPath() string {
+	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", toolCallsFile)
 }
 
 func (a *Agent) sessionIDCachePath() string {
