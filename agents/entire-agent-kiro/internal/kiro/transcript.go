@@ -296,6 +296,15 @@ func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error
 		}
 	}
 
+	// Trim already-checkpointed entries from cumulative IDE transcript.
+	if filtered, ok := a.trimTranscriptHistory(data); ok {
+		data = filtered
+	}
+
+	if parsed, parseErr := parseTranscript(data); parseErr == nil && len(parsed.History) == 0 {
+		return "", errors.New("IDE transcript has no history entries after trimming")
+	}
+
 	cachePath, err := a.cacheTranscriptPath(cwd, sessionID)
 	if err != nil {
 		return "", err

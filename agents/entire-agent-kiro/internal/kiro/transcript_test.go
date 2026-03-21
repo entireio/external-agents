@@ -1508,6 +1508,170 @@ func TestEnsureIDETranscriptFallsBackToToolCallsWhenNoExecLogs(t *testing.T) {
 	}
 }
 
+func TestEnsureIDETranscriptTrimsWithOffset(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"ide-sess","title":"test","dateCreated":"2026-03-21T09:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+
+	// IDE transcript with 4 user/assistant pairs (cumulative conversation).
+	ideTranscript := `{"history":[
+		{"message":{"role":"user","content":"prompt 0"}},{"message":{"role":"assistant","content":"response 0"}},
+		{"message":{"role":"user","content":"prompt 1"}},{"message":{"role":"assistant","content":"response 1"}},
+		{"message":{"role":"user","content":"prompt 2"}},{"message":{"role":"assistant","content":"response 2"}},
+		{"message":{"role":"user","content":"prompt 3"}},{"message":{"role":"assistant","content":"response 3"}}
+	]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "ide-sess.json"), []byte(ideTranscript), 0o600); err != nil {
+		t.Fatalf("write IDE transcript: %v", err)
+	}
+
+	// Seed offset at position 2 — first 2 pairs already checkpointed.
+	// IDE transcripts have empty conversation_id after conversion.
+	seedTranscriptOffset(t, repoRoot, "", 2)
+
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached IDE transcript: %v", err)
+	}
+
+	// trimTranscriptHistory re-serializes in CLI format, so use parseTranscript.
+	result, err := parseTranscript(data)
+	if err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+
+	// Should only contain the 2 new pairs (entries 2-3), not all 4.
+	if len(result.History) != 2 {
+		t.Fatalf("history length = %d, want 2 (trimmed entries 2-3)", len(result.History))
+	}
+
+	firstPrompt := extractUserPrompt(result.History[0].User.Content)
+	if firstPrompt != "prompt 2" {
+		t.Fatalf("first prompt = %q, want %q", firstPrompt, "prompt 2")
+	}
+
+	// Offset should be updated to 4 (total length).
+	offset := readTestTranscriptOffset(t, repoRoot)
+	if offset.Position != 4 {
+		t.Fatalf("offset position = %d, want 4", offset.Position)
+	}
+}
+
+func TestEnsureIDETranscriptFirstCapture(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"ide-sess","title":"test","dateCreated":"2026-03-21T09:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+
+	ideTranscript := `{"history":[
+		{"message":{"role":"user","content":"prompt 0"}},{"message":{"role":"assistant","content":"response 0"}},
+		{"message":{"role":"user","content":"prompt 1"}},{"message":{"role":"assistant","content":"response 1"}}
+	]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "ide-sess.json"), []byte(ideTranscript), 0o600); err != nil {
+		t.Fatalf("write IDE transcript: %v", err)
+	}
+
+	// No offset file — first capture should return full transcript and create offset.
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached IDE transcript: %v", err)
+	}
+
+	result, err := parseTranscript(data)
+	if err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+
+	if len(result.History) != 2 {
+		t.Fatalf("history length = %d, want 2 (full transcript)", len(result.History))
+	}
+
+	// Offset file should be created with position 2.
+	offset := readTestTranscriptOffset(t, repoRoot)
+	if offset.Position != 2 {
+		t.Fatalf("offset position = %d, want 2", offset.Position)
+	}
+}
+
+func TestEnsureIDETranscriptNoNewEntriesSucceeds(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"ide-sess","title":"test","dateCreated":"2026-03-21T09:00:00Z"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+
+	ideTranscript := `{"history":[
+		{"message":{"role":"user","content":"prompt 0"}},{"message":{"role":"assistant","content":"response 0"}}
+	]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "ide-sess.json"), []byte(ideTranscript), 0o600); err != nil {
+		t.Fatalf("write IDE transcript: %v", err)
+	}
+
+	// Offset already at position 1 — no new entries since last checkpoint.
+	// trimTranscriptHistory returns (nil, false) when no new entries, so the
+	// full transcript is kept (same behavior as ensureCachedTranscript).
+	seedTranscriptOffset(t, repoRoot, "", 1)
+
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() should succeed with full transcript when no new entries, got error: %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached IDE transcript: %v", err)
+	}
+
+	result, err := parseTranscript(data)
+	if err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+
+	// Full transcript returned (no new entries = no trimming).
+	if len(result.History) != 1 {
+		t.Fatalf("history length = %d, want 1 (full transcript, no new entries)", len(result.History))
+	}
+}
+
 // --- Test helpers for execution logs ---
 
 func createExecLogsDir(t *testing.T, home string, workspaceHash string) string {
