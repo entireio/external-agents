@@ -3,11 +3,12 @@
   "checkpoint_id": "cf0d6c96b84e",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 9,
+  "checkpoints_count": 11,
   "files_touched": [
     "agents/entire-agent-kiro/internal/kiro/hooks.go",
     "agents/entire-agent-kiro/internal/kiro/transcript.go",
-    "agents/entire-agent-kiro/internal/kiro/transcript_test.go"
+    "agents/entire-agent-kiro/internal/kiro/transcript_test.go",
+    "agents/entire-agent-kiro/internal/kiro/types.go"
   ],
   "sessions": [
     {
@@ -15,13 +16,19 @@
       "transcript": "/cf/0d6c96b84e/0/full.jsonl",
       "content_hash": "/cf/0d6c96b84e/0/content_hash.txt",
       "prompt": "/cf/0d6c96b84e/0/prompt.txt"
+    },
+    {
+      "metadata": "/cf/0d6c96b84e/1/metadata.json",
+      "transcript": "/cf/0d6c96b84e/1/full.jsonl",
+      "content_hash": "/cf/0d6c96b84e/1/content_hash.txt",
+      "prompt": "/cf/0d6c96b84e/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 262,
-    "cache_creation_tokens": 1140655,
-    "cache_read_tokens": 68815295,
-    "output_tokens": 102217,
-    "api_call_count": 236
+    "input_tokens": 9076,
+    "cache_creation_tokens": 1312566,
+    "cache_read_tokens": 82657342,
+    "output_tokens": 152937,
+    "api_call_count": 348
   }
 }

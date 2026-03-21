@@ -1,0 +1,9 @@
+need to do deep dive of transcript stuff for kiro ide. test repo is /Users/alisha/Projects/test-repos/kireide I don't see the agent responses or tool calls in the transcripts. see image of what was asked then look at /Users/alisha/Projects/test-repos/kireide/.entire/metadata folder
+
+---
+
+well it must be storing the data somewhere since I can close the sesstion in the ide and reopen it?
+
+---
+
+give prompt to give frontend claude to fix kiro transcript parser
