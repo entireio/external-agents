@@ -219,9 +219,12 @@ func hooksInstalled(t *testing.T, binPath, repoRoot string) bool {
 		"LANG=en_US.UTF-8",
 	)
 
-	out, err := cmd.CombinedOutput()
+	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("%s are-hooks-installed failed: %v\n%s", binPath, err, out)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			t.Fatalf("%s are-hooks-installed failed: %v\nstdout: %s\nstderr: %s", binPath, err, out, exitErr.Stderr)
+		}
+		t.Fatalf("%s are-hooks-installed failed: %v\nstdout: %s", binPath, err, out)
 	}
 
 	var resp struct {
