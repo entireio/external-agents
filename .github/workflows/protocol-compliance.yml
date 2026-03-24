@@ -1,0 +1,65 @@
+name: Protocol Compliance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  discover-agents:
+    runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.discover.outputs.count }}
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: discover
+        shell: bash
+        run: |
+          count=0
+          entries=""
+
+          while IFS= read -r dir; do
+            name="$(basename "$dir")"
+            if [[ -n "$entries" ]]; then
+              entries="${entries},"
+            fi
+            entries="${entries}{\"name\":\"${name}\",\"dir\":\"${dir}\",\"binary\":\"${dir}/${name}\"}"
+            count=$((count + 1))
+          done < <(find agents -mindepth 1 -maxdepth 1 -type d -name 'entire-agent-*' | sort)
+
+          echo "count=${count}" >> "$GITHUB_OUTPUT"
+          echo "matrix={\"include\":[${entries}]}" >> "$GITHUB_OUTPUT"
+
+  test-agents:
+    needs: discover-agents
+    if: ${{ needs.discover-agents.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover-agents.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.dir }}/go.mod
+          cache-dependency-path: ${{ matrix.dir }}/go.sum
+
+      - name: Run unit tests
+        working-directory: ${{ matrix.dir }}
+        run: go test ./...
+
+      - name: Build agent binary
+        working-directory: ${{ matrix.dir }}
+        run: go build -o "${{ matrix.name }}" "./cmd/${{ matrix.name }}"
+
+      - name: Run protocol compliance suite
+        uses: entireio/external-agents-tests@main
+        with:
+          binary-path: ${{ matrix.binary }}

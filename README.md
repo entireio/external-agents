@@ -22,11 +22,11 @@ See each agent's own README for setup and usage instructions.
 
 ## Building a New External Agent
 
-This repo includes a skill that guides you through building a new external agent using an E2E-first TDD pipeline. The skill runs in three phases:
+This repo includes a skill that guides you through building a new external agent with two test layers:
 
-1. **Research** — analyzes the target AI agent's file formats, session layout, and hook mechanisms
-2. **Write tests** — generates E2E and unit tests against the external agent protocol
-3. **Implement** — builds the Go binary to pass all tests
+1. **Protocol compliance** — generic subcommand coverage from [`entireio/external-agents-tests`](https://github.com/entireio/external-agents-tests)
+2. **Lifecycle integration** — repo-local `e2e/` tests that exercise `entire enable`, prompt execution, checkpoints, and rewind
+3. **Implementation** — build the binary until both layers pass, then add unit tests
 
 ### Getting Started — Zero Setup
 
@@ -41,55 +41,61 @@ Clone the repo and open it in your AI coding tool. Each tool auto-discovers the 
 
 The skill files live in `.claude/skills/entire-external-agent/` if you want to read the details.
 
-## E2E Tests
+## Testing
 
-The `e2e/` directory contains a shared test harness that exercises all external agents. Tests are split into two tiers:
+Testing is intentionally split:
 
-- **Subcommand tests** (`kiro_test.go`) — exercise each protocol subcommand directly against the agent binary (identity, sessions, transcript, hooks, transcript analysis). These run without any external dependencies beyond the agent binary itself.
-- **Lifecycle tests** (`kiro_lifecycle_test.go`) — exercise the full integration flow: `entire enable`, agent prompt execution, git commit, checkpoint creation, and rewind. These require the `entire` CLI and the agent's own CLI (e.g. `kiro-cli-chat`) to be available.
+- **Generic protocol checks** run in GitHub Actions via [`entireio/external-agents-tests`](https://github.com/entireio/external-agents-tests). The workflow builds each `entire-agent-*` binary in this repo and runs the shared compliance suite against it.
+- **Lifecycle tests** stay in this repo's [`e2e/`](e2e/) harness. These verify the parts that depend on Entire itself and on the real agent CLI: prompt execution, hook installation after `entire enable`, checkpoint creation, rewind behavior, and interactive sessions.
+- **Unit tests** live with each agent implementation under [`agents/`](agents/).
 
 ### Running Tests
 
 ```bash
-# Run all E2E tests (subcommand-level only; lifecycle tests skip if deps missing)
-make test-e2e
-
-# Run lifecycle tests (fails instead of skipping if entire/kiro-cli-chat are missing)
-make test-e2e-lifecycle
-
 # Run unit tests for all agents
 make test-unit
 
-# Run everything
+# Run lifecycle integration tests from this repo
+make test-e2e
+
+# Same as test-e2e, kept as the explicit name
+make test-e2e-lifecycle
+
+# Run unit + lifecycle tests locally
 make test-all
 ```
 
-### Test Harness Architecture
+Protocol compliance runs in CI through [`.github/workflows/protocol-compliance.yml`](.github/workflows/protocol-compliance.yml).
 
-The shared harness auto-discovers and builds all agents in `agents/` via `TestMain`:
+### Lifecycle Harness Architecture
+
+The lifecycle harness auto-discovers and builds all agents in `agents/` via `TestMain`:
 
 | File | Purpose |
 |------|---------|
 | `e2e/setup_test.go` | `TestMain` entry point — discovers agents, builds binaries, configures PATH |
-| `e2e/testenv.go` | `TestEnv` — isolated filesystem environment with agent binary runner |
-| `e2e/harness.go` | `AgentRunner` — executes agent subcommands, captures stdout/stderr/exit code |
-| `e2e/fixtures.go` | Test input builders: `HookInput`, `ParseHookInput`, `KiroTranscript` |
-| `e2e/entire.go` | CLI wrappers: `EntireEnable`, `EntireDisable`, `EntireRewindList`, `EntireRewind` |
-| `e2e/lifecycle.go` | `LifecycleEnv` — full lifecycle environment (git repo + `entire enable` + checkpoint helpers) |
+| `e2e/lifecycle_test.go` | Shared lifecycle scenarios run against every registered agent |
+| `e2e/agents/` | Agent adapters for the real CLIs used during lifecycle tests |
+| `e2e/entire/` | Entire CLI wrappers used by lifecycle assertions |
+| `e2e/testutil/` | Repo setup, artifact capture, git helpers, and checkpoint assertions |
 
 ### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
 | `E2E_ENTIRE_BIN` | Path to the `entire` binary (defaults to `entire` from PATH) |
-| `E2E_REQUIRE_LIFECYCLE` | Set to `1` to fail (instead of skip) when lifecycle dependencies are missing |
+| `E2E_AGENT` | Filter lifecycle runs to a single registered agent |
+| `E2E_ARTIFACT_DIR` | Override lifecycle artifact output directory |
+| `E2E_KEEP_REPOS` | Preserve temp repos for debugging |
+| `E2E_CONCURRENT_TEST_LIMIT` | Override the per-agent lifecycle concurrency limit |
 
 ## Repository Layout
 
 ```
 agents/                          # Standalone external agent projects
   entire-agent-kiro/             # Kiro agent (Go binary)
-e2e/                             # Shared E2E test harness for all agents
+e2e/                             # Lifecycle integration harness
+.github/workflows/               # CI, including protocol compliance via external-agents-tests
 .claude/skills/entire-external-agent/  # Skill files (research, test-writer, implementer)
 AGENTS.md                        # Codex auto-discovery
 .cursor/rules/                   # Cursor auto-discovery

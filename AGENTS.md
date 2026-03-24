@@ -1,6 +1,10 @@
 # External Agent Builder
 
-This repository includes a skill that guides you through building standalone external agent binaries for the [Entire CLI](https://github.com/entireio/cli). The skill uses E2E-first TDD and runs in three phases.
+This repository includes a skill that guides you through building standalone external agent binaries for the [Entire CLI](https://github.com/entireio/cli). The current testing split is:
+
+- Protocol compliance in `external-agents-tests`
+- Lifecycle integration in this repo's `e2e/` harness
+- Agent-specific unit tests in each `agents/entire-agent-*` module
 
 ## Available Commands
 
@@ -8,8 +12,8 @@ This repository includes a skill that guides you through building standalone ext
 |---------|-----------|-------------|
 | Full pipeline | `.claude/skills/entire-external-agent/SKILL.md` | Run all three phases sequentially |
 | Research | `.claude/skills/entire-external-agent/research.md` | Analyze the target agent's capabilities and map to the protocol |
-| Write tests | `.claude/skills/entire-external-agent/write-tests.md` | Scaffold the binary and create E2E test harness |
-| Implement | `.claude/skills/entire-external-agent/implement.md` | Build the binary using E2E-first TDD (unit tests last) |
+| Write tests | `.claude/skills/entire-external-agent/write-tests.md` | Scaffold the binary and wire protocol compliance plus lifecycle coverage |
+| Implement | `.claude/skills/entire-external-agent/implement.md` | Build the binary using protocol compliance first, lifecycle second, unit tests last |
 
 ## How to Use
 
@@ -18,6 +22,7 @@ When the user asks to "build an external agent", "create an agent binary", or "e
 1. Read `.claude/skills/entire-external-agent/SKILL.md` for the full pipeline overview
 2. Follow the three phases in order: research, write-tests, implement
 3. Each phase has a dedicated skill file with detailed instructions
+4. Keep reusable protocol checks out of this repo's `e2e/` directory. Add them to `external-agents-tests` instead.
 
 ## Tool Mapping (Codex)
 
