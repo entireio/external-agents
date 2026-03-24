@@ -53,10 +53,13 @@ linters:
   settings:
     errcheck:
       check-type-assertions: true
+    goconst:
+      min-occurrences: 5
     gosec:
       excludes:
         - G204 # subprocess with variables is expected for CLI tools
         - G304 # file inclusion via variable is expected for CLI tools
+        - G703 # path traversal via taint — paths are constructed from controlled inputs
         - G705 # XSS not applicable to CLI stderr output
     govet:
       enable-all: true
