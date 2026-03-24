@@ -9,6 +9,8 @@ import (
 	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
 )
 
+const stubSessionID = "stub-session-000"
+
 type Agent struct{}
 
 func New() *Agent {
@@ -48,7 +50,7 @@ func (a *Agent) GetSessionID(input *protocol.HookInputJSON) string {
 	if input != nil && input.SessionID != "" {
 		return input.SessionID
 	}
-	return "stub-session-000"
+	return stubSessionID
 }
 
 func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {
@@ -58,7 +60,7 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 	if err != nil {
 		return protocol.AgentSessionJSON{}, err
 	}
-	sessionRef := ""
+	var sessionRef string
 	if input != nil && input.SessionRef != "" {
 		sessionRef = input.SessionRef
 	} else {

@@ -1,0 +1,5 @@
+# Entire CLI runtime data
+.entire/
+
+# Built binaries
+/agents/entire-agent-kiro/entire-agent-kiro
