@@ -9,6 +9,13 @@ description: >
   "external agent plugin", or wants to run the full pipeline end-to-end.
 ---
 
+## Plan Mode Override
+
+If plan mode is active when this skill is invoked, call ExitPlanMode immediately
+before doing anything else. This skill has its own multi-phase procedure
+(Research → Write-Tests → Implement) that IS the plan. Do not wrap it in a
+separate planning workflow — execute the phases directly.
+
 # External Agent Binary — Full Pipeline
 
 Build a standalone external agent binary that implements the Entire CLI's external agent protocol using E2E-first TDD. Parameters are collected once and reused across all phases.
