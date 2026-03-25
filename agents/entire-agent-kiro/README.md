@@ -103,24 +103,15 @@ make clean    # Remove built binary
 go run ./cmd/entire-agent-kiro info
 ```
 
-## E2E Tests
+## Testing
 
-E2E tests live in the shared `e2e/` directory at the repo root (not inside this agent's directory). The harness auto-discovers and builds all agents, then runs tests against each.
+Kiro is validated in three places:
 
-### Subcommand tests (`e2e/kiro_test.go`)
+- **Unit tests** live in this module and cover the Kiro-specific implementation details.
+- **Protocol compliance** runs in GitHub Actions through [`entireio/external-agents-tests`](https://github.com/entireio/external-agents-tests) against the built `entire-agent-kiro` binary.
+- **Lifecycle tests** live in the shared repo-root [`e2e/`](../../e2e/) harness and require `entire` plus `kiro-cli-chat`.
 
-Exercise each protocol subcommand directly — no external dependencies needed:
-
-- **Identity**: `info`, `detect` (present/absent)
-- **Sessions**: `get-session-id`, `get-session-dir`, `resolve-session-file`, `write-session`/`read-session` round-trip
-- **Transcript**: `read-transcript`, `chunk-transcript`/`reassemble-transcript` round-trip
-- **Hooks**: `parse-hook` (spawn, prompt-submit, pre-tool-use, stop), `install-hooks`/`uninstall-hooks`/`are-hooks-installed`, idempotent install
-- **Transcript analysis**: `get-transcript-position`, `extract-modified-files`, `extract-prompts`, `extract-summary`
-- **Other**: `format-resume-command`, unknown subcommand handling
-
-### Lifecycle tests (`e2e/kiro_lifecycle_test.go`)
-
-Full integration tests requiring `entire` CLI and `kiro-cli-chat`:
+The lifecycle suite covers:
 
 - **SinglePromptManualCommit** — agent creates file → commit → checkpoint with trailer
 - **MultiplePromptsManualCommit** — two prompts → single commit → checkpoint covers both
@@ -133,12 +124,15 @@ Full integration tests requiring `entire` CLI and `kiro-cli-chat`:
 ### Running
 
 ```bash
+# From this module:
+make test                    # Unit tests
+
 # From the repo root:
-make test-e2e                # All E2E tests (lifecycle tests skip if deps missing)
-make test-e2e-lifecycle      # Lifecycle tests only (fails if deps missing)
+make test-e2e                # Lifecycle tests
+make test-e2e-lifecycle      # Explicit lifecycle target
 
 # Run a specific test:
-cd e2e && go test -tags=e2e -v -count=1 -run TestKiro_Info ./...
+cd e2e && go test -tags=e2e -v -count=1 -run TestLifecycle_SinglePromptManualCommit ./...
 ```
 
 ## Troubleshooting

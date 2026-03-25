@@ -1,6 +1,8 @@
-# E2E Tests
+# Lifecycle Tests
 
-End-to-end tests for external agents, exercising the full lifecycle: agent prompts, git hooks, checkpoints, and rewind.
+End-to-end lifecycle tests for external agents. This harness covers the behaviors that only make sense against the real Entire CLI and the real agent CLI: `entire enable`, prompt execution, hook installation, checkpoint creation, rewind, and interactive sessions.
+
+Generic protocol compliance is no longer in this directory. Those checks run from [`entireio/external-agents-tests`](https://github.com/entireio/external-agents-tests) and are wired into this repo through GitHub Actions.
 
 ## Structure
 
@@ -19,23 +21,20 @@ e2e/
 │   └── assertions.go # Test assertions (testify-based)
 ├── bootstrap/        # Pre-test agent bootstrap (CI auth setup)
 │   └── main.go       # go run ./e2e/bootstrap
+├── build.go          # Agent discovery + binary builds for lifecycle runs
 ├── setup_test.go     # TestMain: build agents, artifact dir, preflight
-├── kiro_lifecycle_test.go  # Lifecycle tests (ForEachAgent pattern)
-├── kiro_test.go      # Protocol-level tests (stdin/stdout subcommands)
-├── harness.go        # AgentRunner for protocol tests
-├── testenv.go        # TestEnv for protocol tests
-└── fixtures.go       # HookInput, KiroTranscript builders
+└── lifecycle_test.go # Shared lifecycle scenarios (ForEachAgent pattern)
 ```
 
 ## Running Tests
 
-### All E2E tests (protocol + lifecycle)
+### All lifecycle tests
 
 ```bash
 make test-e2e
 ```
 
-### Lifecycle tests only
+### Explicit lifecycle target
 
 ```bash
 make test-e2e-lifecycle
@@ -55,7 +54,6 @@ cd e2e && go test -tags=e2e -v -count=1 -run TestLifecycle_SinglePromptManualCom
 | `E2E_ENTIRE_BIN` | Path to `entire` binary. Falls back to `$PATH` lookup. |
 | `E2E_ARTIFACT_DIR` | Override artifact output directory. |
 | `E2E_KEEP_REPOS` | Set to any value to preserve temp repos after tests. |
-| `E2E_REQUIRE_LIFECYCLE` | Set to `1` to fail (not skip) when lifecycle deps are missing. |
 | `E2E_CONCURRENT_TEST_LIMIT` | Override per-agent concurrency limit (default: 2 for kiro). |
 
 ## Adding a New Agent
@@ -63,7 +61,8 @@ cd e2e && go test -tags=e2e -v -count=1 -run TestLifecycle_SinglePromptManualCom
 1. Create `e2e/agents/<name>.go` implementing the `Agent` interface.
 2. In `init()`, conditionally register based on `E2E_AGENT` env var.
 3. Call `RegisterGate("<name>", N)` to set concurrency limit.
-4. If it's an external agent, implement `ExternalAgent` interface.
+4. If it's an external agent, implement `ExternalAgent` so `SetupRepo` can pre-enable external agents in Entire settings.
+5. Keep generic protocol validation out of this directory. Add any reusable black-box protocol coverage to `external-agents-tests` instead.
 
 ## Debugging Failures
 

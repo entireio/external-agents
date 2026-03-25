@@ -471,7 +471,7 @@ func (a *Agent) appendToolCall(name string, input json.RawMessage) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, _ = f.Write(append(line, '\n'))
 }
 

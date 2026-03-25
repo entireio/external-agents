@@ -4,7 +4,9 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -80,22 +82,7 @@ func TestLifecycle_HooksInstalledAfterEnable(t *testing.T) {
 			t.Skipf("%s binary not built", agentBinName)
 		}
 
-		runner := &AgentRunner{
-			BinaryPath: binPath,
-			Env: []string{
-				"ENTIRE_REPO_ROOT=" + s.Dir,
-				"HOME=" + os.Getenv("HOME"),
-				"PATH=" + os.Getenv("PATH"),
-				"LANG=en_US.UTF-8",
-			},
-		}
-
-		var resp struct {
-			Installed bool `json:"installed"`
-		}
-		runner.RunJSON(t, &resp, "", "are-hooks-installed")
-
-		assert.True(t, resp.Installed, "hooks should be installed after entire enable")
+		assert.True(t, hooksInstalled(t, binPath, s.Dir), "hooks should be installed after entire enable")
 	})
 }
 
@@ -221,4 +208,31 @@ func TestLifecycle_InteractiveSession(t *testing.T) {
 		s.Git(t, "commit", "-m", "interactive test")
 		testutil.WaitForCheckpoint(t, s, 30*time.Second)
 	})
+}
+
+func hooksInstalled(t *testing.T, binPath, repoRoot string) bool {
+	t.Helper()
+
+	cmd := exec.Command(binPath, "are-hooks-installed")
+	cmd.Env = append(os.Environ(),
+		"ENTIRE_REPO_ROOT="+repoRoot,
+		"LANG=en_US.UTF-8",
+	)
+
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			t.Fatalf("%s are-hooks-installed failed: %v\nstdout: %s\nstderr: %s", binPath, err, out, exitErr.Stderr)
+		}
+		t.Fatalf("%s are-hooks-installed failed: %v\nstdout: %s", binPath, err, out)
+	}
+
+	var resp struct {
+		Installed bool `json:"installed"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("parse are-hooks-installed response: %v\nraw output: %s", err, out)
+	}
+
+	return resp.Installed
 }

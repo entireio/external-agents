@@ -43,7 +43,7 @@ func SetupRepo(t *testing.T, agent agents.Agent) *RepoState {
 	if keepRepos {
 		t.Logf("E2E_KEEP_REPOS: repo will be preserved at %s", dir)
 	} else {
-		t.Cleanup(func() { os.RemoveAll(dir) })
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	}
 
 	// Resolve symlinks (macOS: /var -> /private/var) so paths match
@@ -183,7 +183,7 @@ func (s *RepoState) RunPrompt(t *testing.T, ctx context.Context, prompt string, 
 	if err != nil && s.Agent.IsTransientError(out, err) {
 		errMsg := fmt.Sprintf("transient API error (stderr: %s)", strings.TrimSpace(out.Stderr))
 		t.Logf("%s — restarting scenario", errMsg)
-		fmt.Fprintf(s.ConsoleLog, "> [transient] %s — restarting scenario\n", errMsg)
+		_, _ = fmt.Fprintf(s.ConsoleLog, "> [transient] %s — restarting scenario\n", errMsg)
 		panic(errScenarioRestart{msg: errMsg})
 	}
 
@@ -191,15 +191,15 @@ func (s *RepoState) RunPrompt(t *testing.T, ctx context.Context, prompt string, 
 }
 
 func (s *RepoState) logPromptResult(out agents.Output) {
-	s.ConsoleLog.WriteString("> " + out.Command + "\n")
-	s.ConsoleLog.WriteString("stdout:\n" + out.Stdout + "\n")
-	s.ConsoleLog.WriteString("stderr:\n" + out.Stderr + "\n")
+	_, _ = s.ConsoleLog.WriteString("> " + out.Command + "\n")
+	_, _ = s.ConsoleLog.WriteString("stdout:\n" + out.Stdout + "\n")
+	_, _ = s.ConsoleLog.WriteString("stderr:\n" + out.Stderr + "\n")
 }
 
 // Git runs a git command in the repo and logs it to ConsoleLog.
 func (s *RepoState) Git(t *testing.T, args ...string) {
 	t.Helper()
-	s.ConsoleLog.WriteString("> git " + strings.Join(args, " ") + "\n")
+	_, _ = s.ConsoleLog.WriteString("> git " + strings.Join(args, " ") + "\n")
 	Git(t, s.Dir, args...)
 }
 
@@ -230,7 +230,7 @@ func (s *RepoState) StartSession(t *testing.T, ctx context.Context) agents.Sessi
 func (s *RepoState) WaitFor(t *testing.T, session agents.Session, pattern string, timeout time.Duration) {
 	t.Helper()
 	content, err := session.WaitFor(pattern, timeout)
-	fmt.Fprintf(s.ConsoleLog, "> pane after WaitFor(%q):\n%s\n", pattern, content)
+	_, _ = fmt.Fprintf(s.ConsoleLog, "> pane after WaitFor(%q):\n%s\n", pattern, content)
 	if err != nil {
 		t.Fatalf("WaitFor(%q): %v", pattern, err)
 	}
@@ -246,7 +246,7 @@ func (s *RepoState) IsExternalAgent() bool {
 // Send sends input to an interactive session and logs it to ConsoleLog.
 func (s *RepoState) Send(t *testing.T, session agents.Session, input string) {
 	t.Helper()
-	s.ConsoleLog.WriteString("> send: " + input + "\n")
+	_, _ = s.ConsoleLog.WriteString("> send: " + input + "\n")
 	if err := session.Send(input); err != nil {
 		t.Fatalf("send failed: %v", err)
 	}
