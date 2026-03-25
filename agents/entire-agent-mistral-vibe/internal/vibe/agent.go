@@ -77,20 +77,14 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 	if err != nil {
 		return protocol.AgentSessionJSON{}, err
 	}
-	sessionRef := ""
+	sessionRef := a.ResolveSessionFile(sessionDir, sessionID)
 	if input != nil && input.SessionRef != "" {
 		sessionRef = input.SessionRef
-	} else {
-		sessionRef = a.ResolveSessionFile(sessionDir, sessionID)
 	}
 
-	var nativeData []byte
-	if sessionRef != "" {
-		data, readErr := os.ReadFile(sessionRef)
-		if readErr != nil && !os.IsNotExist(readErr) {
-			return protocol.AgentSessionJSON{}, fmt.Errorf("failed to read session file: %w", readErr)
-		}
-		nativeData = data
+	nativeData, err := os.ReadFile(sessionRef)
+	if err != nil && !os.IsNotExist(err) {
+		return protocol.AgentSessionJSON{}, fmt.Errorf("failed to read session file: %w", err)
 	}
 
 	return protocol.AgentSessionJSON{

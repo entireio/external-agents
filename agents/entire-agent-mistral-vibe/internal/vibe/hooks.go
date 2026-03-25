@@ -29,12 +29,13 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}
 	}
 
+	sessionID := payload.SessionID
+	if sessionID == "" {
+		sessionID = fmt.Sprintf("vibe-%d", time.Now().UnixNano())
+	}
+
 	switch hookName {
 	case HookNameSessionStart:
-		sessionID := payload.SessionID
-		if sessionID == "" {
-			sessionID = fmt.Sprintf("vibe-%d", time.Now().UnixNano())
-		}
 		return &protocol.EventJSON{
 			Type:      1, // SessionStart
 			SessionID: sessionID,
@@ -42,10 +43,6 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}, nil
 
 	case HookNameUserPromptSubmit:
-		sessionID := payload.SessionID
-		if sessionID == "" {
-			sessionID = fmt.Sprintf("vibe-%d", time.Now().UnixNano())
-		}
 		return &protocol.EventJSON{
 			Type:      2, // TurnStart
 			SessionID: sessionID,
@@ -54,21 +51,14 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}, nil
 
 	case HookNameTurnEnd:
-		sessionID := payload.SessionID
-		if sessionID == "" {
-			sessionID = fmt.Sprintf("vibe-%d", time.Now().UnixNano())
-		}
-		// Find the session transcript in Vibe's log directory.
-		sessionRef := findVibeSessionRef(sessionID)
 		return &protocol.EventJSON{
 			Type:       3, // TurnEnd
 			SessionID:  sessionID,
-			SessionRef: sessionRef,
+			SessionRef: findVibeSessionRef(sessionID),
 			Timestamp:  time.Now().UTC().Format(time.RFC3339),
 		}, nil
 
 	case HookNamePreToolUse, HookNamePostToolUse:
-		// Pre/post tool use hooks do not produce protocol events.
 		return nil, nil
 
 	default:
@@ -278,9 +268,3 @@ func findVibeSessionRef(sessionID string) string {
 	return filepath.Join(best, "messages.jsonl")
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
