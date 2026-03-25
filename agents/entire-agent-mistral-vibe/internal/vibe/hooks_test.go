@@ -8,6 +8,14 @@ import (
 	"testing"
 )
 
+func setHookTestEnv(t *testing.T, repoRoot string) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	return home
+}
+
 func TestParseHook_SessionStart(t *testing.T) {
 	agent := New()
 	payload := VibeHookPayload{
@@ -62,7 +70,7 @@ func TestParseHook_UserPromptSubmit(t *testing.T) {
 
 func TestParseHook_TurnEnd(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("ENTIRE_REPO_ROOT", dir)
+	setHookTestEnv(t, dir)
 
 	agent := New()
 	payload := VibeHookPayload{
@@ -92,7 +100,7 @@ func TestParseHook_TurnEnd(t *testing.T) {
 
 func TestCacheTranscriptForTurnEnd_Placeholder(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("ENTIRE_REPO_ROOT", dir)
+	setHookTestEnv(t, dir)
 
 	agent := New()
 	ref := agent.cacheTranscriptForTurnEnd("test-session-123")
@@ -188,7 +196,7 @@ func TestParseHook_MalformedJSON(t *testing.T) {
 
 func TestInstallHooks(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("ENTIRE_REPO_ROOT", dir)
+	setHookTestEnv(t, dir)
 
 	agent := New()
 	count, err := agent.InstallHooks(false, false)
@@ -218,7 +226,7 @@ func TestInstallHooks(t *testing.T) {
 
 func TestInstallHooks_Idempotent(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("ENTIRE_REPO_ROOT", dir)
+	setHookTestEnv(t, dir)
 
 	agent := New()
 	agent.InstallHooks(false, false)
@@ -234,7 +242,7 @@ func TestInstallHooks_Idempotent(t *testing.T) {
 
 func TestInstallHooks_LocalDev(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("ENTIRE_REPO_ROOT", dir)
+	setHookTestEnv(t, dir)
 
 	agent := New()
 	agent.InstallHooks(true, true)
@@ -250,7 +258,7 @@ func TestInstallHooks_LocalDev(t *testing.T) {
 
 func TestUninstallHooks(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("ENTIRE_REPO_ROOT", dir)
+	setHookTestEnv(t, dir)
 
 	agent := New()
 	agent.InstallHooks(false, false)
@@ -271,7 +279,7 @@ func TestUninstallHooks(t *testing.T) {
 
 func TestAreHooksInstalled_NoConfig(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("ENTIRE_REPO_ROOT", dir)
+	setHookTestEnv(t, dir)
 
 	agent := New()
 	if agent.AreHooksInstalled() {
@@ -279,3 +287,106 @@ func TestAreHooksInstalled_NoConfig(t *testing.T) {
 	}
 }
 
+func TestInstallHooks_PreservesExistingConfigAndTrustFile(t *testing.T) {
+	dir := t.TempDir()
+	home := setHookTestEnv(t, dir)
+
+	configPath := filepath.Join(dir, ".vibe", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	originalConfig := strings.Join([]string{
+		`model = "mistral-large"`,
+		`[ui]`,
+		`theme = "solarized"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(configPath, []byte(originalConfig), 0o600); err != nil {
+		t.Fatalf("write original config: %v", err)
+	}
+
+	trustPath := filepath.Join(home, ".vibe", "trusted_folders.toml")
+	if err := os.MkdirAll(filepath.Dir(trustPath), 0o700); err != nil {
+		t.Fatalf("mkdir trust dir: %v", err)
+	}
+	originalTrust := "trusted = [\n    \"/already/trusted\",\n]\nuntrusted = [\n    \"/keep/me\",\n]\n"
+	if err := os.WriteFile(trustPath, []byte(originalTrust), 0o600); err != nil {
+		t.Fatalf("write original trust file: %v", err)
+	}
+
+	agent := New()
+	if _, err := agent.InstallHooks(false, false); err != nil {
+		t.Fatalf("InstallHooks() error = %v", err)
+	}
+
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	config := string(configData)
+	if !strings.Contains(config, `model = "mistral-large"`) {
+		t.Fatal("expected existing config to be preserved")
+	}
+	if !strings.Contains(config, `theme = "solarized"`) {
+		t.Fatal("expected existing nested config to be preserved")
+	}
+	if !strings.Contains(config, "entire hooks mistral-vibe session-start") {
+		t.Fatal("expected managed hooks to be installed")
+	}
+
+	trustData, err := os.ReadFile(trustPath)
+	if err != nil {
+		t.Fatalf("read trust file: %v", err)
+	}
+	trust := string(trustData)
+	if !strings.Contains(trust, `"/already/trusted"`) {
+		t.Fatal("expected existing trusted path to be preserved")
+	}
+	if !strings.Contains(trust, `"/keep/me"`) {
+		t.Fatal("expected existing untrusted path to be preserved")
+	}
+	if !strings.Contains(trust, dir) {
+		t.Fatal("expected repo path to be added to trusted paths")
+	}
+}
+
+func TestUninstallHooks_RemovesManagedBlockOnly(t *testing.T) {
+	dir := t.TempDir()
+	setHookTestEnv(t, dir)
+
+	configPath := filepath.Join(dir, ".vibe", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	originalConfig := strings.Join([]string{
+		`model = "mistral-large"`,
+		`[ui]`,
+		`theme = "solarized"`,
+		`[[hooks.custom_hook]]`,
+		`command = "custom-hook"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(configPath, []byte(originalConfig), 0o600); err != nil {
+		t.Fatalf("write original config: %v", err)
+	}
+
+	agent := New()
+	if _, err := agent.InstallHooks(false, false); err != nil {
+		t.Fatalf("InstallHooks() error = %v", err)
+	}
+	if err := agent.UninstallHooks(); err != nil {
+		t.Fatalf("UninstallHooks() error = %v", err)
+	}
+
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read config after uninstall: %v", err)
+	}
+	config := string(configData)
+	if config != originalConfig {
+		t.Fatalf("config after uninstall = %q, want %q", config, originalConfig)
+	}
+	if strings.Contains(config, "entire hooks mistral-vibe") {
+		t.Fatal("managed hook commands should be removed")
+	}
+}

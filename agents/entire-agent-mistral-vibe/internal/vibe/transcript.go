@@ -13,6 +13,7 @@ var vibeFileModificationTools = map[string]struct{}{
 	"search_replace": {},
 	"create_file":    {},
 	"edit_file":      {},
+	"bash":           {},
 }
 
 // GetTranscriptPosition returns the number of lines (messages) in the JSONL
@@ -196,6 +197,38 @@ func extractVibeFilePath(argsStr string) string {
 		if err := json.Unmarshal(raw, &path); err == nil && path != "" {
 			return path
 		}
+	}
+	for _, key := range []string{"command", "cmd", "bash_command", "shell_command"} {
+		raw, ok := fields[key]
+		if !ok {
+			continue
+		}
+		var command string
+		if err := json.Unmarshal(raw, &command); err == nil {
+			if path := extractVibeFilePathFromCommand(command); path != "" {
+				return path
+			}
+		}
+	}
+	return ""
+}
+
+func extractVibeFilePathFromCommand(command string) string {
+	if command == "" {
+		return ""
+	}
+
+	tokens := strings.Fields(command)
+	for i, token := range tokens {
+		switch token {
+		case ">", ">>", "1>", "1>>":
+			if i+1 < len(tokens) {
+				return strings.Trim(tokens[i+1], `"'`)
+			}
+		}
+	}
+	if len(tokens) >= 2 && tokens[0] == "touch" {
+		return strings.Trim(tokens[1], `"'`)
 	}
 	return ""
 }

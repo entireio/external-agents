@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +19,8 @@ const (
 	prodHookCommandBase   = "entire hooks mistral-vibe "
 	localDevCommandBase   = "go run ./cmd/entire/main.go hooks mistral-vibe "
 	hookMarker            = "entire hooks mistral-vibe"
+	managedHookBlockStart = "# BEGIN ENTIRE MISTRAL VIBE HOOKS"
+	managedHookBlockEnd   = "# END ENTIRE MISTRAL VIBE HOOKS"
 )
 
 // ParseHook parses a Vibe hook JSON payload and maps it to a protocol EventJSON.
@@ -86,30 +90,13 @@ func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
 		commandBase = localDevCommandBase
 	}
 
-	hookEntries := []struct {
-		nativeName  string
-		protocolName string
-	}{
-		{VibeNativeSessionStart, HookNameSessionStart},
-		{VibeNativeUserPromptSubmit, HookNameUserPromptSubmit},
-		{VibeNativePreToolUse, HookNamePreToolUse},
-		{VibeNativePostToolUse, HookNamePostToolUse},
-		{VibeNativeTurnEnd, HookNameTurnEnd},
-	}
-
-	var tomlLines []string
-	tomlLines = append(tomlLines, "# Entire CLI hook configuration")
-	tomlLines = append(tomlLines, "# Managed by entire-agent-mistral-vibe")
-	tomlLines = append(tomlLines, "")
-
-	for _, hook := range hookEntries {
-		tomlLines = append(tomlLines, fmt.Sprintf("[[hooks.%s]]", hook.nativeName))
-		tomlLines = append(tomlLines, fmt.Sprintf(`command = "%s%s"`, commandBase, hook.protocolName))
-		tomlLines = append(tomlLines, "")
-	}
-
 	configPath := filepath.Join(configDir, vibeConfigFile)
-	content := strings.Join(tomlLines, "\n")
+	existing, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return 0, fmt.Errorf("failed to read config.toml: %w", err)
+	}
+
+	content := mergeHookConfig(string(existing), renderManagedHookBlock(commandBase))
 	if err := os.WriteFile(configPath, []byte(content), 0o600); err != nil {
 		return 0, fmt.Errorf("failed to write config.toml: %w", err)
 	}
@@ -120,7 +107,7 @@ func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
 		_, _ = fmt.Fprintf(os.Stderr, "warning: failed to trust directory: %v\n", err)
 	}
 
-	return len(hookEntries), nil
+	return len(managedHookEntries()), nil
 }
 
 // trustDirectory adds the given path to Vibe's trusted folders list
@@ -151,38 +138,39 @@ func trustDirectory(dir string) error {
 
 	content := string(data)
 
-	// Check if already trusted (simple string check).
-	if strings.Contains(content, absDir) {
-		return nil
+	trusted, foundTrusted, err := readTOMLStringArray(content, "trusted")
+	if err != nil {
+		return err
 	}
-
-	// Append to trusted list. We use a simple approach: read existing
-	// trusted entries, add ours, and rewrite.
-	var trusted []string
-	for _, line := range strings.Split(content, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "\"") || strings.HasPrefix(line, "'") {
-			// Extract path from TOML string (strip quotes and trailing comma).
-			path := strings.Trim(line, "\"', \t")
-			if path != "" {
-				trusted = append(trusted, path)
-			}
+	for _, path := range trusted {
+		if path == absDir {
+			return nil
 		}
+	}
+	if !foundTrusted {
+		trusted = nil
 	}
 	trusted = append(trusted, absDir)
 
-	// Write back in TOML format.
-	var sb strings.Builder
-	sb.WriteString("trusted = [\n")
-	for _, t := range trusted {
-		sb.WriteString(fmt.Sprintf("    %q,\n", t))
+	untrusted, foundUntrusted, err := readTOMLStringArray(content, "untrusted")
+	if err != nil {
+		return err
 	}
-	sb.WriteString("]\nuntrusted = []\n")
+	if !foundUntrusted {
+		untrusted = nil
+	}
+
+	updated := upsertTOMLStringArray(content, "trusted", trusted)
+	updated = upsertTOMLStringArray(updated, "untrusted", untrusted)
+
+	if strings.TrimSpace(updated) == "" {
+		return nil
+	}
 
 	if err := os.MkdirAll(filepath.Dir(trustFile), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(trustFile, []byte(sb.String()), 0o600)
+	return os.WriteFile(trustFile, []byte(updated), 0o600)
 }
 
 // UninstallHooks removes the Entire CLI hook entries from .vibe/config.toml.
@@ -198,29 +186,12 @@ func (a *Agent) UninstallHooks() error {
 		return err
 	}
 
-	// Filter out lines containing the hook marker.
-	var filteredLines []string
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.Contains(line, hookMarker) {
-			continue
-		}
-		// Also skip comment lines managed by this agent.
-		if strings.Contains(line, "Managed by entire-agent-mistral-vibe") {
-			continue
-		}
-		if strings.Contains(line, "Entire CLI hook configuration") {
-			continue
-		}
-		filteredLines = append(filteredLines, line)
-	}
-
-	// If only whitespace/empty lines remain, remove the file entirely.
-	remaining := strings.TrimSpace(strings.Join(filteredLines, "\n"))
+	remaining := removeManagedHookConfig(string(data))
 	if remaining == "" || remaining == "[hooks]" {
 		return os.Remove(configPath)
 	}
 
-	return os.WriteFile(configPath, []byte(strings.Join(filteredLines, "\n")), 0o600)
+	return os.WriteFile(configPath, []byte(remaining), 0o600)
 }
 
 // AreHooksInstalled checks whether .vibe/config.toml contains Entire CLI hook entries.
@@ -233,7 +204,8 @@ func (a *Agent) AreHooksInstalled() bool {
 		return false
 	}
 
-	return strings.Contains(string(data), hookMarker)
+	content := string(data)
+	return strings.Contains(content, managedHookBlockStart) || strings.Contains(content, hookMarker)
 }
 
 // cacheTranscriptForTurnEnd copies the Vibe native transcript into
@@ -300,3 +272,173 @@ func findVibeSessionRef(sessionID string) string {
 	return filepath.Join(best, "messages.jsonl")
 }
 
+func managedHookEntries() []struct {
+	nativeName   string
+	protocolName string
+} {
+	return []struct {
+		nativeName   string
+		protocolName string
+	}{
+		{VibeNativeSessionStart, HookNameSessionStart},
+		{VibeNativeUserPromptSubmit, HookNameUserPromptSubmit},
+		{VibeNativePreToolUse, HookNamePreToolUse},
+		{VibeNativePostToolUse, HookNamePostToolUse},
+		{VibeNativeTurnEnd, HookNameTurnEnd},
+	}
+}
+
+func renderManagedHookBlock(commandBase string) string {
+	lines := []string{
+		managedHookBlockStart,
+		"# Entire CLI hook configuration",
+		"# Managed by entire-agent-mistral-vibe",
+	}
+	for _, hook := range managedHookEntries() {
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("[[hooks.%s]]", hook.nativeName))
+		lines = append(lines, fmt.Sprintf(`command = "%s%s"`, commandBase, hook.protocolName))
+	}
+	lines = append(lines, "", managedHookBlockEnd)
+	return strings.Join(lines, "\n")
+}
+
+func mergeHookConfig(existing string, managedBlock string) string {
+	cleaned := removeManagedHookConfig(existing)
+	if cleaned == "" {
+		return managedBlock + "\n"
+	}
+	return managedBlock + "\n" + cleaned
+}
+
+func removeManagedHookConfig(content string) string {
+	content = removeManagedHookBlock(content)
+	content = removeLegacyManagedHookConfig(content)
+	return strings.TrimLeft(content, "\n")
+}
+
+func removeManagedHookBlock(content string) string {
+	for {
+		start := strings.Index(content, managedHookBlockStart)
+		if start == -1 {
+			return content
+		}
+		end := strings.Index(content[start:], managedHookBlockEnd)
+		if end == -1 {
+			return content
+		}
+		end += start + len(managedHookBlockEnd)
+		if end < len(content) && content[end] == '\n' {
+			end++
+		}
+		content = content[:start] + content[end:]
+	}
+}
+
+func removeLegacyManagedHookConfig(content string) string {
+	lines := strings.Split(content, "\n")
+	var kept []string
+
+	for i := 0; i < len(lines); {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+		if strings.Contains(line, "Managed by entire-agent-mistral-vibe") ||
+			strings.Contains(line, "Entire CLI hook configuration") {
+			i++
+			continue
+		}
+		if strings.HasPrefix(trimmed, "[[hooks.") {
+			j := i + 1
+			managed := false
+			for j < len(lines) {
+				nextTrimmed := strings.TrimSpace(lines[j])
+				if strings.HasPrefix(nextTrimmed, "[[hooks.") {
+					break
+				}
+				if strings.Contains(lines[j], hookMarker) {
+					managed = true
+				}
+				j++
+			}
+			if managed {
+				i = j
+				for i < len(lines) && strings.TrimSpace(lines[i]) == "" {
+					i++
+				}
+				continue
+			}
+			kept = append(kept, lines[i:j]...)
+			i = j
+			continue
+		}
+		kept = append(kept, line)
+		i++
+	}
+
+	result := strings.Join(kept, "\n")
+	if result == "" {
+		return ""
+	}
+	if !strings.HasSuffix(result, "\n") {
+		result += "\n"
+	}
+	return result
+}
+
+func readTOMLStringArray(content string, key string) ([]string, bool, error) {
+	re := regexp.MustCompile(`(?ms)^\s*` + regexp.QuoteMeta(key) + `\s*=\s*\[(.*?)\]`)
+	match := re.FindStringSubmatch(content)
+	if match == nil {
+		return nil, false, nil
+	}
+	itemRE := regexp.MustCompile(`"(?:\\.|[^"])*"|'(?:[^'\\]|\\.)*'`)
+	rawItems := itemRE.FindAllString(match[1], -1)
+	values := make([]string, 0, len(rawItems))
+	for _, raw := range rawItems {
+		parsed, err := parseTOMLStringLiteral(raw)
+		if err != nil {
+			return nil, false, err
+		}
+		values = append(values, parsed)
+	}
+	return values, true, nil
+}
+
+func parseTOMLStringLiteral(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	if raw[0] == '"' {
+		return strconv.Unquote(raw)
+	}
+	if raw[0] == '\'' && raw[len(raw)-1] == '\'' {
+		return raw[1 : len(raw)-1], nil
+	}
+	return "", fmt.Errorf("unsupported TOML string literal: %s", raw)
+}
+
+func upsertTOMLStringArray(content string, key string, values []string) string {
+	formatted := formatTOMLStringArray(key, values)
+	re := regexp.MustCompile(`(?ms)^\s*` + regexp.QuoteMeta(key) + `\s*=\s*\[(.*?)\]\n?`)
+	if re.MatchString(content) {
+		return re.ReplaceAllString(content, formatted)
+	}
+	if strings.TrimSpace(content) == "" {
+		return formatted
+	}
+	if strings.HasSuffix(content, "\n") {
+		return content + formatted
+	}
+	return content + "\n" + formatted
+}
+
+func formatTOMLStringArray(key string, values []string) string {
+	var b strings.Builder
+	b.WriteString(key)
+	b.WriteString(" = [\n")
+	for _, value := range values {
+		b.WriteString(fmt.Sprintf("    %q,\n", value))
+	}
+	b.WriteString("]\n")
+	return b.String()
+}

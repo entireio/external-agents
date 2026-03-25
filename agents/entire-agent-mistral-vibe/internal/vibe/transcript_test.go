@@ -113,6 +113,32 @@ func TestExtractModifiedFiles_MissingFile(t *testing.T) {
 	}
 }
 
+func TestExtractModifiedFiles_BashTool(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "bash.jsonl")
+	content := strings.Join([]string{
+		`{"role":"user","content":"make a file"}`,
+		`{"role":"assistant","tool_calls":[{"id":"call-1","index":0,"function":{"name":"bash","arguments":"{\"command\":\"touch bash-created.txt\"}"},"type":"function"}]}`,
+		`{"role":"tool","content":"done","name":"bash","tool_call_id":"call-1"}`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write transcript: %v", err)
+	}
+
+	agent := New()
+	files, pos, err := agent.ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(files) != 1 || files[0] != "bash-created.txt" {
+		t.Fatalf("files = %v, want [bash-created.txt]", files)
+	}
+	if pos != 3 {
+		t.Fatalf("position = %d, want 3", pos)
+	}
+}
+
 func TestExtractPrompts(t *testing.T) {
 	dir := t.TempDir()
 	path := writeGoldenJSONL(t, dir)
@@ -207,12 +233,14 @@ func TestExtractSummary_MissingFile(t *testing.T) {
 
 func TestExtractVibeFilePath(t *testing.T) {
 	tests := []struct {
-		name     string
-		argsStr  string
-		want     string
+		name    string
+		argsStr string
+		want    string
 	}{
 		{"path_key", `{"path":"hello.go","content":"test"}`, "hello.go"},
 		{"file_path_key", `{"file_path":"/src/main.py"}`, "/src/main.py"},
+		{"bash_command_touch", `{"command":"touch bash-created.txt"}`, "bash-created.txt"},
+		{"bash_command_redirect", `{"command":"echo hello > out.txt"}`, "out.txt"},
 		{"empty_args", ``, ""},
 		{"no_path_keys", `{"content":"test"}`, ""},
 		{"malformed_json", `not json`, ""},
@@ -228,12 +256,12 @@ func TestExtractVibeFilePath(t *testing.T) {
 }
 
 func TestIsVibeFileModificationTool(t *testing.T) {
-	for _, tool := range []string{"write_file", "search_replace", "create_file", "edit_file"} {
+	for _, tool := range []string{"write_file", "search_replace", "create_file", "edit_file", "bash"} {
 		if !isVibeFileModificationTool(tool) {
 			t.Errorf("%q should be a file modification tool", tool)
 		}
 	}
-	for _, tool := range []string{"bash", "grep", "read_file", "web_search"} {
+	for _, tool := range []string{"grep", "read_file", "web_search"} {
 		if isVibeFileModificationTool(tool) {
 			t.Errorf("%q should not be a file modification tool", tool)
 		}
