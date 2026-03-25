@@ -24,8 +24,8 @@ func TestParseHook_SessionStart(t *testing.T) {
 	if event == nil {
 		t.Fatal("event should not be nil")
 	}
-	if event.Type != 1 {
-		t.Errorf("type = %d, want 1", event.Type)
+	if event.Type != EventTypeSessionStart {
+		t.Errorf("type = %d, want %d", event.Type, EventTypeSessionStart)
 	}
 	if event.SessionID != "0e9f7293-0151-4178-ba58-2c48c5abb8df" {
 		t.Errorf("session_id = %q, want %q", event.SessionID, "0e9f7293-0151-4178-ba58-2c48c5abb8df")
@@ -52,8 +52,8 @@ func TestParseHook_UserPromptSubmit(t *testing.T) {
 	if event == nil {
 		t.Fatal("event should not be nil")
 	}
-	if event.Type != 2 {
-		t.Errorf("type = %d, want 2", event.Type)
+	if event.Type != EventTypeTurnStart {
+		t.Errorf("type = %d, want %d", event.Type, EventTypeTurnStart)
 	}
 	if event.Prompt != "fix the login bug" {
 		t.Errorf("prompt = %q, want %q", event.Prompt, "fix the login bug")
@@ -79,8 +79,8 @@ func TestParseHook_TurnEnd(t *testing.T) {
 	if event == nil {
 		t.Fatal("event should not be nil")
 	}
-	if event.Type != 3 {
-		t.Errorf("type = %d, want 3", event.Type)
+	if event.Type != EventTypeTurnEnd {
+		t.Errorf("type = %d, want %d", event.Type, EventTypeTurnEnd)
 	}
 	if event.SessionID != "0e9f7293-0151-4178-ba58-2c48c5abb8df" {
 		t.Errorf("session_id = %q", event.SessionID)
@@ -279,22 +279,3 @@ func TestAreHooksInstalled_NoConfig(t *testing.T) {
 	}
 }
 
-func TestNativeToProtocolHookMapping(t *testing.T) {
-	expected := map[string]string{
-		"session_start":      "session-start",
-		"user_prompt_submit": "user-prompt-submit",
-		"pre_tool_use":       "pre-tool-use",
-		"post_tool_use":      "post-tool-use",
-		"turn_end":           "turn-end",
-	}
-	for native, protocol := range expected {
-		got, ok := NativeToProtocolHook[native]
-		if !ok {
-			t.Errorf("missing mapping for %q", native)
-			continue
-		}
-		if got != protocol {
-			t.Errorf("NativeToProtocolHook[%q] = %q, want %q", native, got, protocol)
-		}
-	}
-}

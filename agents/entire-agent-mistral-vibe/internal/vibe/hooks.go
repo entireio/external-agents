@@ -37,14 +37,14 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	switch hookName {
 	case HookNameSessionStart:
 		return &protocol.EventJSON{
-			Type:      1, // SessionStart
+			Type:      EventTypeSessionStart,
 			SessionID: sessionID,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		}, nil
 
 	case HookNameUserPromptSubmit:
 		return &protocol.EventJSON{
-			Type:      2, // TurnStart
+			Type:      EventTypeTurnStart,
 			SessionID: sessionID,
 			Prompt:    payload.Prompt,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -53,7 +53,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	case HookNameTurnEnd:
 		sessionRef := a.cacheTranscriptForTurnEnd(sessionID)
 		return &protocol.EventJSON{
-			Type:       3, // TurnEnd
+			Type:       EventTypeTurnEnd,
 			SessionID:  sessionID,
 			SessionRef: sessionRef,
 			Timestamp:  time.Now().UTC().Format(time.RFC3339),
