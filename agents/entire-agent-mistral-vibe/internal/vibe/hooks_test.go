@@ -90,19 +90,19 @@ func TestParseHook_TurnEnd(t *testing.T) {
 	}
 }
 
-func TestEnsurePlaceholderTranscript(t *testing.T) {
+func TestCacheTranscriptForTurnEnd_Placeholder(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", dir)
 
 	agent := New()
-	ref := agent.ensurePlaceholderTranscript("test-session-123")
+	ref := agent.cacheTranscriptForTurnEnd("test-session-123")
 	if ref == "" {
-		t.Fatal("placeholder ref should not be empty")
+		t.Fatal("cache ref should not be empty")
 	}
 
 	data, err := os.ReadFile(ref)
 	if err != nil {
-		t.Fatalf("read placeholder: %v", err)
+		t.Fatalf("read cached transcript: %v", err)
 	}
 	if string(data) != "{}" {
 		t.Errorf("placeholder content = %q, want %q", data, "{}")

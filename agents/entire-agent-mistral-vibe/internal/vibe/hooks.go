@@ -51,10 +51,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}, nil
 
 	case HookNameTurnEnd:
-		sessionRef := findVibeSessionRef(sessionID)
-		if sessionRef == "" {
-			sessionRef = a.ensurePlaceholderTranscript(sessionID)
-		}
+		sessionRef := a.cacheTranscriptForTurnEnd(sessionID)
 		return &protocol.EventJSON{
 			Type:       3, // TurnEnd
 			SessionID:  sessionID,
@@ -239,10 +236,10 @@ func (a *Agent) AreHooksInstalled() bool {
 	return strings.Contains(string(data), hookMarker)
 }
 
-// ensurePlaceholderTranscript creates a minimal transcript file in .entire/tmp/
-// so the entire CLI has a valid SessionRef for session persistence. This is
-// the fallback when Vibe's native session logs cannot be found.
-func (a *Agent) ensurePlaceholderTranscript(sessionID string) string {
+// cacheTranscriptForTurnEnd copies the Vibe native transcript into
+// .entire/tmp/{sessionID}.json so the entire CLI has a local session file
+// for persistence. If the native log cannot be found, a placeholder is written.
+func (a *Agent) cacheTranscriptForTurnEnd(sessionID string) string {
 	repoRoot := protocol.RepoRoot()
 	sessionDir, err := a.GetSessionDir(repoRoot)
 	if err != nil {
@@ -251,11 +248,23 @@ func (a *Agent) ensurePlaceholderTranscript(sessionID string) string {
 	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
 		return ""
 	}
-	ref := a.ResolveSessionFile(sessionDir, sessionID)
-	if err := os.WriteFile(ref, []byte("{}"), 0o600); err != nil {
+	cachePath := a.ResolveSessionFile(sessionDir, sessionID)
+
+	// Try to copy from the native Vibe session log.
+	if nativeRef := findVibeSessionRef(sessionID); nativeRef != "" {
+		data, err := os.ReadFile(nativeRef)
+		if err == nil {
+			if err := os.WriteFile(cachePath, data, 0o600); err == nil {
+				return cachePath
+			}
+		}
+	}
+
+	// Fallback: write a placeholder so the session file exists.
+	if err := os.WriteFile(cachePath, []byte("{}"), 0o600); err != nil {
 		return ""
 	}
-	return ref
+	return cachePath
 }
 
 // findVibeSessionRef finds the messages.jsonl file for a Vibe session by
