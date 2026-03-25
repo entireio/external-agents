@@ -3,7 +3,6 @@ package protocol
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -309,5 +308,5 @@ func DefaultSessionDir(repoPath string) string {
 }
 
 func ResolveSessionFile(sessionDir, sessionID string) string {
-	return filepath.Join(sessionDir, fmt.Sprintf("%s.json", sessionID))
+	return filepath.Join(sessionDir, sessionID+".json")
 }

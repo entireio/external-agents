@@ -26,8 +26,8 @@ const (
 	localDevCommandBase = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
 	localDevTrustedCmd  = "sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
 	prodHookCommandBase = "entire hooks kiro "
-	sessionIDFile  = "kiro-active-session"
-	toolCallsFile  = "kiro-tool-calls.jsonl"
+	sessionIDFile       = "kiro-active-session"
+	toolCallsFile       = "kiro-tool-calls.jsonl"
 )
 
 type ideHookDef struct {
@@ -503,7 +503,6 @@ func (a *Agent) toolCallsPath() string {
 func (a *Agent) sessionIDCachePath() string {
 	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", sessionIDFile)
 }
-
 
 func fallbackStopSessionID() string {
 	return generateSessionID()

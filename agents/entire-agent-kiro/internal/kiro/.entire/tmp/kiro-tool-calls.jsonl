@@ -1,6 +1,0 @@
-{"id":"","name":"read","args":null}
-{"id":"","name":"write","args":{"file_path":"/tmp/main.go","content":"package main"}}
-{"id":"","name":"read","args":null}
-{"id":"","name":"write","args":{"file_path":"/tmp/main.go","content":"package main"}}
-{"id":"","name":"read","args":null}
-{"id":"","name":"write","args":{"file_path":"/tmp/main.go","content":"package main"}}

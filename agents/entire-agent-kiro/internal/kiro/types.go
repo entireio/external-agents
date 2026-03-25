@@ -134,18 +134,6 @@ type kiroIDEHistoryMeta struct {
 // from the session files and contain the full action trace (tool calls,
 // agent responses, file modifications) for each agent turn.
 
-type kiroExecutionIndex struct {
-	Executions []kiroExecutionIndexEntry `json:"executions"`
-}
-
-type kiroExecutionIndexEntry struct {
-	ExecutionID string `json:"executionId"`
-	Type        string `json:"type"`
-	Status      string `json:"status"`
-	StartTime   int64  `json:"startTime"`
-	EndTime     int64  `json:"endTime"`
-}
-
 type kiroExecutionLog struct {
 	ExecutionID   string                `json:"executionId"`
 	ChatSessionID string                `json:"chatSessionId"`

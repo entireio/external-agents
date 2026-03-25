@@ -850,7 +850,10 @@ func convertExecutionActionsToHistoryEntries(actions []kiroExecutionAction) []ki
 		if toolName, ok := execActionToToolName[action.ActionType]; ok {
 			filePath := extractFilePath(action.Input)
 			if filePath != "" {
-				args, _ := json.Marshal(map[string]string{"path": filePath})
+				args, err := json.Marshal(map[string]string{"path": filePath})
+				if err != nil {
+					continue
+				}
 				toolCalls = append(toolCalls, kiroToolCall{
 					Name: toolName,
 					Args: args,
@@ -864,26 +867,32 @@ func convertExecutionActionsToHistoryEntries(actions []kiroExecutionAction) []ki
 			if err := json.Unmarshal(action.Output, &out); err == nil && out.Message != "" {
 				// Flush any pending tool calls first
 				if len(toolCalls) > 0 {
-					toolUseJSON, _ := json.Marshal(kiroToolUseContent{
+					toolUseJSON, err := json.Marshal(kiroToolUseContent{
 						ToolUse: kiroToolUsePayload{ToolUses: toolCalls},
 					})
-					entries = append(entries, kiroHistoryEntry{Assistant: toolUseJSON})
+					if err == nil {
+						entries = append(entries, kiroHistoryEntry{Assistant: toolUseJSON})
+					}
 					toolCalls = nil
 				}
-				responseJSON, _ := json.Marshal(kiroResponseContent{
+				responseJSON, err := json.Marshal(kiroResponseContent{
 					Response: kiroResponsePayload{Content: out.Message},
 				})
-				entries = append(entries, kiroHistoryEntry{Assistant: responseJSON})
+				if err == nil {
+					entries = append(entries, kiroHistoryEntry{Assistant: responseJSON})
+				}
 			}
 		}
 	}
 
 	// Flush remaining tool calls without a trailing say
 	if len(toolCalls) > 0 {
-		toolUseJSON, _ := json.Marshal(kiroToolUseContent{
+		toolUseJSON, err := json.Marshal(kiroToolUseContent{
 			ToolUse: kiroToolUsePayload{ToolUses: toolCalls},
 		})
-		entries = append(entries, kiroHistoryEntry{Assistant: toolUseJSON})
+		if err == nil {
+			entries = append(entries, kiroHistoryEntry{Assistant: toolUseJSON})
+		}
 	}
 
 	return entries
@@ -924,9 +933,7 @@ func enrichIDETranscriptWithExecutionLogs(ideData []byte, execLogs map[string]*k
 					if len(assistantEntries) > 0 {
 						userEntry.Assistant = assistantEntries[0].Assistant
 						transcript.History = append(transcript.History, userEntry)
-						for _, extra := range assistantEntries[1:] {
-							transcript.History = append(transcript.History, extra)
-						}
+						transcript.History = append(transcript.History, assistantEntries[1:]...)
 						pendingUser = nil
 						continue
 					}

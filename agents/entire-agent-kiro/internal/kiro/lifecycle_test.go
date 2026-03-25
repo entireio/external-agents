@@ -75,7 +75,7 @@ func TestParseHookUserPromptSubmitSupportsIDEFallback(t *testing.T) {
 	if event.Type != 2 {
 		t.Fatalf("event.Type = %d, want %d", event.Type, 2)
 	}
-	if event.SessionID == "" || event.SessionID == "stub-session-000" {
+	if event.SessionID == "" || event.SessionID == stubSessionID {
 		t.Fatalf("session_id = %q, want generated stable ID", event.SessionID)
 	}
 	if event.Prompt != "ide prompt" {
@@ -158,7 +158,7 @@ func TestParseHookStopWithoutCachedSessionIDUsesNonPredictableFallback(t *testin
 	if event.SessionID == "" {
 		t.Fatal("session_id should not be empty")
 	}
-	if event.SessionID == "my-repo" || event.SessionID == "stub-session-000" {
+	if event.SessionID == "my-repo" || event.SessionID == stubSessionID {
 		t.Fatalf("session_id = %q, want generated non-predictable fallback", event.SessionID)
 	}
 
