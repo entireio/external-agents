@@ -61,10 +61,13 @@ func TestParseHook_UserPromptSubmit(t *testing.T) {
 }
 
 func TestParseHook_TurnEnd(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", dir)
+
 	agent := New()
 	payload := VibeHookPayload{
 		HookEventName: "turn_end",
-		CWD:           "/tmp/test",
+		CWD:           dir,
 		SessionID:     "0e9f7293-0151-4178-ba58-2c48c5abb8df",
 	}
 	input, _ := json.Marshal(payload)
@@ -81,6 +84,33 @@ func TestParseHook_TurnEnd(t *testing.T) {
 	}
 	if event.SessionID != "0e9f7293-0151-4178-ba58-2c48c5abb8df" {
 		t.Errorf("session_id = %q", event.SessionID)
+	}
+	if event.SessionRef == "" {
+		t.Error("session_ref should not be empty (placeholder should be created)")
+	}
+}
+
+func TestEnsurePlaceholderTranscript(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", dir)
+
+	agent := New()
+	ref := agent.ensurePlaceholderTranscript("test-session-123")
+	if ref == "" {
+		t.Fatal("placeholder ref should not be empty")
+	}
+
+	data, err := os.ReadFile(ref)
+	if err != nil {
+		t.Fatalf("read placeholder: %v", err)
+	}
+	if string(data) != "{}" {
+		t.Errorf("placeholder content = %q, want %q", data, "{}")
+	}
+
+	want := filepath.Join(dir, ".entire", "tmp", "test-session-123.json")
+	if ref != want {
+		t.Errorf("ref = %q, want %q", ref, want)
 	}
 }
 

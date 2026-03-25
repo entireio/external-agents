@@ -51,10 +51,14 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}, nil
 
 	case HookNameTurnEnd:
+		sessionRef := findVibeSessionRef(sessionID)
+		if sessionRef == "" {
+			sessionRef = a.ensurePlaceholderTranscript(sessionID)
+		}
 		return &protocol.EventJSON{
 			Type:       3, // TurnEnd
 			SessionID:  sessionID,
-			SessionRef: findVibeSessionRef(sessionID),
+			SessionRef: sessionRef,
 			Timestamp:  time.Now().UTC().Format(time.RFC3339),
 		}, nil
 
@@ -233,6 +237,25 @@ func (a *Agent) AreHooksInstalled() bool {
 	}
 
 	return strings.Contains(string(data), hookMarker)
+}
+
+// ensurePlaceholderTranscript creates a minimal transcript file in .entire/tmp/
+// so the entire CLI has a valid SessionRef for session persistence. This is
+// the fallback when Vibe's native session logs cannot be found.
+func (a *Agent) ensurePlaceholderTranscript(sessionID string) string {
+	repoRoot := protocol.RepoRoot()
+	sessionDir, err := a.GetSessionDir(repoRoot)
+	if err != nil {
+		return ""
+	}
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
+		return ""
+	}
+	ref := a.ResolveSessionFile(sessionDir, sessionID)
+	if err := os.WriteFile(ref, []byte("{}"), 0o600); err != nil {
+		return ""
+	}
+	return ref
 }
 
 // findVibeSessionRef finds the messages.jsonl file for a Vibe session by
