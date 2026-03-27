@@ -67,11 +67,12 @@ Your job in this repo is to make the agent easy to validate there:
    `<PROJECT_DIR>/testdata/compliance.json`
 3. Document any required fixture paths in `<PROJECT_DIR>/README.md` and `<PROJECT_DIR>/AGENT.md`
 
-If a sibling checkout exists at `../external-agents-tests`, you can validate the scaffold locally with:
+Validate the scaffold locally with the `external-agents-tests` CLI (installed via `mise install`):
 
 ```bash
-cd ../external-agents-tests
-AGENT_BINARY=/abs/path/to/entire-agent-<slug> go test -v -count=1 ./...
+cd <PROJECT_DIR>
+mise run build
+external-agents-tests verify ./entire-agent-<slug>
 ```
 
 At this stage the tests are expected to fail. The goal is just to confirm the harness reaches the binary.
@@ -111,7 +112,11 @@ cd /path/to/repo/e2e
 go test -c -tags=e2e
 ```
 
-If `../external-agents-tests` exists, also run one failing compliance pass against the built binary.
+Also run one failing compliance pass against the built binary:
+
+```bash
+external-agents-tests verify ./entire-agent-<slug>
+```
 
 ## Step 5: Commit Gate
 
@@ -120,7 +125,7 @@ Create a commit once:
 - the binary compiles
 - `info` returns valid JSON
 - lifecycle harness compiles
-- the compliance suite can invoke the binary, even if assertions still fail
+- `external-agents-tests verify` can invoke the binary, even if assertions still fail
 
 ## Output Checklist
 

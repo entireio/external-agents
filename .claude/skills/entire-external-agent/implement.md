@@ -36,19 +36,13 @@ Read:
 
 ## Step 2: Establish the First Failing Compliance Run
 
-Build the binary and run the shared compliance suite first.
-
-If `external-agents-tests` is checked out beside this repo:
+Build the binary and run the shared compliance suite first using the `external-agents-tests` CLI (installed via `mise install`):
 
 ```bash
 cd <PROJECT_DIR>
 mise run build
-
-cd ../../external-agents-tests
-AGENT_BINARY=/abs/path/to/entire-agent-<slug> go test -v -count=1 ./...
+external-agents-tests verify ./entire-agent-<slug>
 ```
-
-If that sibling repo is not available locally, use the GitHub Action in CI as the compliance source of truth and keep local validation focused on the binary plus unit tests.
 
 Do not start by adding new protocol tests to this repo.
 
@@ -56,7 +50,7 @@ Do not start by adding new protocol tests to this repo.
 
 For each failing compliance assertion:
 
-1. rerun the failing test
+1. rerun `external-agents-tests verify ./entire-agent-<slug>`
 2. inspect the exact subcommand behavior
 3. implement the minimum fix
 4. rerun until it passes
@@ -119,12 +113,11 @@ Run:
 ```bash
 cd <PROJECT_DIR>
 mise run test
+external-agents-tests verify ./entire-agent-<slug>
 
 cd /path/to/repo
 E2E_AGENT=<slug> mise run test-e2e
 ```
-
-If the local `external-agents-tests` checkout is available, rerun the full compliance suite as the final black-box pass.
 
 ## Output Checklist
 

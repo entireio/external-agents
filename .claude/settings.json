@@ -82,7 +82,9 @@
       "Bash(mise run *)",
       "Bash(cd e2e && go test*)",
       "Bash(go test*)",
-      "Bash(go build*)"
+      "Bash(go build*)",
+      "Bash(external-agents-tests verify*)",
+      "Bash(mise install*)"
     ],
     "deny": [
       "Read(./.entire/metadata/**)"
