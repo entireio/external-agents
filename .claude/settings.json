@@ -78,7 +78,6 @@
   },
   "permissions": {
     "allow": [
-      "Bash(mise run test*)",
       "Bash(mise run *)",
       "Bash(cd e2e && go test*)",
       "Bash(go test*)",

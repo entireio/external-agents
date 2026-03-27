@@ -112,6 +112,7 @@ Run:
 
 ```bash
 cd <PROJECT_DIR>
+mise run build
 mise run test
 external-agents-tests verify ./entire-agent-<slug>
 
