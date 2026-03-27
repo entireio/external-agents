@@ -204,7 +204,7 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 	}
 
 	content := data
-	if offset > 0 && offset < len(data) {
+	if offset > 0 && offset <= len(data) {
 		content = data[offset:]
 	}
 
