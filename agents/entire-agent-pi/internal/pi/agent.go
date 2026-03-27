@@ -42,6 +42,6 @@ func (a *Agent) GetSessionID(input *protocol.HookInputJSON) string {
 	return ""
 }
 
-func (a *Agent) FormatResumeCommand(sessionID string) string {
+func (a *Agent) FormatResumeCommand(_ string) string {
 	return "pi --continue"
 }

@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	extensionDir     = ".pi/extensions/entire"
-	extensionFile    = ".pi/extensions/entire/index.ts"
+	extensionDir      = ".pi/extensions/entire"
+	extensionFile     = ".pi/extensions/entire/index.ts"
 	activeSessionFile = "pi-active-session"
 )
 
@@ -88,7 +88,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	}
 }
 
-func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
+func (a *Agent) InstallHooks(_ bool, force bool) (int, error) {
 	root := protocol.RepoRoot()
 
 	// If already installed and not forcing, return 0 (idempotent no-op).
@@ -97,19 +97,14 @@ func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
 	}
 
 	dir := filepath.Join(root, extensionDir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return 0, fmt.Errorf("create extension dir: %w", err)
 	}
 
-	binName := "entire-agent-pi"
-	if localDev {
-		binName = "./entire-agent-pi"
-	}
-
-	ext := generateExtension(binName)
+	ext := generateExtension()
 
 	path := filepath.Join(root, extensionFile)
-	if err := os.WriteFile(path, []byte(ext), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(ext), 0o600); err != nil {
 		return 0, fmt.Errorf("write extension: %w", err)
 	}
 
@@ -129,8 +124,8 @@ func (a *Agent) AreHooksInstalled() bool {
 	return err == nil
 }
 
-func generateExtension(binName string) string {
-	return fmt.Sprintf(`import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+func generateExtension() string {
+	return `import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { execFileSync } from "node:child_process";
 
 export default function (pi: ExtensionAPI) {
@@ -178,7 +173,7 @@ export default function (pi: ExtensionAPI) {
     });
   });
 }
-`)
+`
 }
 
 // cacheSessionID writes the session ID to .entire/tmp/pi-active-session.
@@ -187,8 +182,8 @@ func cacheSessionID(id string) {
 		return
 	}
 	dir := protocol.DefaultSessionDir(protocol.RepoRoot())
-	_ = os.MkdirAll(dir, 0o755)
-	_ = os.WriteFile(filepath.Join(dir, activeSessionFile), []byte(id), 0o644)
+	_ = os.MkdirAll(dir, 0o750)
+	_ = os.WriteFile(filepath.Join(dir, activeSessionFile), []byte(id), 0o600)
 }
 
 // readCachedSessionID reads the cached session ID.
@@ -214,14 +209,14 @@ func captureTranscript(sessionID, piSessionFile string) string {
 		return ""
 	}
 	dir := protocol.DefaultSessionDir(protocol.RepoRoot())
-	_ = os.MkdirAll(dir, 0o755)
+	_ = os.MkdirAll(dir, 0o750)
 	dst := filepath.Join(dir, sessionID+".json")
 
 	data, err := os.ReadFile(piSessionFile)
 	if err != nil {
 		return ""
 	}
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
+	if err := os.WriteFile(dst, data, 0o600); err != nil {
 		return ""
 	}
 	return dst

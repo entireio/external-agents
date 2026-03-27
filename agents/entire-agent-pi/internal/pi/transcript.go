@@ -3,6 +3,7 @@ package pi
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -51,7 +52,7 @@ type contentItem struct {
 func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {
 	sessionRef := input.SessionRef
 	if sessionRef == "" {
-		return protocol.AgentSessionJSON{}, fmt.Errorf("session_ref is required")
+		return protocol.AgentSessionJSON{}, errors.New("session_ref is required")
 	}
 
 	data, err := os.ReadFile(sessionRef)
@@ -95,9 +96,9 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 
 func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if session.SessionRef == "" {
-		return fmt.Errorf("session_ref is required")
+		return errors.New("session_ref is required")
 	}
-	return os.WriteFile(session.SessionRef, session.NativeData, 0o644)
+	return os.WriteFile(session.SessionRef, session.NativeData, 0o600)
 }
 
 func (a *Agent) ReadTranscript(sessionRef string) ([]byte, error) {
