@@ -17,6 +17,7 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 | Agent | Directory | Status |
 |-------|-----------|--------|
 | [Kiro](agents/entire-agent-kiro/) | `agents/entire-agent-kiro/` | Implemented — hooks + transcript analysis |
+| [Pi](agents/entire-agent-pi/) | `agents/entire-agent-pi/` | Implemented — hooks + transcript analysis + token calculation |
 
 See each agent's own README for setup and usage instructions.
 
@@ -94,6 +95,7 @@ The lifecycle harness auto-discovers and builds all agents in `agents/` via `Tes
 ```
 agents/                          # Standalone external agent projects
   entire-agent-kiro/             # Kiro agent (Go binary)
+  entire-agent-pi/               # Pi agent (Go binary)
 e2e/                             # Lifecycle integration harness
 .github/workflows/               # CI, including protocol compliance via external-agents-tests
 .claude/skills/entire-external-agent/  # Skill files (research, test-writer, implementer)
