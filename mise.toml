@@ -1,3 +1,7 @@
+[tools]
+go = "1.26.0"
+"go:github.com/entireio/external-agents-tests" = "latest"
+
 [tasks.test-e2e]
 description = "Run e2e lifecycle tests"
 run = "mise run test-e2e-lifecycle"
