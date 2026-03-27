@@ -78,6 +78,12 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 
 func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
 	root := protocol.RepoRoot()
+
+	// If already installed and not forcing, return 0 (idempotent no-op).
+	if !force && a.AreHooksInstalled() {
+		return 0, nil
+	}
+
 	dir := filepath.Join(root, extensionDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return 0, fmt.Errorf("create extension dir: %w", err)
@@ -166,6 +172,9 @@ export default function (pi: ExtensionAPI) {
 // extractSessionIDFromPath extracts the UUID from a Pi session filename.
 // Pattern: <timestamp>_<uuid>.jsonl → returns <uuid>
 func extractSessionIDFromPath(path string) string {
+	if path == "" {
+		return ""
+	}
 	base := filepath.Base(path)
 	// Remove .jsonl extension
 	if len(base) > 6 && base[len(base)-6:] == ".jsonl" {

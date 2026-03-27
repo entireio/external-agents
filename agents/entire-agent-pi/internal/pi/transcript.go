@@ -87,9 +87,9 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 		SessionRef:    sessionRef,
 		StartTime:     startTime,
 		NativeData:    data,
-		ModifiedFiles: nil,
-		NewFiles:      nil,
-		DeletedFiles:  nil,
+		ModifiedFiles: []string{},
+		NewFiles:      []string{},
+		DeletedFiles:  []string{},
 	}, nil
 }
 
@@ -106,7 +106,7 @@ func (a *Agent) ReadTranscript(sessionRef string) ([]byte, error) {
 
 func (a *Agent) ChunkTranscript(content []byte, maxSize int) ([][]byte, error) {
 	if maxSize <= 0 {
-		return [][]byte{content}, nil
+		return nil, fmt.Errorf("max-size must be positive, got %d", maxSize)
 	}
 	var chunks [][]byte
 	for len(content) > 0 {
@@ -131,6 +131,9 @@ func (a *Agent) ReassembleTranscript(chunks [][]byte) ([]byte, error) {
 func (a *Agent) GetTranscriptPosition(path string) (int, error) {
 	info, err := os.Stat(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
 		return 0, err
 	}
 	return int(info.Size()), nil
@@ -143,8 +146,10 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 	}
 
 	content := data
-	if offset > 0 && offset < len(data) {
+	if offset > 0 && offset <= len(data) {
 		content = data[offset:]
+	} else if offset > len(data) {
+		content = nil
 	}
 
 	seen := make(map[string]bool)
