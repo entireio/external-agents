@@ -11,6 +11,18 @@ description = "Run e2e lifecycle tests (pass E2E_AGENT=<name> to target a specif
 dir = "e2e"
 run = "go test -tags=e2e -v -count=1 -run TestLifecycle ./..."
 
+[tasks.build]
+description = "Build all external agent binaries"
+run = """
+failed=0
+for dir in agents/entire-agent-*/; do
+  name=$(basename "$dir")
+  echo "Building $name..."
+  (cd "$dir" && go build -o "$name" ./cmd/"$name") || failed=1
+done
+exit $failed
+"""
+
 [tasks.test-unit]
 description = "Run unit tests for all agents"
 run = """
