@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	extensionDir  = ".pi/extensions/entire"
-	extensionFile = ".pi/extensions/entire/index.ts"
+	extensionDir     = ".pi/extensions/entire"
+	extensionFile    = ".pi/extensions/entire/index.ts"
+	activeSessionFile = "pi-active-session"
 )
 
 // piHookPayload is the JSON the TypeScript extension sends to
@@ -46,6 +47,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 
 	switch hookName {
 	case "session_start":
+		cacheSessionID(sessionID)
 		return &protocol.EventJSON{
 			Type:      1, // SessionStart
 			SessionID: sessionID,
@@ -53,6 +55,11 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}, nil
 
 	case "before_agent_start":
+		if sessionID == "" {
+			sessionID = readCachedSessionID()
+		} else {
+			cacheSessionID(sessionID)
+		}
 		return &protocol.EventJSON{
 			Type:      2, // TurnStart
 			SessionID: sessionID,
@@ -61,14 +68,19 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}, nil
 
 	case "agent_end":
+		if sessionID == "" {
+			sessionID = readCachedSessionID()
+		}
+		sessionRef := captureTranscript(sessionID, payload.SessionFile)
 		return &protocol.EventJSON{
-			Type:      3, // TurnEnd
-			SessionID: sessionID,
-			Timestamp: now,
+			Type:       3, // TurnEnd
+			SessionID:  sessionID,
+			SessionRef: sessionRef,
+			Timestamp:  now,
 		}, nil
 
 	case "session_shutdown":
-		// Cleanup event, no protocol lifecycle significance.
+		clearCachedSessionID()
 		return nil, nil
 
 	default:
@@ -125,7 +137,7 @@ export default function (pi: ExtensionAPI) {
   function fireHook(hookName: string, data: Record<string, unknown>) {
     try {
       const json = JSON.stringify(data);
-      execFileSync("entire", ["agent", "hook", "pi", hookName], {
+      execFileSync("entire", ["hooks", "pi", hookName], {
         input: json,
         timeout: 10000,
         stdio: ["pipe", "pipe", "pipe"],
@@ -167,6 +179,52 @@ export default function (pi: ExtensionAPI) {
   });
 }
 `)
+}
+
+// cacheSessionID writes the session ID to .entire/tmp/pi-active-session.
+func cacheSessionID(id string) {
+	if id == "" {
+		return
+	}
+	dir := protocol.DefaultSessionDir(protocol.RepoRoot())
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, activeSessionFile), []byte(id), 0o644)
+}
+
+// readCachedSessionID reads the cached session ID.
+func readCachedSessionID() string {
+	dir := protocol.DefaultSessionDir(protocol.RepoRoot())
+	data, err := os.ReadFile(filepath.Join(dir, activeSessionFile))
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// clearCachedSessionID removes the cached session ID file.
+func clearCachedSessionID() {
+	dir := protocol.DefaultSessionDir(protocol.RepoRoot())
+	_ = os.Remove(filepath.Join(dir, activeSessionFile))
+}
+
+// captureTranscript copies the Pi JSONL session file to .entire/tmp/<id>.json
+// so that Entire can read the transcript. Returns the path to the cached file.
+func captureTranscript(sessionID, piSessionFile string) string {
+	if sessionID == "" || piSessionFile == "" {
+		return ""
+	}
+	dir := protocol.DefaultSessionDir(protocol.RepoRoot())
+	_ = os.MkdirAll(dir, 0o755)
+	dst := filepath.Join(dir, sessionID+".json")
+
+	data, err := os.ReadFile(piSessionFile)
+	if err != nil {
+		return ""
+	}
+	if err := os.WriteFile(dst, data, 0o644); err != nil {
+		return ""
+	}
+	return dst
 }
 
 // extractSessionIDFromPath extracts the UUID from a Pi session filename.

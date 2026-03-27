@@ -25,7 +25,7 @@ type Pi struct{}
 func (p *Pi) Name() string               { return "pi" }
 func (p *Pi) Binary() string             { return "pi" }
 func (p *Pi) EntireAgent() string        { return "pi" }
-func (p *Pi) PromptPattern() string      { return `>` }
+func (p *Pi) PromptPattern() string      { return `\$\d` }
 func (p *Pi) TimeoutMultiplier() float64 { return 1.5 }
 func (p *Pi) IsExternalAgent() bool      { return true }
 
