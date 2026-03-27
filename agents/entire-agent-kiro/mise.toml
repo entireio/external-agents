@@ -1,0 +1,11 @@
+[tasks.build]
+description = "Build the binary"
+run = "GOCACHE=/tmp/go-build-cache go build -o entire-agent-kiro ./cmd/entire-agent-kiro"
+
+[tasks.test]
+description = "Run unit tests"
+run = "GOCACHE=/tmp/go-build-cache go test ./..."
+
+[tasks.clean]
+description = "Remove built binary"
+run = "rm -f entire-agent-kiro"

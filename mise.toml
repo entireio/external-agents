@@ -1,0 +1,21 @@
+[tasks.test-e2e]
+description = "Run e2e lifecycle tests"
+run = "mise run test-e2e-lifecycle"
+
+[tasks.test-e2e-lifecycle]
+description = "Run e2e lifecycle tests (pass E2E_AGENT=<name> to target a specific agent)"
+dir = "e2e"
+run = "go test -tags=e2e -v -count=1 -run TestLifecycle ./..."
+
+[tasks.test-unit]
+description = "Run unit tests for all agents"
+run = """
+for dir in agents/entire-agent-*/; do
+  echo "Testing $dir..."
+  (cd "$dir" && go test ./...)
+done
+"""
+
+[tasks.test-all]
+description = "Run all tests"
+depends = ["test-unit", "test-e2e-lifecycle"]

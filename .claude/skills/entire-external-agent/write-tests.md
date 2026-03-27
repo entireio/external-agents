@@ -38,7 +38,7 @@ For Go agents, prefer this shape:
 ```text
 <PROJECT_DIR>/
   go.mod
-  Makefile
+  mise.toml
   README.md
   AGENT.md
   cmd/
@@ -103,7 +103,7 @@ Run these checks:
 
 ```bash
 cd <PROJECT_DIR>
-make build
+mise run build
 ./entire-agent-<slug> info
 go test ./...
 

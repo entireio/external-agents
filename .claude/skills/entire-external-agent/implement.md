@@ -42,7 +42,7 @@ If `external-agents-tests` is checked out beside this repo:
 
 ```bash
 cd <PROJECT_DIR>
-make build
+mise run build
 
 cd ../../external-agents-tests
 AGENT_BINARY=/abs/path/to/entire-agent-<slug> go test -v -count=1 ./...
@@ -77,7 +77,7 @@ Once protocol compliance is in good shape, validate the real integration path:
 
 ```bash
 cd /path/to/repo
-make test-e2e AGENT=<slug>
+E2E_AGENT=<slug> mise run test-e2e
 ```
 
 These tests require:
@@ -118,10 +118,10 @@ Run:
 
 ```bash
 cd <PROJECT_DIR>
-make test
+mise run test
 
 cd /path/to/repo
-make test-e2e AGENT=<slug>
+E2E_AGENT=<slug> mise run test-e2e
 ```
 
 If the local `external-agents-tests` checkout is available, rerun the full compliance suite as the final black-box pass.
