@@ -1,3 +1,6 @@
+[env]
+_.path = ["bin"]
+
 [tools]
 go = "1.26.0"
 "go:github.com/entireio/external-agents-tests" = "latest"
@@ -12,13 +15,14 @@ dir = "e2e"
 run = "go test -tags=e2e -v -count=1 -run TestLifecycle ./..."
 
 [tasks.build]
-description = "Build all external agent binaries"
+description = "Build all external agent binaries into bin/"
 run = """
+mkdir -p bin
 failed=0
 for dir in agents/entire-agent-*/; do
   name=$(basename "$dir")
   echo "Building $name..."
-  (cd "$dir" && go build -o "$name" ./cmd/"$name") || failed=1
+  (cd "$dir" && go build -o "../../bin/$name" ./cmd/"$name") || failed=1
 done
 exit $failed
 """
