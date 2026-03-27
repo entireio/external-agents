@@ -14,7 +14,7 @@ Enables Entire CLI checkpoints, rewind, and transcript capture for [Kiro](https:
 
 ```bash
 cd agents/entire-agent-kiro
-make build
+mise run build
 ```
 
 This produces `./entire-agent-kiro` in the current directory.
@@ -95,9 +95,9 @@ All subcommands required by the [external agent protocol](https://github.com/ent
 ## Development
 
 ```bash
-make build    # Build the binary
-make test     # Run unit tests
-make clean    # Remove built binary
+mise run build    # Build the binary
+mise run test     # Run unit tests
+mise run clean    # Remove built binary
 
 # Run directly without installing:
 go run ./cmd/entire-agent-kiro info
@@ -125,11 +125,11 @@ The lifecycle suite covers:
 
 ```bash
 # From this module:
-make test                    # Unit tests
+mise run test                    # Unit tests
 
 # From the repo root:
-make test-e2e                # Lifecycle tests
-make test-e2e-lifecycle      # Explicit lifecycle target
+mise run test-e2e                # Lifecycle tests
+mise run test-e2e-lifecycle      # Explicit lifecycle target
 
 # Run a specific test:
 cd e2e && go test -tags=e2e -v -count=1 -run TestLifecycle_SinglePromptManualCommit ./...

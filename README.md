@@ -53,16 +53,16 @@ Testing is intentionally split:
 
 ```bash
 # Run unit tests for all agents
-make test-unit
+mise run test-unit
 
 # Run lifecycle integration tests from this repo
-make test-e2e
+mise run test-e2e
 
 # Same as test-e2e, kept as the explicit name
-make test-e2e-lifecycle
+mise run test-e2e-lifecycle
 
 # Run unit + lifecycle tests locally
-make test-all
+mise run test-all
 ```
 
 Protocol compliance runs in CI through [`.github/workflows/protocol-compliance.yml`](.github/workflows/protocol-compliance.yml).

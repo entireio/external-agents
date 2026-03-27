@@ -78,16 +78,12 @@
   },
   "permissions": {
     "allow": [
-      "Bash(make test-e2e*)",
-      "Bash(make test-unit*)",
-      "Bash(make test-all*)",
-      "Bash(make build*)",
-      "Bash(make install*)",
-      "Bash(make test*)",
-      "Bash(make clean*)",
+      "Bash(mise run *)",
       "Bash(cd e2e && go test*)",
       "Bash(go test*)",
-      "Bash(go build*)"
+      "Bash(go build*)",
+      "Bash(external-agents-tests verify*)",
+      "Bash(mise install*)"
     ],
     "deny": [
       "Read(./.entire/metadata/**)"

@@ -37,6 +37,7 @@ jobs:
           echo "matrix={\"include\":[${entries}]}" >> "$GITHUB_OUTPUT"
 
   test-agents:
+    name: test-agents (${{ matrix.name }})
     needs: discover-agents
     if: ${{ needs.discover-agents.outputs.count != '0' }}
     runs-on: ubuntu-latest
