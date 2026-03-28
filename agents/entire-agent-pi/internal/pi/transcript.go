@@ -13,6 +13,8 @@ import (
 )
 
 // Pi JSONL entry types
+const entryTypeMessage = "message"
+
 // maxScannerLine is 1 MB — large enough for Pi JSONL lines that may
 // contain thinking blocks or full file contents in tool call arguments.
 const maxScannerLine = 1 << 20
@@ -58,6 +60,60 @@ type contentItem struct {
 	Name      string          `json:"name,omitempty"`
 	ID        string          `json:"id,omitempty"`
 	Arguments json.RawMessage `json:"arguments,omitempty"`
+}
+
+// resolveActiveBranch parses JSONL data and returns the set of entry IDs on
+// the active conversation branch. Pi transcripts form a tree (entries have id
+// and parentId); the active branch is the path from the root to the last
+// message entry in the file.
+// Returns nil if the transcript has no tree structure or cannot be resolved.
+func resolveActiveBranch(data []byte) map[string]bool {
+	type node struct {
+		Type     string  `json:"type"`
+		ID       string  `json:"id"`
+		ParentID *string `json:"parentId"`
+	}
+
+	var lastMessageID string
+	hasTree := false
+	parentOf := make(map[string]string)
+
+	scanner := newJSONLScanner(data)
+	for scanner.Scan() {
+		var n node
+		if err := json.Unmarshal(scanner.Bytes(), &n); err != nil || n.ID == "" {
+			continue
+		}
+		if n.ParentID != nil {
+			parentOf[n.ID] = *n.ParentID
+			if *n.ParentID != "" {
+				hasTree = true
+			}
+		}
+		if n.Type == entryTypeMessage {
+			lastMessageID = n.ID
+		}
+	}
+
+	// No tree references — all entries are on the active branch.
+	if !hasTree || lastMessageID == "" {
+		return nil
+	}
+
+	active := make(map[string]bool)
+	for cur := lastMessageID; cur != ""; {
+		if active[cur] {
+			break // cycle protection
+		}
+		active[cur] = true
+		parent, ok := parentOf[cur]
+		if !ok {
+			break
+		}
+		cur = parent
+	}
+
+	return active
 }
 
 func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {
@@ -160,6 +216,8 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 		return nil, 0, err
 	}
 
+	active := resolveActiveBranch(data)
+
 	content := data
 	if offset > 0 && offset <= len(data) {
 		content = data[offset:]
@@ -176,7 +234,10 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
 			continue
 		}
-		if entry.Type != "message" {
+		if entry.Type != entryTypeMessage {
+			continue
+		}
+		if active != nil && !active[entry.ID] {
 			continue
 		}
 		if entry.Message.Role != "assistant" {
@@ -217,6 +278,8 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 		return nil, err
 	}
 
+	active := resolveActiveBranch(data)
+
 	content := data
 	if offset > 0 && offset <= len(data) {
 		content = data[offset:]
@@ -231,7 +294,10 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
 			continue
 		}
-		if entry.Type != "message" || entry.Message.Role != "user" {
+		if entry.Type != entryTypeMessage || entry.Message.Role != "user" {
+			continue
+		}
+		if active != nil && !active[entry.ID] {
 			continue
 		}
 
@@ -256,6 +322,8 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 		return "", false, err
 	}
 
+	active := resolveActiveBranch(data)
+
 	var lastAssistantText string
 	scanner := newJSONLScanner(data)
 	for scanner.Scan() {
@@ -263,7 +331,10 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
 			continue
 		}
-		if entry.Type != "message" || entry.Message.Role != "assistant" {
+		if entry.Type != entryTypeMessage || entry.Message.Role != "assistant" {
+			continue
+		}
+		if active != nil && !active[entry.ID] {
 			continue
 		}
 
@@ -286,6 +357,8 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 }
 
 func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageResponse, error) {
+	active := resolveActiveBranch(data)
+
 	content := data
 	if offset > 0 && offset <= len(data) {
 		content = data[offset:]
@@ -300,7 +373,10 @@ func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageRes
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
 			continue
 		}
-		if entry.Type != "message" || entry.Message.Role != "assistant" || entry.Message.Usage == nil {
+		if entry.Type != entryTypeMessage || entry.Message.Role != "assistant" || entry.Message.Usage == nil {
+			continue
+		}
+		if active != nil && !active[entry.ID] {
 			continue
 		}
 
