@@ -141,6 +141,51 @@ func TestCalculateTokens(t *testing.T) {
 	}
 }
 
+func TestCalculateTokens_OffsetAtEnd(t *testing.T) {
+	path := writeTestSession(t)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	agent := New()
+
+	// offset == len(data): should return zero tokens
+	usage, err := agent.CalculateTokens(data, len(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.InputTokens != 0 || usage.OutputTokens != 0 || usage.APICallCount != 0 {
+		t.Errorf("offset=len(data): got input=%d output=%d calls=%d, want all zero",
+			usage.InputTokens, usage.OutputTokens, usage.APICallCount)
+	}
+
+	// offset > len(data): should also return zero tokens
+	usage, err = agent.CalculateTokens(data, len(data)+100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.InputTokens != 0 || usage.OutputTokens != 0 || usage.APICallCount != 0 {
+		t.Errorf("offset>len(data): got input=%d output=%d calls=%d, want all zero",
+			usage.InputTokens, usage.OutputTokens, usage.APICallCount)
+	}
+}
+
+func TestExtractPrompts_OffsetAtEnd(t *testing.T) {
+	path := writeTestSession(t)
+	data, _ := os.ReadFile(path)
+	agent := New()
+
+	// offset > len(data): should return no prompts
+	prompts, err := agent.ExtractPrompts(path, len(data)+100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prompts) != 0 {
+		t.Errorf("offset>len(data): got %d prompts, want 0", len(prompts))
+	}
+}
+
 func TestChunkAndReassemble(t *testing.T) {
 	agent := New()
 	data := []byte("hello world, this is a test")

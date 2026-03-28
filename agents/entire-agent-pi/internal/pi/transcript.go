@@ -2,16 +2,27 @@ package pi
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"strings"
+	"path/filepath"
 
 	"github.com/entireio/external-agents/agents/entire-agent-pi/internal/protocol"
 )
 
 // Pi JSONL entry types
+// maxScannerLine is 1 MB — large enough for Pi JSONL lines that may
+// contain thinking blocks or full file contents in tool call arguments.
+const maxScannerLine = 1 << 20
+
+func newJSONLScanner(data []byte) *bufio.Scanner {
+	s := bufio.NewScanner(bytes.NewReader(data))
+	s.Buffer(make([]byte, 0, maxScannerLine), maxScannerLine)
+	return s
+}
+
 type sessionEntry struct {
 	Type      string `json:"type"`
 	Version   int    `json:"version"`
@@ -66,7 +77,7 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 	}
 
 	var startTime string
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	scanner := newJSONLScanner(data)
 	for scanner.Scan() {
 		var entry sessionEntry
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
@@ -97,6 +108,9 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if session.SessionRef == "" {
 		return errors.New("session_ref is required")
+	}
+	if err := os.MkdirAll(filepath.Dir(session.SessionRef), 0o700); err != nil {
+		return err
 	}
 	return os.WriteFile(session.SessionRef, session.NativeData, 0o600)
 }
@@ -156,7 +170,7 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 	seen := make(map[string]bool)
 	var files []string
 
-	scanner := bufio.NewScanner(strings.NewReader(string(content)))
+	scanner := newJSONLScanner(content)
 	for scanner.Scan() {
 		var entry messageEntry
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
@@ -206,10 +220,12 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 	content := data
 	if offset > 0 && offset <= len(data) {
 		content = data[offset:]
+	} else if offset > len(data) {
+		content = nil
 	}
 
 	var prompts []string
-	scanner := bufio.NewScanner(strings.NewReader(string(content)))
+	scanner := newJSONLScanner(content)
 	for scanner.Scan() {
 		var entry messageEntry
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
@@ -241,7 +257,7 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 	}
 
 	var lastAssistantText string
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	scanner := newJSONLScanner(data)
 	for scanner.Scan() {
 		var entry messageEntry
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
@@ -271,12 +287,14 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 
 func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageResponse, error) {
 	content := data
-	if offset > 0 && offset < len(data) {
+	if offset > 0 && offset <= len(data) {
 		content = data[offset:]
+	} else if offset > len(data) {
+		content = nil
 	}
 
 	var result protocol.TokenUsageResponse
-	scanner := bufio.NewScanner(strings.NewReader(string(content)))
+	scanner := newJSONLScanner(content)
 	for scanner.Scan() {
 		var entry messageEntry
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {

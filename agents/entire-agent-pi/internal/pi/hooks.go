@@ -214,9 +214,11 @@ func captureTranscript(sessionID, piSessionFile string) string {
 
 	data, err := os.ReadFile(piSessionFile)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "entire-agent-pi: capture transcript: read %s: %v\n", piSessionFile, err)
 		return ""
 	}
 	if err := os.WriteFile(dst, data, 0o600); err != nil {
+		fmt.Fprintf(os.Stderr, "entire-agent-pi: capture transcript: write %s: %v\n", dst, err)
 		return ""
 	}
 	return dst
