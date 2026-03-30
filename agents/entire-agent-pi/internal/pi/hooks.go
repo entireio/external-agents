@@ -60,11 +60,16 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		} else {
 			cacheSessionID(sessionID)
 		}
+		// Provide the live pi session file as SessionRef so that
+		// state.TranscriptPath is populated before any mid-turn commits.
+		// Without this, the post-commit hook cannot condense when no
+		// shadow branch exists yet (no prior step checkpoints).
 		return &protocol.EventJSON{
-			Type:      2, // TurnStart
-			SessionID: sessionID,
-			Prompt:    payload.Prompt,
-			Timestamp: now,
+			Type:       2, // TurnStart
+			SessionID:  sessionID,
+			SessionRef: payload.SessionFile,
+			Prompt:     payload.Prompt,
+			Timestamp:  now,
 		}, nil
 
 	case "agent_end":
