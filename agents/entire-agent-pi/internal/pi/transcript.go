@@ -25,6 +25,35 @@ func newJSONLScanner(data []byte) *bufio.Scanner {
 	return s
 }
 
+// countLines returns the number of non-empty lines in data.
+func countLines(data []byte) int {
+	if len(data) == 0 {
+		return 0
+	}
+	n := bytes.Count(data, []byte{'\n'})
+	// Count final line if it doesn't end with newline
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		n++
+	}
+	return n
+}
+
+// skipLines returns data with the first n lines removed.
+func skipLines(data []byte, n int) []byte {
+	if n <= 0 {
+		return data
+	}
+	off := 0
+	for i := 0; i < n && off < len(data); i++ {
+		idx := bytes.IndexByte(data[off:], '\n')
+		if idx < 0 {
+			return nil // fewer lines than offset
+		}
+		off += idx + 1
+	}
+	return data[off:]
+}
+
 type sessionEntry struct {
 	Type      string `json:"type"`
 	Version   int    `json:"version"`
@@ -199,15 +228,18 @@ func (a *Agent) ReassembleTranscript(chunks [][]byte) ([]byte, error) {
 	return data, nil
 }
 
+// GetTranscriptPosition returns the number of lines in the JSONL transcript.
+// The CLI uses this value as the offset for ExtractModifiedFiles, so units
+// must match: both use line count (consistent with Claude Code).
 func (a *Agent) GetTranscriptPosition(path string) (int, error) {
-	info, err := os.Stat(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path from session state
 	if err != nil {
 		if os.IsNotExist(err) {
 			return 0, nil
 		}
 		return 0, err
 	}
-	return int(info.Size()), nil
+	return countLines(data), nil
 }
 
 func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, error) {
@@ -216,14 +248,10 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 		return nil, 0, err
 	}
 
+	totalLines := countLines(data)
 	active := resolveActiveBranch(data)
 
-	content := data
-	if offset > 0 && offset <= len(data) {
-		content = data[offset:]
-	} else if offset > len(data) {
-		content = nil
-	}
+	content := skipLines(data, offset)
 
 	seen := make(map[string]bool)
 	var files []string
@@ -269,7 +297,7 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 		}
 	}
 
-	return files, len(data), nil
+	return files, totalLines, nil
 }
 
 func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) {
@@ -280,12 +308,7 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 
 	active := resolveActiveBranch(data)
 
-	content := data
-	if offset > 0 && offset <= len(data) {
-		content = data[offset:]
-	} else if offset > len(data) {
-		content = nil
-	}
+	content := skipLines(data, offset)
 
 	var prompts []string
 	scanner := newJSONLScanner(content)
@@ -359,12 +382,7 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageResponse, error) {
 	active := resolveActiveBranch(data)
 
-	content := data
-	if offset > 0 && offset <= len(data) {
-		content = data[offset:]
-	} else if offset > len(data) {
-		content = nil
-	}
+	content := skipLines(data, offset)
 
 	var result protocol.TokenUsageResponse
 	scanner := newJSONLScanner(content)

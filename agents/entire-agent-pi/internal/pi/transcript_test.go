@@ -108,9 +108,9 @@ func TestGetTranscriptPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, _ := os.Stat(path)
-	if pos != int(info.Size()) {
-		t.Errorf("position = %d, want %d", pos, info.Size())
+	// testSessionJSONL has 6 lines (session, model_change, m1, m2, m3, m4)
+	if pos != 6 {
+		t.Errorf("position = %d, want 6", pos)
 	}
 }
 
@@ -688,23 +688,9 @@ func TestBranching_WithOffset(t *testing.T) {
 	// (m2-m4) but before the active branch entries (m5-m7).
 	path := writeBranchingSession(t)
 
-	data, _ := os.ReadFile(path)
-	// Find byte offset just before m5's line.
-	// m5 is the 7th line (0-indexed: session, mc1, m1, m2, m3, m4, m5).
-	lines := 0
-	offset := 0
-	for i, b := range data {
-		if b == '\n' {
-			lines++
-			if lines == 6 { // after m4's line
-				offset = i + 1
-				break
-			}
-		}
-	}
-
+	// Skip first 6 lines (session, mc1, m1, m2, m3, m4) → scan m5-m7.
 	agent := New()
-	files, _, err := agent.ExtractModifiedFiles(path, offset)
+	files, _, err := agent.ExtractModifiedFiles(path, 6)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -717,10 +703,10 @@ func TestBranching_WithOffset(t *testing.T) {
 func TestBranching_OffsetSkipsActiveEntries(t *testing.T) {
 	// Offset past everything — should return nothing even though active branch exists.
 	path := writeBranchingSession(t)
-	info, _ := os.Stat(path)
 	agent := New()
 
-	files, _, err := agent.ExtractModifiedFiles(path, int(info.Size()))
+	// testBranchingSessionJSONL has 9 lines; skip all of them.
+	files, _, err := agent.ExtractModifiedFiles(path, 9)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -730,26 +716,13 @@ func TestBranching_OffsetSkipsActiveEntries(t *testing.T) {
 }
 
 func TestBranching_OffsetWithAbandonedEntriesAfter(t *testing.T) {
-	// Set offset to just before m2 (first abandoned entry).
+	// Skip first 3 lines (session, mc1, m1) → scan m2-m7.
 	// Entries after offset: m2(abandoned), m3(abandoned), m4(abandoned), m5(active), m6(active), m7(active).
 	// Only m5 should yield a file (new.txt), m2 should be filtered out.
 	path := writeBranchingSession(t)
 
-	data, _ := os.ReadFile(path)
-	lines := 0
-	offset := 0
-	for i, b := range data {
-		if b == '\n' {
-			lines++
-			if lines == 3 { // after m1's line (session, mc1, m1)
-				offset = i + 1
-				break
-			}
-		}
-	}
-
 	agent := New()
-	files, _, err := agent.ExtractModifiedFiles(path, offset)
+	files, _, err := agent.ExtractModifiedFiles(path, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
