@@ -36,7 +36,7 @@ mise run build
 
 ### Hooks
 
-`install-hooks` creates a TypeScript extension at `.pi/extensions/entire/index.ts` that intercepts Pi lifecycle events and forwards them to `entire agent hook pi <event>`:
+`install-hooks` creates a TypeScript extension at `.pi/extensions/entire/index.ts` that intercepts Pi lifecycle events and forwards them to `entire agent hook pi <event>`. It also writes `.entire/settings.local.json` with `"commit_linking": "always"` so Pi-driven git commits do not trigger an interactive Entire prompt inside the agent loop:
 
 | Pi Event | Protocol Event |
 |----------|---------------|

@@ -1,7 +1,9 @@
 package pi
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,9 +13,12 @@ import (
 )
 
 const (
-	extensionDir      = ".pi/extensions/entire"
-	extensionFile     = ".pi/extensions/entire/index.ts"
-	activeSessionFile = "pi-active-session"
+	extensionDir       = ".pi/extensions/entire"
+	extensionFile      = ".pi/extensions/entire/index.ts"
+	activeSessionFile  = "pi-active-session"
+	settingsLocalFile  = ".entire/settings.local.json"
+	commitLinkingKey   = "commit_linking"
+	commitLinkingValue = "always"
 )
 
 // piHookPayload is the JSON the TypeScript extension sends to
@@ -112,6 +117,9 @@ func (a *Agent) InstallHooks(_ bool, force bool) (int, error) {
 	if err := os.WriteFile(path, []byte(ext), 0o600); err != nil {
 		return 0, fmt.Errorf("write extension: %w", err)
 	}
+	if err := ensureCommitLinkingAlways(root); err != nil {
+		return 0, err
+	}
 
 	return 4, nil // 4 hooks: session_start, before_agent_start, agent_end, session_shutdown
 }
@@ -179,6 +187,51 @@ export default function (pi: ExtensionAPI) {
   });
 }
 `
+}
+
+func ensureCommitLinkingAlways(root string) error {
+	path := filepath.Join(root, settingsLocalFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return fmt.Errorf("create entire settings dir: %w", err)
+	}
+
+	settings, err := readSettings(path)
+	if err != nil {
+		return err
+	}
+	settings[commitLinkingKey] = commitLinkingValue
+
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal %s: %w", settingsLocalFile, err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", settingsLocalFile, err)
+	}
+	return nil
+}
+
+func readSettings(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return map[string]any{}, nil
+		}
+		return nil, fmt.Errorf("read %s: %w", settingsLocalFile, err)
+	}
+	if len(bytes.TrimSpace(data)) == 0 {
+		return map[string]any{}, nil
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", settingsLocalFile, err)
+	}
+	if settings == nil {
+		return map[string]any{}, nil
+	}
+	return settings, nil
 }
 
 // cacheSessionID writes the session ID to .entire/tmp/pi-active-session.

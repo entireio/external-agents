@@ -151,7 +151,6 @@ func TestInstallAndUninstallHooks(t *testing.T) {
 		t.Error("hooks should be installed after InstallHooks")
 	}
 
-	// Verify the extension file exists and contains expected content.
 	extPath := filepath.Join(tmp, extensionFile)
 	data, err := os.ReadFile(extPath)
 	if err != nil {
@@ -186,6 +185,62 @@ func TestInstallAndUninstallHooks(t *testing.T) {
 
 	if agent.AreHooksInstalled() {
 		t.Error("hooks should not be installed after UninstallHooks")
+	}
+}
+
+func TestInstallHooks_WritesCommitLinkingAlways(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", tmp)
+
+	agent := New()
+	if _, err := agent.InstallHooks(false, false); err != nil {
+		t.Fatal(err)
+	}
+
+	settingsPath := filepath.Join(tmp, settingsLocalFile)
+	settingsData, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(settingsData, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings[commitLinkingKey] != commitLinkingValue {
+		t.Fatalf("%s = %v, want %q", commitLinkingKey, settings[commitLinkingKey], commitLinkingValue)
+	}
+}
+
+func TestEnsureCommitLinkingAlways_PreservesExistingSettings(t *testing.T) {
+	tmp := t.TempDir()
+	settingsPath := filepath.Join(tmp, settingsLocalFile)
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settingsPath, []byte("{\n  \"enabled\": true,\n  \"strategy\": \"manual-commit\"\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ensureCommitLinkingAlways(tmp); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if settings["enabled"] != true {
+		t.Fatalf("enabled = %v, want true", settings["enabled"])
+	}
+	if settings["strategy"] != "manual-commit" {
+		t.Fatalf("strategy = %v, want %q", settings["strategy"], "manual-commit")
+	}
+	if settings[commitLinkingKey] != commitLinkingValue {
+		t.Fatalf("%s = %v, want %q", commitLinkingKey, settings[commitLinkingKey], commitLinkingValue)
 	}
 }
 
