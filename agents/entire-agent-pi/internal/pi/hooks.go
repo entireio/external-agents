@@ -154,6 +154,22 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
+  pi.on("tool_call", async (event) => {
+    if (event.toolName !== "bash") {
+      return;
+    }
+
+    const input = event.input as { command?: string };
+    if (typeof input.command !== "string" || input.command.includes("GIT_TERMINAL_PROMPT=")) {
+      return;
+    }
+
+    // Pi tool subprocesses may inherit a real TTY even though the agent cannot
+    // answer hook prompts. Disable git/Entire terminal prompts for bash calls so
+    // Entire treats agent-driven commits as non-interactive.
+    input.command = "export GIT_TERMINAL_PROMPT=0\n" + input.command;
+  });
+
   pi.on("session_start", async (_event, ctx) => {
     await fireHook("session_start", {
       type: "session_start",
