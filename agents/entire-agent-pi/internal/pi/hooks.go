@@ -131,24 +131,31 @@ func (a *Agent) AreHooksInstalled() bool {
 
 func generateExtension() string {
 	return `import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 
 export default function (pi: ExtensionAPI) {
-  function fireHook(hookName: string, data: Record<string, unknown>) {
-    try {
-      const json = JSON.stringify(data);
-      execFileSync("entire", ["hooks", "pi", hookName], {
-        input: json,
-        timeout: 10000,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-    } catch {
-      // best effort — don't block the agent
-    }
+  function fireHook(hookName: string, data: Record<string, unknown>): Promise<void> {
+    return new Promise((resolve) => {
+      try {
+        const child = execFile(
+          "entire",
+          ["hooks", "pi", hookName],
+          {
+            timeout: 10000,
+            windowsHide: true,
+          },
+          () => resolve(),
+        );
+        child.stdin?.end(JSON.stringify(data));
+      } catch {
+        // best effort — don't block the agent
+        resolve();
+      }
+    });
   }
 
   pi.on("session_start", async (_event, ctx) => {
-    fireHook("session_start", {
+    await fireHook("session_start", {
       type: "session_start",
       cwd: ctx.cwd,
       session_file: ctx.sessionManager.getSessionFile(),
@@ -156,7 +163,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
-    fireHook("before_agent_start", {
+    await fireHook("before_agent_start", {
       type: "before_agent_start",
       cwd: ctx.cwd,
       session_file: ctx.sessionManager.getSessionFile(),
@@ -165,7 +172,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_end", async (_event, ctx) => {
-    fireHook("agent_end", {
+    await fireHook("agent_end", {
       type: "agent_end",
       cwd: ctx.cwd,
       session_file: ctx.sessionManager.getSessionFile(),
@@ -173,7 +180,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
-    fireHook("session_shutdown", {
+    await fireHook("session_shutdown", {
       type: "session_shutdown",
     });
   });
