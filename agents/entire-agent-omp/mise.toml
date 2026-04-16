@@ -1,0 +1,10 @@
+[tools]
+go = "1.26.0"
+
+[tasks.build]
+description = "Build the entire-agent-omp binary"
+run = "go build -o entire-agent-omp ./cmd/entire-agent-omp"
+
+[tasks.test]
+description = "Run unit tests"
+run = "go test ./..."
