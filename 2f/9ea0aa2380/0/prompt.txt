@@ -1,9 +1,1 @@
-can you commit
-
----
-
-can you check the failig checks on the PR?
-
----
-
 use the mise run commands
