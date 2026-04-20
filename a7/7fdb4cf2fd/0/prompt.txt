@@ -1,18 +1,1 @@
-commit please
-
----
-
-Run mise run lint:licenses
-[lint:licenses] $ bash ./tests/run-license-check.sh
-Checking licenses for agents/entire-agent-kiro...
-env: ‘license_finder’: No such file or directory
-Checking licenses for agents/entire-agent-pi...
-env: ‘license_finder’: No such file or directory
-Checking licenses for e2e...
-env: ‘license_finder’: No such file or directory
-[lint:licenses] ERROR task failed
-Error: Process completed with exit code 1.
-
----
-
-ok
+please commit, but how does the cli repo does this?
