@@ -1,5 +1,1 @@
-please commit
-
----
-
-there is no local lint now, only CI right? can we add `mise run fmt` and `mise run lint` as in the cli repo?
+commit please
