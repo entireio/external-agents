@@ -1,0 +1,27 @@
+{
+  "cli_version": "v0.5.6-nightly.202604190642.fcda1cf7-dev-fcda1cf7a",
+  "checkpoint_id": "f8c674b43fe2",
+  "strategy": "manual-commit",
+  "branch": "soph/fixing-tests",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "doc/dependency_decisions.yml",
+    "mise.toml",
+    "tests/run-license-check.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f8/c674b43fe2/0/metadata.json",
+      "transcript": "/f8/c674b43fe2/0/full.jsonl",
+      "content_hash": "/f8/c674b43fe2/0/content_hash.txt",
+      "prompt": "/f8/c674b43fe2/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1593990,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1579264,
+    "output_tokens": 7270,
+    "api_call_count": 13
+  }
+}

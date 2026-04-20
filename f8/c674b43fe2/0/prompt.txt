@@ -1,0 +1,11 @@
+can you commit
+
+---
+
+Run echo "❌ License check task not found"
+❌ License check task not found
+
+Either:
+1. Implement mise lint:licenses task in this repository
+2. Remove the license-check workflow if not needed for this repo
+Error: Process completed with exit code 1.
