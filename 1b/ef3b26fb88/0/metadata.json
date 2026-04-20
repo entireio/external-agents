@@ -1,0 +1,57 @@
+{
+  "cli_version": "v0.5.6-nightly.202604190642.fcda1cf7-dev-fcda1cf7a",
+  "checkpoint_id": "1bef3b26fb88",
+  "session_id": "019da9bd-7cbb-7d22-b21c-80faf72e7f8a",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-20T10:23:37.322214Z",
+  "branch": "soph/fixing-tests",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/lint.yml",
+    ".github/workflows/protocol-compliance.yml"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "63e2620bdb6a",
+  "checkpoint_transcript_start": 817,
+  "transcript_lines_at_start": 817,
+  "token_usage": {
+    "input_tokens": 1226254,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1050112,
+    "output_tokens": 7379,
+    "api_call_count": 12
+  },
+  "session_metrics": {
+    "turn_count": 16
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-20T10:23:37.297345Z",
+    "agent_lines": 66,
+    "agent_removed": 16,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 66,
+    "total_lines_changed": 82,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 66,
+      "agent_lines_removed": 16
+    }
+  ]
+}
