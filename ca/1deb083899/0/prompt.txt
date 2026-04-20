@@ -1,0 +1,57 @@
+can you check why `mise run test-all` fails
+
+---
+
+when did the pi test got stale?
+
+---
+
+but it works in CI? but I guess this might because there are always the flags set?
+
+---
+
+ok, let's fix that all, make ci run all the test and make sure ideally it works for any new added agent out of the box
+
+---
+
+can we also change `test-all` to `test:all` and `test-e2e` to `test:e2e` this way it's more in line with ../cli can you also bring over the action to check licenses
+
+---
+
+yes do that
+
+---
+
+or wait: actually we can make tmux a dependency in mise.toml, we do that in the cli repo already?
+
+---
+
+why would this be a thing? this is more an issue of your (codex) sandbox, right? I feel we rather should flag this to the agent so he asks for a run with elevated access?
+
+---
+
+yes
+
+---
+
+what else is test:all running? we are having e2e as manual explicit in the cli repo
+
+---
+
+do we also have lint / fmt tests?
+
+---
+
+do the agents have integration tests?
+
+---
+
+I feel then "test" instead of "test:unit" is better, "test:ci" then just maps to "test" and then we have "test:e2e" but that is only called explicitlx and in actual CI
+
+---
+
+what's the diff between e2e and e2e:lifecycle?
+
+---
+
+can you commit this in meaningful commits
