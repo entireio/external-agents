@@ -1,0 +1,12 @@
+name: License Check
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  check-licenses:
+    uses: entireio/shared/.github/workflows/license-check-reusable.yml@6e5ecde24c20a17b4146250287307718987b7317 # main

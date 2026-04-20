@@ -128,8 +128,8 @@ The lifecycle suite covers:
 mise run test                    # Unit tests
 
 # From the repo root:
-mise run test-e2e                # Lifecycle tests
-mise run test-e2e-lifecycle      # Explicit lifecycle target
+mise run test:e2e                # Lifecycle tests
+mise run test:e2e:lifecycle      # Explicit lifecycle target
 
 # Run a specific test:
 cd e2e && go test -tags=e2e -v -count=1 -run TestLifecycle_SinglePromptManualCommit ./...

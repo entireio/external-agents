@@ -47,26 +47,29 @@ The skill files live in `.claude/skills/entire-external-agent/` if you want to r
 Testing is intentionally split:
 
 - **Generic protocol checks** run in GitHub Actions via [`entireio/external-agents-tests`](https://github.com/entireio/external-agents-tests). The workflow builds each `entire-agent-*` binary in this repo and runs the shared compliance suite against it.
+- **Agent unit/build checks** run in GitHub Actions for every `agents/entire-agent-*` directory discovered at runtime.
 - **Lifecycle tests** stay in this repo's [`e2e/`](e2e/) harness. These verify the parts that depend on Entire itself and on the real agent CLI: prompt execution, hook installation after `entire enable`, checkpoint creation, rewind behavior, and interactive sessions.
 - **Unit tests** live with each agent implementation under [`agents/`](agents/).
 
 ### Running Tests
 
 ```bash
-# Run unit tests for all agents
-mise run test-unit
+# Run default test suite for all agents
+mise run test
+
+# Same as test, kept for explicit CI-style naming
+mise run test:ci
 
 # Run lifecycle integration tests from this repo
-mise run test-e2e
+mise run test:e2e
 
-# Same as test-e2e, kept as the explicit name
-mise run test-e2e-lifecycle
-
-# Run unit + lifecycle tests locally
-mise run test-all
+# Same as test:e2e, kept as the explicit name
+mise run test:e2e:lifecycle
 ```
 
 Protocol compliance runs in CI through [`.github/workflows/protocol-compliance.yml`](.github/workflows/protocol-compliance.yml).
+
+For a newly added agent to be picked up automatically by local root tasks and CI, add `agents/entire-agent-<name>/mise.toml` with `build` and `test` tasks. The shared runner falls back to Go defaults when `go.mod` exists, but the `mise` tasks are the contract for non-standard setups.
 
 ### Lifecycle Harness Architecture
 

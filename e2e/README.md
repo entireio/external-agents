@@ -31,13 +31,13 @@ e2e/
 ### All lifecycle tests
 
 ```bash
-mise run test-e2e
+mise run test:e2e
 ```
 
 ### Explicit lifecycle target
 
 ```bash
-mise run test-e2e-lifecycle
+mise run test:e2e:lifecycle
 ```
 
 ### Single test

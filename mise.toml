@@ -3,41 +3,44 @@ _.path = ["bin"]
 
 [tools]
 go = "1.26.0"
+golangci-lint = "2.11.3"
+ruby = { version = "3.4.7", postinstall = "gem install license_finder -v 7.2.1" }
+tmux = "latest"
 "go:github.com/entireio/external-agents-tests" = "latest"
 
-[tasks.test-e2e]
-description = "Run e2e lifecycle tests"
-run = "mise run test-e2e-lifecycle"
+[tasks.fmt]
+description = "Run gofmt"
+run = "gofmt -s -w ."
 
-[tasks.test-e2e-lifecycle]
+[tasks."test:e2e"]
+description = "Run e2e lifecycle tests"
+run = "mise run test:e2e:lifecycle"
+
+[tasks."test:e2e:lifecycle"]
 description = "Run e2e lifecycle tests (pass E2E_AGENT=<name> to target a specific agent)"
 dir = "e2e"
-run = "go test -tags=e2e -v -count=1 -run TestLifecycle ./..."
+run = "env GOCACHE=/tmp/go-build-cache go test -tags=e2e -v -count=1 -run TestLifecycle ./..."
 
-[tasks.build]
-description = "Build all external agent binaries into bin/"
-run = """
-mkdir -p bin
-failed=0
-for dir in agents/entire-agent-*/; do
-  name=$(basename "$dir")
-  echo "Building $name..."
-  (cd "$dir" && go build -o "../../bin/$name" ./cmd/"$name") || failed=1
-done
-exit $failed
-"""
+[tasks."test:ci"]
+description = "Run CI test suite"
+run = "mise run test"
 
-[tasks.test-unit]
-description = "Run unit tests for all agents"
-run = """
-failed=0
-for dir in agents/entire-agent-*/; do
-  echo "Testing $dir..."
-  (cd "$dir" && go test ./...) || failed=1
-done
-exit $failed
-"""
+[tasks.test-e2e]
+hide = true
+description = "Deprecated alias for test:e2e"
+run = "mise run test:e2e"
 
-[tasks.test-all]
-description = "Run all tests"
-depends = ["test-unit", "test-e2e-lifecycle"]
+[tasks.test-e2e-lifecycle]
+hide = true
+description = "Deprecated alias for test:e2e:lifecycle"
+run = "mise run test:e2e:lifecycle"
+
+[tasks."test:unit"]
+hide = true
+description = "Deprecated alias for test"
+run = "mise run test"
+
+[tasks."test:all"]
+hide = true
+description = "Deprecated alias for test:ci"
+run = "mise run test:ci"

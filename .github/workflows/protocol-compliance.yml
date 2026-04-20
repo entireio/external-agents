@@ -16,7 +16,7 @@ jobs:
       count: ${{ steps.discover.outputs.count }}
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - id: discover
         shell: bash
@@ -45,18 +45,14 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.discover-agents.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: ${{ matrix.dir }}/go.mod
-          cache-dependency-path: ${{ matrix.dir }}/go.sum
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
 
       - name: Build agent binary
-        working-directory: ${{ matrix.dir }}
-        run: go build -o "${{ matrix.name }}" "./cmd/${{ matrix.name }}"
+        run: mise run build "${{ matrix.dir }}"
 
       - name: Run protocol compliance suite
-        uses: entireio/external-agents-tests@main
+        uses: entireio/external-agents-tests@3220ca8cc7ba2fbfc5a951ce4a5937ca1a5ca26e # main
         with:
           binary-path: ${{ matrix.binary }}
