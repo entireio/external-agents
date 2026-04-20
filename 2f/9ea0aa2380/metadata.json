@@ -1,0 +1,26 @@
+{
+  "cli_version": "v0.5.6-nightly.202604190642.fcda1cf7-dev-fcda1cf7a",
+  "checkpoint_id": "2f9ea0aa2380",
+  "strategy": "manual-commit",
+  "branch": "soph/fixing-tests",
+  "checkpoints_count": 0,
+  "files_touched": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/protocol-compliance.yml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2f/9ea0aa2380/0/metadata.json",
+      "transcript": "/2f/9ea0aa2380/0/full.jsonl",
+      "content_hash": "/2f/9ea0aa2380/0/content_hash.txt",
+      "prompt": "/2f/9ea0aa2380/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1088298,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 906112,
+    "output_tokens": 2431,
+    "api_call_count": 8
+  }
+}
