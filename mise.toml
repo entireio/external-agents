@@ -12,31 +12,15 @@ run = "mise run test-e2e-lifecycle"
 [tasks.test-e2e-lifecycle]
 description = "Run e2e lifecycle tests (pass E2E_AGENT=<name> to target a specific agent)"
 dir = "e2e"
-run = "go test -tags=e2e -v -count=1 -run TestLifecycle ./..."
+run = "env GOCACHE=/tmp/go-build-cache go test -tags=e2e -v -count=1 -run TestLifecycle ./..."
 
 [tasks.build]
 description = "Build all external agent binaries into bin/"
-run = """
-mkdir -p bin
-failed=0
-for dir in agents/entire-agent-*/; do
-  name=$(basename "$dir")
-  echo "Building $name..."
-  (cd "$dir" && go build -o "../../bin/$name" ./cmd/"$name") || failed=1
-done
-exit $failed
-"""
+run = "bash ./tests/run-agent-task.sh build"
 
 [tasks.test-unit]
 description = "Run unit tests for all agents"
-run = """
-failed=0
-for dir in agents/entire-agent-*/; do
-  echo "Testing $dir..."
-  (cd "$dir" && go test ./...) || failed=1
-done
-exit $failed
-"""
+run = "bash ./tests/run-agent-task.sh test"
 
 [tasks.test-all]
 description = "Run all tests"
