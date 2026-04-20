@@ -52,7 +52,7 @@ func (a *Agent) ChunkTranscript(content []byte, maxSize int) ([][]byte, error) {
 		return nil, errors.New("max-size must be greater than zero")
 	}
 	if len(content) == 0 {
-		return [][]byte{[]byte{}}, nil
+		return [][]byte{{}}, nil
 	}
 
 	var chunks [][]byte
