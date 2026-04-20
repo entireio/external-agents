@@ -1,13 +1,1 @@
-yes
-
----
-
-can you give me a bullet point list of things done in these commits
-
----
-
-can you make it a short high level list
-
----
-
-we need to initialize the licensefinder with accepted licenses
+yes, please do the commit, then look at the PR for the branch and check the comment
