@@ -1,0 +1,49 @@
+---
+- - :permit
+  - MIT
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - ISC
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - New BSD
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - BSD-2-Clause
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - BSD-3-Clause
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - Apache-2.0
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - MPL-2.0
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z
+- - :permit
+  - CC0-1.0
+  - :who:
+    :why:
+    :versions: []
+    :when: 2026-04-20 00:00:00.000000000 Z

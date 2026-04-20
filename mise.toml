@@ -19,6 +19,10 @@ run = "env GOCACHE=/tmp/go-build-cache go test -tags=e2e -v -count=1 -run TestLi
 description = "Build all external agent binaries into bin/"
 run = "bash ./tests/run-agent-task.sh build"
 
+[tasks."lint:licenses"]
+description = "Check dependency licenses across all Go modules"
+run = "bash ./tests/run-license-check.sh"
+
 [tasks.test]
 description = "Run tests for all agents"
 run = "bash ./tests/run-agent-task.sh test"
