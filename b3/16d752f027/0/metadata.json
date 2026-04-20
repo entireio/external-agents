@@ -1,0 +1,67 @@
+{
+  "cli_version": "v0.5.6-nightly.202604190642.fcda1cf7-dev-fcda1cf7a",
+  "checkpoint_id": "b316d752f027",
+  "session_id": "019da9bd-7cbb-7d22-b21c-80faf72e7f8a",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-20T12:35:33.43174Z",
+  "branch": "soph/fixing-tests",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "mise-tasks/build",
+    "mise-tasks/lint/_default",
+    "mise-tasks/lint/licenses",
+    "mise-tasks/test",
+    "mise.toml",
+    "tests/run-agent-task.sh",
+    "tests/run-license-check.sh",
+    "tests/run-lint.sh"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "ee1adfc521ae",
+  "token_usage": {
+    "input_tokens": 18694324,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 17747840,
+    "output_tokens": 77585,
+    "api_call_count": 201
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-20T12:35:33.400685Z",
+    "agent_lines": 221,
+    "agent_removed": 184,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 221,
+    "total_lines_changed": 405,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 225,
+      "agent_lines_removed": 172
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 221,
+      "agent_lines_removed": 184
+    }
+  ]
+}
