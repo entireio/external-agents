@@ -4,6 +4,7 @@ _.path = ["bin"]
 [tools]
 go = "1.26.0"
 golangci-lint = "2.11.3"
+ruby = { version = "3.4.7", postinstall = "gem install license_finder -v 7.2.1" }
 tmux = "latest"
 "go:github.com/entireio/external-agents-tests" = "latest"
 
