@@ -1,0 +1,25 @@
+{
+  "cli_version": "v0.5.6-nightly.202604190642.fcda1cf7-dev-fcda1cf7a",
+  "checkpoint_id": "b8ae21138e38",
+  "strategy": "manual-commit",
+  "branch": "soph/fixing-tests",
+  "checkpoints_count": 10,
+  "files_touched": [
+    "agents/entire-agent-pi/internal/pi/hooks_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b8/ae21138e38/0/metadata.json",
+      "transcript": "/b8/ae21138e38/0/full.jsonl",
+      "content_hash": "/b8/ae21138e38/0/content_hash.txt",
+      "prompt": "/b8/ae21138e38/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5879798,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5494144,
+    "output_tokens": 41093,
+    "api_call_count": 93
+  }
+}
