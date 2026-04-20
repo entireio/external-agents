@@ -72,5 +72,5 @@ external-agents-tests verify ./entire-agent-pi
 
 # E2E lifecycle tests (requires entire CLI and pi on PATH)
 cd ../../
-E2E_AGENT=pi mise run test-e2e
+E2E_AGENT=pi mise run test:e2e
 ```

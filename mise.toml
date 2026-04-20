@@ -3,13 +3,14 @@ _.path = ["bin"]
 
 [tools]
 go = "1.26.0"
+tmux = "latest"
 "go:github.com/entireio/external-agents-tests" = "latest"
 
-[tasks.test-e2e]
+[tasks."test:e2e"]
 description = "Run e2e lifecycle tests"
-run = "mise run test-e2e-lifecycle"
+run = "mise run test:e2e:lifecycle"
 
-[tasks.test-e2e-lifecycle]
+[tasks."test:e2e:lifecycle"]
 description = "Run e2e lifecycle tests (pass E2E_AGENT=<name> to target a specific agent)"
 dir = "e2e"
 run = "env GOCACHE=/tmp/go-build-cache go test -tags=e2e -v -count=1 -run TestLifecycle ./..."
@@ -18,10 +19,30 @@ run = "env GOCACHE=/tmp/go-build-cache go test -tags=e2e -v -count=1 -run TestLi
 description = "Build all external agent binaries into bin/"
 run = "bash ./tests/run-agent-task.sh build"
 
-[tasks.test-unit]
-description = "Run unit tests for all agents"
+[tasks.test]
+description = "Run tests for all agents"
 run = "bash ./tests/run-agent-task.sh test"
 
-[tasks.test-all]
-description = "Run all tests"
-depends = ["test-unit", "test-e2e-lifecycle"]
+[tasks."test:ci"]
+description = "Run CI test suite"
+run = "mise run test"
+
+[tasks.test-e2e]
+hide = true
+description = "Deprecated alias for test:e2e"
+run = "mise run test:e2e"
+
+[tasks.test-e2e-lifecycle]
+hide = true
+description = "Deprecated alias for test:e2e:lifecycle"
+run = "mise run test:e2e:lifecycle"
+
+[tasks."test:unit"]
+hide = true
+description = "Deprecated alias for test"
+run = "mise run test"
+
+[tasks."test:all"]
+hide = true
+description = "Deprecated alias for test:ci"
+run = "mise run test:ci"
