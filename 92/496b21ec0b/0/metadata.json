@@ -1,0 +1,53 @@
+{
+  "cli_version": "v0.5.6-nightly.202604190642.fcda1cf7-dev-fcda1cf7a",
+  "checkpoint_id": "92496b21ec0b",
+  "session_id": "019da9bd-7cbb-7d22-b21c-80faf72e7f8a",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-20T11:12:58.60342Z",
+  "branch": "soph/fix-pi-attach",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".allowed-licenses"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "acf424f0442b",
+  "token_usage": {
+    "input_tokens": 9459855,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8764928,
+    "output_tokens": 54642,
+    "api_call_count": 127
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-20T11:12:58.575533Z",
+    "agent_lines": 10,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 10,
+    "total_lines_changed": 10,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 10,
+      "agent_lines_removed": 0
+    }
+  ]
+}

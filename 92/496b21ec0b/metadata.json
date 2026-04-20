@@ -1,0 +1,25 @@
+{
+  "cli_version": "v0.5.6-nightly.202604190642.fcda1cf7-dev-fcda1cf7a",
+  "checkpoint_id": "92496b21ec0b",
+  "strategy": "manual-commit",
+  "branch": "soph/fix-pi-attach",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".allowed-licenses"
+  ],
+  "sessions": [
+    {
+      "metadata": "/92/496b21ec0b/0/metadata.json",
+      "transcript": "/92/496b21ec0b/0/full.jsonl",
+      "content_hash": "/92/496b21ec0b/0/content_hash.txt",
+      "prompt": "/92/496b21ec0b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 9459855,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8764928,
+    "output_tokens": 54642,
+    "api_call_count": 127
+  }
+}
