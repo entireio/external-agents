@@ -1,9 +1,1 @@
-can you commit this in meaningful commits
-
----
-
-the extension test was an e2e or unit test?
-
----
-
-did we add fmt / lint jobs yet? also I'd like to pin all actions to specific shas
+yes
