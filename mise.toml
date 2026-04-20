@@ -3,8 +3,17 @@ _.path = ["bin"]
 
 [tools]
 go = "1.26.0"
+golangci-lint = "2.11.3"
 tmux = "latest"
 "go:github.com/entireio/external-agents-tests" = "latest"
+
+[tasks.fmt]
+description = "Run gofmt"
+run = "gofmt -s -w ."
+
+[tasks.lint]
+description = "Run golangci-lint across all Go modules"
+run = "bash ./tests/run-lint.sh"
 
 [tasks."test:e2e"]
 description = "Run e2e lifecycle tests"

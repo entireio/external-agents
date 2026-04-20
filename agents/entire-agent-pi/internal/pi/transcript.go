@@ -232,7 +232,7 @@ func (a *Agent) ReassembleTranscript(chunks [][]byte) ([]byte, error) {
 // The CLI uses this value as the offset for ExtractModifiedFiles, so units
 // must match: both use line count (consistent with Claude Code).
 func (a *Agent) GetTranscriptPosition(path string) (int, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // path from session state
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return 0, nil
