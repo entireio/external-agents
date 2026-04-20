@@ -44,10 +44,14 @@ run_task() {
   if [[ -f "$dir/go.mod" ]]; then
     case "$task" in
       build)
-        (
+        if (
           cd "$dir"
           env GOCACHE=/tmp/go-build-cache go build -o "$name" "./cmd/$name"
-        )
+        ); then
+          :
+        else
+          return 1
+        fi
         if [[ -z "$agent_dir_arg" ]]; then
           mkdir -p "$repo_root/bin"
           cp "$dir/$name" "$repo_root/bin/$name"
