@@ -116,10 +116,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 			nextUserContent = transcript.History[i+1].User.Content
 		}
 
-		line, ok, err := compactAssistantEntry(entry, nextUserContent)
-		if err != nil {
-			return nil, err
-		}
+		line, ok := compactAssistantEntry(entry, nextUserContent)
 		if !ok {
 			continue
 		}
@@ -134,9 +131,9 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func compactAssistantEntry(entry kiroHistoryEntry, nextUserContent json.RawMessage) (compactTranscriptLine, bool, error) {
+func compactAssistantEntry(entry kiroHistoryEntry, nextUserContent json.RawMessage) (compactTranscriptLine, bool) {
 	if len(entry.Assistant) == 0 {
-		return compactTranscriptLine{}, false, nil
+		return compactTranscriptLine{}, false
 	}
 
 	base := compactTranscriptLine{
@@ -154,7 +151,7 @@ func compactAssistantEntry(entry kiroHistoryEntry, nextUserContent json.RawMessa
 			Type: "text",
 			Text: responseContent.Response.Content,
 		}}
-		return base, true, nil
+		return base, true
 	}
 
 	var toolUseContent kiroToolUseContent
@@ -175,10 +172,10 @@ func compactAssistantEntry(entry kiroHistoryEntry, nextUserContent json.RawMessa
 			blocks = append(blocks, block)
 		}
 		base.Content = blocks
-		return base, true, nil
+		return base, true
 	}
 
-	return compactTranscriptLine{}, false, nil
+	return compactTranscriptLine{}, false
 }
 
 func writeCompactTranscriptLine(buf *bytes.Buffer, line compactTranscriptLine) error {
@@ -186,8 +183,12 @@ func writeCompactTranscriptLine(buf *bytes.Buffer, line compactTranscriptLine) e
 	if err != nil {
 		return fmt.Errorf("marshal compact transcript line: %w", err)
 	}
-	buf.Write(encoded)
-	buf.WriteByte('\n')
+	if _, err := buf.Write(encoded); err != nil {
+		return fmt.Errorf("write compact transcript line: %w", err)
+	}
+	if err := buf.WriteByte('\n'); err != nil {
+		return fmt.Errorf("terminate compact transcript line: %w", err)
+	}
 	return nil
 }
 
