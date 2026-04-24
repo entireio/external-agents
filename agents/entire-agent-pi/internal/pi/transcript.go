@@ -63,9 +63,10 @@ type sessionEntry struct {
 }
 
 type messageEntry struct {
-	Type    string  `json:"type"`
-	ID      string  `json:"id"`
-	Message message `json:"message"`
+	Type      string  `json:"type"`
+	ID        string  `json:"id"`
+	Timestamp string  `json:"timestamp"`
+	Message   message `json:"message"`
 }
 
 type message struct {
@@ -74,6 +75,9 @@ type message struct {
 	Timestamp  json.Number     `json:"timestamp"`
 	Usage      *tokenUsage     `json:"usage,omitempty"`
 	StopReason string          `json:"stopReason,omitempty"`
+	ToolCallID string          `json:"toolCallId,omitempty"`
+	ToolName   string          `json:"toolName,omitempty"`
+	IsError    bool            `json:"isError,omitempty"`
 }
 
 type tokenUsage struct {
@@ -330,7 +334,7 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 		}
 
 		for _, item := range items {
-			if item.Type == "text" && item.Text != "" {
+			if item.Type == contentTypeText && item.Text != "" {
 				prompts = append(prompts, item.Text)
 			}
 		}
@@ -367,7 +371,7 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 		}
 
 		for _, item := range items {
-			if item.Type == "text" && item.Text != "" {
+			if item.Type == contentTypeText && item.Text != "" {
 				lastAssistantText = item.Text
 			}
 		}

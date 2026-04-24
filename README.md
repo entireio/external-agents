@@ -17,7 +17,7 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 | Agent | Directory | Status |
 |-------|-----------|--------|
 | [Kiro](agents/entire-agent-kiro/) | `agents/entire-agent-kiro/` | Implemented — hooks + transcript analysis |
-| [Pi](agents/entire-agent-pi/) | `agents/entire-agent-pi/` | Implemented — hooks + transcript analysis + token calculation |
+| [Pi](agents/entire-agent-pi/) | `agents/entire-agent-pi/` | Implemented — hooks + transcript analysis + token calculation + compact transcripts |
 
 See each agent's own README for setup and usage instructions.
 

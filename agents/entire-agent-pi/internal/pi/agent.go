@@ -25,6 +25,7 @@ func (a *Agent) Info() protocol.InfoResponse {
 			Hooks:              true,
 			TranscriptAnalyzer: true,
 			TokenCalculator:    true,
+			CompactTranscript:  true,
 			UsesTerminal:       true,
 		},
 	}
