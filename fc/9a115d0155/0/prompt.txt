@@ -1,0 +1,1 @@
+Following the guidelines in https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md#capability-compact_transcript, add support for compact transcript.jsonl files and checkpoints v2

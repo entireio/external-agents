@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.5.5",
+  "checkpoint_id": "fc9a115d0155",
+  "strategy": "manual-commit",
+  "branch": "add-support-compact-transcripts",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-kiro/cmd/entire-agent-kiro/main.go",
+    "agents/entire-agent-kiro/internal/kiro/agent.go",
+    "agents/entire-agent-kiro/internal/kiro/compact.go",
+    "agents/entire-agent-kiro/internal/kiro/compact_test.go",
+    "agents/entire-agent-kiro/internal/protocol/handlers_test.go",
+    "agents/entire-agent-kiro/internal/protocol/info_test.go",
+    "agents/entire-agent-kiro/internal/protocol/protocol.go",
+    "agents/entire-agent-kiro/internal/protocol/types.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fc/9a115d0155/0/metadata.json",
+      "transcript": "/fc/9a115d0155/0/full.jsonl",
+      "content_hash": "/fc/9a115d0155/0/content_hash.txt",
+      "prompt": "/fc/9a115d0155/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2429069,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2341888,
+    "output_tokens": 24171,
+    "api_call_count": 34
+  }
+}
