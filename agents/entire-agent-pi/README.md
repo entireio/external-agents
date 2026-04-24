@@ -9,6 +9,7 @@ External agent binary that teaches the [Entire CLI](https://github.com/entireio/
 | hooks | Yes — TypeScript extension in `.pi/extensions/entire/` |
 | transcript_analyzer | Yes — parses JSONL session files for prompts, files, summary |
 | token_calculator | Yes — sums token usage from assistant messages |
+| compact_transcript | Yes — emits Entire compact transcript JSONL for checkpoints v2 |
 
 ## Installation
 

@@ -156,6 +156,7 @@ File-modifying tools:
 | `read-transcript` | JSONL file bytes | Read raw bytes from Pi session or cached `.entire/tmp/<id>.json` | Required |
 | `chunk-transcript` | raw bytes | Base64 chunk by max size | Required |
 | `reassemble-transcript` | base64 chunks | Reassemble chunks | Required |
+| `compact-transcript` | compact JSONL | Emit normalized Entire compact transcript JSONL for checkpoints v2 | Compact transcript |
 | `format-resume-command` | `pi --continue` | Return `pi --continue` or `pi --session <path>` | Required |
 | `parse-hook` | extension event JSON | Map extension JSON to EventJSON (type 1/2/3) | Hooks |
 | `install-hooks` | `.pi/extensions/entire/` | Write TypeScript extension that calls `entire agent hook pi <event>` | Hooks |
@@ -173,6 +174,7 @@ File-modifying tools:
 | transcript_analyzer | true | JSONL transcripts contain full structured data — tool calls, prompts, responses (verified) |
 | transcript_preparer | false | JSONL files are directly readable, no pre-processing needed |
 | token_calculator | true | Assistant messages contain `usage` with input/output/cache tokens (verified) |
+| compact_transcript | true | JSONL transcripts can be converted to agent-agnostic compact transcript entries with inlined tool results |
 | text_generator | false | Pi CLI is used for agent execution, not standalone text generation |
 | hook_response_writer | false | No mechanism for writing structured responses back through hooks |
 | subagent_aware_extractor | false | Pi does not expose a subagent transcript tree |

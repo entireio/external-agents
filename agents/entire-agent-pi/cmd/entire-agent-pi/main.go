@@ -38,6 +38,8 @@ func main() {
 		err = protocol.HandleChunkTranscript(os.Args[2:], os.Stdin, os.Stdout, agent)
 	case "reassemble-transcript":
 		err = protocol.HandleReassembleTranscript(os.Stdin, os.Stdout, agent)
+	case "compact-transcript":
+		err = protocol.HandleCompactTranscript(os.Args[2:], os.Stdout, agent)
 	case "format-resume-command":
 		err = protocol.HandleFormatResumeCommand(os.Args[2:], os.Stdout, agent)
 	case "parse-hook":

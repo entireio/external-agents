@@ -9,6 +9,7 @@ type DeclaredCapabilities struct {
 	TranscriptAnalyzer     bool `json:"transcript_analyzer"`
 	TranscriptPreparer     bool `json:"transcript_preparer"`
 	TokenCalculator        bool `json:"token_calculator"`
+	CompactTranscript      bool `json:"compact_transcript"`
 	TextGenerator          bool `json:"text_generator"`
 	HookResponseWriter     bool `json:"hook_response_writer"`
 	SubagentAwareExtractor bool `json:"subagent_aware_extractor"`
@@ -82,6 +83,17 @@ type TokenUsageResponse struct {
 	CacheReadTokens     int `json:"cache_read_tokens"`
 	OutputTokens        int `json:"output_tokens"`
 	APICallCount        int `json:"api_call_count"`
+}
+
+type CompactTranscriptResponse struct {
+	Transcript string                       `json:"transcript"`
+	Assets     []CompactTranscriptAssetJSON `json:"assets,omitempty"`
+}
+
+type CompactTranscriptAssetJSON struct {
+	Name      string `json:"name"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 type AgentSessionJSON struct {

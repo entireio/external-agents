@@ -244,4 +244,7 @@ func TestInfo(t *testing.T) {
 	if !info.Capabilities.TokenCalculator {
 		t.Error("expected token_calculator capability")
 	}
+	if !info.Capabilities.CompactTranscript {
+		t.Error("expected compact_transcript capability")
+	}
 }
