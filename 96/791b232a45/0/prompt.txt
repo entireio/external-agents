@@ -1,0 +1,17 @@
+Review the code in https://github.com/entireio/external-agents/pull/13.
+
+Compare against https://github.com/entireio/roger-roger/pull/1/
+
+Ensure CLI version is being preserved in transcript.jsonl
+
+---
+
+# Review findings:
+
+## Finding 1 (agents/entire-agent-kiro/internal/kiro/compact.go:96-106) [added]
+[P1] Preserve cli_version at transcript capture time
+
+This compact-transcript path was deriving `cli_version` from the current `ENTIRE_CLI_VERSION` environment at compaction time, which means compacting an older Kiro session after a CLI upgrade would rewrite every `transcript.jsonl` line with the newer version instead of the version that originally produced the session. Compared with `entireio/roger-roger` PR #1, this was the missing preservation step: roger-roger persisted transcript metadata at write time rather than reconstructing it later.
+
+## My request for Codex:
+make sure the linter is passing
