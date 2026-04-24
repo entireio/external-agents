@@ -49,6 +49,9 @@ func TestInfoResponseShape(t *testing.T) {
 	if !info.Capabilities.TranscriptAnalyzer {
 		t.Fatal("transcript_analyzer capability should be true")
 	}
+	if !info.Capabilities.CompactTranscript {
+		t.Fatal("compact_transcript capability should be true")
+	}
 	if !info.Capabilities.UsesTerminal {
 		t.Fatal("uses_terminal capability should be true")
 	}
