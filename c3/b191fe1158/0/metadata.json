@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.5.5",
+  "checkpoint_id": "c3b191fe1158",
+  "session_id": "019dbcc1-3812-72e1-9caa-f97edd88215b",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-24T00:13:27.752496Z",
+  "branch": "add-support-compact-transcripts",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-kiro/internal/kiro/compact.go"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "1f987499bf01",
+  "checkpoint_transcript_start": 274,
+  "transcript_lines_at_start": 274,
+  "token_usage": {
+    "input_tokens": 1520207,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1420800,
+    "output_tokens": 7851,
+    "api_call_count": 16
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-24T00:13:27.730713Z",
+    "agent_lines": 12,
+    "agent_removed": 11,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 12,
+    "total_lines_changed": 23,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
