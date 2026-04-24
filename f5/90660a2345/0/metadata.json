@@ -1,0 +1,65 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "f590660a2345",
+  "session_id": "019dc116-c183-74f3-8f98-b4e5bd8eddfa",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-24T20:11:24.520248Z",
+  "branch": "compact-transcript-pi",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "agents/entire-agent-pi/AGENT.md",
+    "agents/entire-agent-pi/README.md",
+    "agents/entire-agent-pi/cmd/entire-agent-pi/main.go",
+    "agents/entire-agent-pi/internal/pi/agent.go",
+    "agents/entire-agent-pi/internal/pi/compact.go",
+    "agents/entire-agent-pi/internal/pi/compact_test.go",
+    "agents/entire-agent-pi/internal/pi/hooks_test.go",
+    "agents/entire-agent-pi/internal/pi/transcript.go",
+    "agents/entire-agent-pi/internal/protocol/handlers_test.go",
+    "agents/entire-agent-pi/internal/protocol/protocol.go",
+    "agents/entire-agent-pi/internal/protocol/types.go"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.5",
+  "turn_id": "912b46cf57ef",
+  "token_usage": {
+    "input_tokens": 159853,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2573312,
+    "output_tokens": 18416,
+    "api_call_count": 28
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-24T20:11:24.496853Z",
+    "agent_lines": 511,
+    "agent_removed": 4,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 511,
+    "total_lines_changed": 515,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 895,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".agents/skills/e2e-debug/SKILL.md": 116,
+        ".agents/skills/entire-external-agent/SKILL.md": 119,
+        ".agents/skills/entire-external-agent/implement.md": 131,
+        ".agents/skills/entire-external-agent/research.md": 360,
+        ".agents/skills/entire-external-agent/write-tests.md": 137,
+        "agents/entire-agent-kiro/.claude/settings.local.json": 32
+      }
+    }
+  ]
+}
