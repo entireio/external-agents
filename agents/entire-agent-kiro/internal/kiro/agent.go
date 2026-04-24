@@ -35,6 +35,7 @@ func (a *Agent) Info() protocol.InfoResponse {
 		Capabilities: protocol.DeclaredCapabilities{
 			Hooks:              true,
 			TranscriptAnalyzer: true,
+			CompactTranscript:  true,
 			UsesTerminal:       true,
 		},
 	}
@@ -96,7 +97,8 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if err := os.MkdirAll(filepath.Dir(session.SessionRef), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(session.SessionRef, session.NativeData, 0o600)
+	data := injectTranscriptCLIVersion(session.NativeData, currentCLIVersion())
+	return os.WriteFile(session.SessionRef, data, 0o600)
 }
 
 func (a *Agent) FormatResumeCommand(_ string) string {

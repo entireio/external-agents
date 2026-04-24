@@ -150,6 +150,7 @@ func (a *Agent) ensureCachedTranscript(cwd string, sessionID string, conversatio
 	if filtered, ok := a.trimTranscriptHistory([]byte(raw)); ok {
 		data = filtered
 	}
+	data = injectTranscriptCLIVersion(data, currentCLIVersion())
 
 	// If the transcript has no history (e.g., offset trimmed everything),
 	// return error so captureTranscriptForStop can try other sources (IDE).
@@ -300,6 +301,7 @@ func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error
 	if filtered, ok := a.trimTranscriptHistory(data); ok {
 		data = filtered
 	}
+	data = injectTranscriptCLIVersion(data, currentCLIVersion())
 
 	if parsed, parseErr := parseTranscript(data); parseErr == nil && len(parsed.History) == 0 {
 		return "", errors.New("IDE transcript has no history entries after trimming")
@@ -539,7 +541,7 @@ func tryParseIDETranscript(data []byte) *kiroTranscript {
 }
 
 func convertIDETranscript(ide *kiroIDETranscript) *kiroTranscript {
-	transcript := &kiroTranscript{}
+	transcript := &kiroTranscript{CLIVersion: ide.CLIVersion}
 
 	var pendingUser *kiroIDEHistoryEntry
 	for i := range ide.History {
@@ -561,6 +563,43 @@ func convertIDETranscript(ide *kiroIDETranscript) *kiroTranscript {
 	}
 
 	return transcript
+}
+
+func currentCLIVersion() string {
+	return strings.TrimSpace(os.Getenv("ENTIRE_CLI_VERSION"))
+}
+
+func injectTranscriptCLIVersion(data []byte, version string) []byte {
+	if len(data) == 0 || version == "" {
+		return data
+	}
+
+	var transcript kiroTranscript
+	if err := json.Unmarshal(data, &transcript); err == nil {
+		if transcript.CLIVersion != "" {
+			return data
+		}
+		if transcript.ConversationID != "" || isCLITranscript(&transcript) {
+			transcript.CLIVersion = version
+			if encoded, err := json.Marshal(transcript); err == nil {
+				return encoded
+			}
+			return data
+		}
+	}
+
+	var ide kiroIDETranscript
+	if err := json.Unmarshal(data, &ide); err == nil {
+		if ide.CLIVersion != "" || len(ide.History) == 0 {
+			return data
+		}
+		ide.CLIVersion = version
+		if encoded, err := json.Marshal(ide); err == nil {
+			return encoded
+		}
+	}
+
+	return data
 }
 
 func ideEntryToPaired(user, assistant *kiroIDEHistoryEntry) kiroHistoryEntry {

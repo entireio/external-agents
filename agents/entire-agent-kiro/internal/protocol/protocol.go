@@ -38,6 +38,10 @@ type transcriptChunker interface {
 	ReassembleTranscript(chunks [][]byte) ([]byte, error)
 }
 
+type transcriptCompactor interface {
+	CompactTranscript(sessionRef string) (CompactTranscriptResponse, error)
+}
+
 type resumeFormatter interface {
 	FormatResumeCommand(sessionID string) string
 }
@@ -175,6 +179,20 @@ func HandleReassembleTranscript(stdin io.Reader, stdout io.Writer, chunker trans
 	}
 	_, err = stdout.Write(data)
 	return err
+}
+
+func HandleCompactTranscript(args []string, stdout io.Writer, compactor transcriptCompactor) error {
+	fs := flag.NewFlagSet("compact-transcript", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	sessionRef := fs.String("session-ref", "", "session ref")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	compacted, err := compactor.CompactTranscript(*sessionRef)
+	if err != nil {
+		return err
+	}
+	return WriteJSON(stdout, compacted)
 }
 
 func HandleFormatResumeCommand(args []string, stdout io.Writer, formatter resumeFormatter) error {

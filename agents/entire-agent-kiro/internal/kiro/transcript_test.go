@@ -145,6 +145,7 @@ func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
 	t.Setenv("HOME", home)
+	t.Setenv("ENTIRE_CLI_VERSION", "3.4.5")
 
 	stubData := buildTranscript("cli-session", 2)
 	db := createFakeKiroDB(t, home)
@@ -178,8 +179,8 @@ func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 	if err := json.Unmarshal(data, &result); err != nil {
 		t.Fatalf("parse cached transcript: %v", err)
 	}
-	if result.ConversationID != "cli-session" || len(result.History) != 2 {
-		t.Fatalf("cached transcript conv=%q history=%d, want cli-session/2", result.ConversationID, len(result.History))
+	if result.ConversationID != "cli-session" || len(result.History) != 2 || result.CLIVersion != "3.4.5" {
+		t.Fatalf("cached transcript conv=%q history=%d cli_version=%q, want cli-session/2/3.4.5", result.ConversationID, len(result.History), result.CLIVersion)
 	}
 }
 
@@ -189,6 +190,7 @@ func TestEnsureIDETranscriptCopiesLatestWorkspaceSession(t *testing.T) {
 	cwd := filepath.Join(repoRoot, "workspace")
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
 	t.Setenv("HOME", home)
+	t.Setenv("ENTIRE_CLI_VERSION", "4.5.6")
 	if err := os.MkdirAll(cwd, 0o750); err != nil {
 		t.Fatalf("mkdir cwd: %v", err)
 	}
@@ -222,8 +224,12 @@ func TestEnsureIDETranscriptCopiesLatestWorkspaceSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read cached IDE transcript: %v", err)
 	}
-	if string(data) != `{"history":[{"message":{"role":"assistant","content":"new"}}]}` {
-		t.Fatalf("cached IDE transcript = %q", string(data))
+	var result kiroIDETranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached IDE transcript: %v", err)
+	}
+	if result.CLIVersion != "4.5.6" || len(result.History) != 1 || result.History[0].Message.Content == nil {
+		t.Fatalf("cached IDE transcript = %+v", result)
 	}
 }
 
@@ -233,6 +239,7 @@ func TestEnsureIDETranscriptRejectsPathTraversal(t *testing.T) {
 	cwd := filepath.Join(repoRoot, "workspace")
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
 	t.Setenv("HOME", home)
+	t.Setenv("ENTIRE_CLI_VERSION", "4.5.6")
 	if err := os.MkdirAll(cwd, 0o750); err != nil {
 		t.Fatalf("mkdir cwd: %v", err)
 	}
@@ -315,6 +322,7 @@ func TestParseHookStopFallsBackToIDETranscript(t *testing.T) {
 	cwd := filepath.Join(repoRoot, "workspace")
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
 	t.Setenv("HOME", home)
+	t.Setenv("ENTIRE_CLI_VERSION", "4.5.6")
 	if err := os.MkdirAll(cwd, 0o750); err != nil {
 		t.Fatalf("mkdir cwd: %v", err)
 	}
@@ -343,8 +351,12 @@ func TestParseHookStopFallsBackToIDETranscript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read cached transcript: %v", err)
 	}
-	if string(data) != `{"history":[{"message":{"role":"assistant","content":"ide"}}]}` {
-		t.Fatalf("cached IDE transcript = %q", string(data))
+	var result kiroIDETranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached IDE transcript: %v", err)
+	}
+	if result.CLIVersion != "4.5.6" || len(result.History) != 1 {
+		t.Fatalf("cached IDE transcript = %+v", result)
 	}
 }
 

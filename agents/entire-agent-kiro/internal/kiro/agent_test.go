@@ -1,6 +1,7 @@
 package kiro
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,6 +86,7 @@ func TestReadSessionReturnsErrorWhenTranscriptReadFails(t *testing.T) {
 func TestWriteSessionPersistsNativeData(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("ENTIRE_CLI_VERSION", "7.8.9")
 
 	sessionRef := filepath.Join(repoRoot, ".entire", "tmp", "session-456.json")
 	wantData := []byte(`{"conversation_id":"session-456","history":[]}`)
@@ -104,8 +106,12 @@ func TestWriteSessionPersistsNativeData(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read session ref: %v", err)
 	}
-	if string(gotData) != string(wantData) {
-		t.Fatalf("written data = %q, want %q", string(gotData), string(wantData))
+	var got kiroTranscript
+	if err := json.Unmarshal(gotData, &got); err != nil {
+		t.Fatalf("parse written session: %v", err)
+	}
+	if got.ConversationID != "session-456" || got.CLIVersion != "7.8.9" {
+		t.Fatalf("written transcript = %+v, want conversation/session version preserved", got)
 	}
 }
 
