@@ -57,6 +57,7 @@ type kiroIDEHookThen struct {
 
 type kiroTranscript struct {
 	ConversationID string             `json:"conversation_id"`
+	CLIVersion     string             `json:"cli_version,omitempty"`
 	History        []kiroHistoryEntry `json:"history"`
 }
 
@@ -101,7 +102,8 @@ type kiroToolCall struct {
 }
 
 type kiroIDETranscript struct {
-	History []kiroIDEHistoryEntry `json:"history"`
+	CLIVersion string                `json:"cli_version,omitempty"`
+	History    []kiroIDEHistoryEntry `json:"history"`
 }
 
 type kiroIDEHistoryEntry struct {

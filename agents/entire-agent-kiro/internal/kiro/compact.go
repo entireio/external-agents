@@ -93,6 +93,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 	if len(transcript.History) == 0 {
 		return nil, errors.New("transcript has no history entries")
 	}
+	cliVersion := compactCLIVersion(transcript)
 
 	var buf bytes.Buffer
 	for i := range transcript.History {
@@ -102,7 +103,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 			if err := writeCompactTranscriptLine(&buf, compactTranscriptLine{
 				V:          1,
 				Agent:      compactTranscriptAgent,
-				CLIVersion: compactCLIVersion(),
+				CLIVersion: cliVersion,
 				Type:       "user",
 				TS:         entry.User.Timestamp,
 				Content:    []compactUserTextBlock{{Text: prompt}},
@@ -116,7 +117,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 			nextUserContent = transcript.History[i+1].User.Content
 		}
 
-		line, ok := compactAssistantEntry(entry, nextUserContent)
+		line, ok := compactAssistantEntry(entry, nextUserContent, cliVersion)
 		if !ok {
 			continue
 		}
@@ -131,7 +132,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func compactAssistantEntry(entry kiroHistoryEntry, nextUserContent json.RawMessage) (compactTranscriptLine, bool) {
+func compactAssistantEntry(entry kiroHistoryEntry, nextUserContent json.RawMessage, cliVersion string) (compactTranscriptLine, bool) {
 	if len(entry.Assistant) == 0 {
 		return compactTranscriptLine{}, false
 	}
@@ -139,7 +140,7 @@ func compactAssistantEntry(entry kiroHistoryEntry, nextUserContent json.RawMessa
 	base := compactTranscriptLine{
 		V:          1,
 		Agent:      compactTranscriptAgent,
-		CLIVersion: compactCLIVersion(),
+		CLIVersion: cliVersion,
 		Type:       "assistant",
 		TS:         entry.User.Timestamp,
 	}
@@ -192,8 +193,13 @@ func writeCompactTranscriptLine(buf *bytes.Buffer, line compactTranscriptLine) e
 	return nil
 }
 
-func compactCLIVersion() string {
-	if version := strings.TrimSpace(os.Getenv("ENTIRE_CLI_VERSION")); version != "" {
+func compactCLIVersion(transcript *kiroTranscript) string {
+	if transcript != nil {
+		if version := strings.TrimSpace(transcript.CLIVersion); version != "" {
+			return version
+		}
+	}
+	if version := currentCLIVersion(); version != "" {
 		return version
 	}
 	return compactTranscriptCLIVersion
@@ -247,7 +253,7 @@ func compactResultOutput(raw json.RawMessage) string {
 		return text
 	}
 
-	encoded, err := json.Marshal(json.RawMessage(raw))
+	encoded, err := json.Marshal(raw)
 	if err != nil {
 		return string(raw)
 	}

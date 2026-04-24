@@ -65,6 +65,28 @@ func TestCompactTranscriptFromIDETranscript(t *testing.T) {
 	}
 }
 
+func TestCompactTranscriptPrefersPreservedCLIVersion(t *testing.T) {
+	t.Setenv("ENTIRE_CLI_VERSION", "9.9.9")
+
+	path := writeCompactTranscriptFixture(t, strings.Replace(testCLIAnalyzerTranscript, `  "history": [`, "  \"cli_version\": \"1.2.3\",\n  \"history\": [", 1))
+
+	resp, err := New().CompactTranscript(path)
+	if err != nil {
+		t.Fatalf("CompactTranscript() error = %v", err)
+	}
+
+	data, err := base64.StdEncoding.DecodeString(resp.Transcript)
+	if err != nil {
+		t.Fatalf("decode transcript: %v", err)
+	}
+	if !strings.Contains(string(data), `"cli_version":"1.2.3"`) {
+		t.Fatalf("compact transcript should preserve stored cli_version, got %q", string(data))
+	}
+	if strings.Contains(string(data), `"cli_version":"9.9.9"`) {
+		t.Fatalf("compact transcript should not overwrite stored cli_version, got %q", string(data))
+	}
+}
+
 func TestCompactTranscriptRejectsEmptyTranscript(t *testing.T) {
 	path := writeCompactTranscriptFixture(t, `{}`)
 
