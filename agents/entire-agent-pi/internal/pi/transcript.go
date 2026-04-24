@@ -334,7 +334,7 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 		}
 
 		for _, item := range items {
-			if item.Type == "text" && item.Text != "" {
+			if item.Type == contentTypeText && item.Text != "" {
 				prompts = append(prompts, item.Text)
 			}
 		}
@@ -371,7 +371,7 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 		}
 
 		for _, item := range items {
-			if item.Type == "text" && item.Text != "" {
+			if item.Type == contentTypeText && item.Text != "" {
 				lastAssistantText = item.Text
 			}
 		}

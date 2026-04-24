@@ -15,6 +15,7 @@ import (
 const (
 	compactTranscriptAgent      = "pi"
 	compactTranscriptCLIVersion = "unknown"
+	contentTypeText             = "text"
 	compactToolResultSuccess    = "success"
 	compactToolResultError      = "error"
 )
@@ -159,7 +160,7 @@ func compactUserContent(raw json.RawMessage) []compactUserTextBlock {
 
 	blocks := make([]compactUserTextBlock, 0, len(items))
 	for _, item := range items {
-		if item.Type == "text" && item.Text != "" {
+		if item.Type == contentTypeText && item.Text != "" {
 			blocks = append(blocks, compactUserTextBlock{Text: item.Text})
 		}
 	}
@@ -168,7 +169,7 @@ func compactUserContent(raw json.RawMessage) []compactUserTextBlock {
 
 func compactAssistantContent(raw json.RawMessage, results map[string]compactToolResultJSON) []any {
 	if text := decodeCompactString(raw); text != "" {
-		return []any{compactAssistantTextBlock{Type: "text", Text: text}}
+		return []any{compactAssistantTextBlock{Type: contentTypeText, Text: text}}
 	}
 
 	var items []contentItem
@@ -179,10 +180,10 @@ func compactAssistantContent(raw json.RawMessage, results map[string]compactTool
 	blocks := make([]any, 0, len(items))
 	for _, item := range items {
 		switch item.Type {
-		case "text":
+		case contentTypeText:
 			if item.Text != "" {
 				blocks = append(blocks, compactAssistantTextBlock{
-					Type: "text",
+					Type: contentTypeText,
 					Text: item.Text,
 				})
 			}
@@ -287,7 +288,7 @@ func compactResultOutput(raw json.RawMessage) string {
 	if err := json.Unmarshal(raw, &items); err == nil {
 		texts := make([]string, 0, len(items))
 		for _, item := range items {
-			if item.Type == "text" && item.Text != "" {
+			if item.Type == contentTypeText && item.Text != "" {
 				texts = append(texts, item.Text)
 			}
 		}
