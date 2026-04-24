@@ -3,9 +3,10 @@
   "checkpoint_id": "b5a37dc3d0fe",
   "strategy": "manual-commit",
   "branch": "compact-transcript-pi",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
-    "agents/entire-agent-pi/internal/pi/compact.go"
+    "agents/entire-agent-pi/internal/pi/compact.go",
+    "agents/entire-agent-pi/internal/pi/transcript.go"
   ],
   "sessions": [
     {
@@ -13,13 +14,19 @@
       "transcript": "/b5/a37dc3d0fe/0/full.jsonl",
       "content_hash": "/b5/a37dc3d0fe/0/content_hash.txt",
       "prompt": "/b5/a37dc3d0fe/0/prompt.txt"
+    },
+    {
+      "metadata": "/b5/a37dc3d0fe/1/metadata.json",
+      "transcript": "/b5/a37dc3d0fe/1/full.jsonl",
+      "content_hash": "/b5/a37dc3d0fe/1/content_hash.txt",
+      "prompt": "/b5/a37dc3d0fe/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 104879,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 535808,
-    "output_tokens": 1360,
-    "api_call_count": 7
+    "input_tokens": 104899,
+    "cache_creation_tokens": 30502,
+    "cache_read_tokens": 1182428,
+    "output_tokens": 6182,
+    "api_call_count": 22
   }
 }

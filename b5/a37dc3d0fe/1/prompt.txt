@@ -1,0 +1,2 @@
+Error: /home/runner/work/external-agents/external-agents/agents/entire-agent-pi/internal/pi/transcript.go:337:20: string `text` has 5 occurrences, make it a constant (goconst)
+              if item.Type == "text" && item.Text != "" {

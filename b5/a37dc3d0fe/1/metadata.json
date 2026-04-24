@@ -1,0 +1,59 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "b5a37dc3d0fe",
+  "session_id": "9515e689-053a-429c-b970-137413d99b44",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-24T22:50:02.945007Z",
+  "branch": "compact-transcript-pi",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-pi/internal/pi/compact.go",
+    "agents/entire-agent-pi/internal/pi/transcript.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "4b55728c543d",
+  "token_usage": {
+    "input_tokens": 20,
+    "cache_creation_tokens": 30502,
+    "cache_read_tokens": 646620,
+    "output_tokens": 4822,
+    "api_call_count": 15
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-24T22:50:02.939462Z",
+    "agent_lines": 0,
+    "agent_removed": 2,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 5,
+    "total_committed": 2,
+    "total_lines_changed": 7,
+    "agent_percentage": 28.57142857142857,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 901,
+      "user_lines_removed": 5,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".agents/skills/e2e-debug/SKILL.md": 116,
+        ".agents/skills/entire-external-agent/SKILL.md": 119,
+        ".agents/skills/entire-external-agent/implement.md": 131,
+        ".agents/skills/entire-external-agent/research.md": 360,
+        ".agents/skills/entire-external-agent/write-tests.md": 137,
+        "agents/entire-agent-kiro/.claude/settings.local.json": 32,
+        "agents/entire-agent-pi/internal/pi/compact.go": 6
+      },
+      "user_removed_per_file": {
+        "agents/entire-agent-pi/internal/pi/compact.go": 5
+      }
+    }
+  ]
+}
