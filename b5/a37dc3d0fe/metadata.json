@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "b5a37dc3d0fe",
+  "strategy": "manual-commit",
+  "branch": "compact-transcript-pi",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-pi/internal/pi/compact.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b5/a37dc3d0fe/0/metadata.json",
+      "transcript": "/b5/a37dc3d0fe/0/full.jsonl",
+      "content_hash": "/b5/a37dc3d0fe/0/content_hash.txt",
+      "prompt": "/b5/a37dc3d0fe/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 104879,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 535808,
+    "output_tokens": 1360,
+    "api_call_count": 7
+  }
+}

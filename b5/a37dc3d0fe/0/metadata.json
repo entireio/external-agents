@@ -1,0 +1,56 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "b5a37dc3d0fe",
+  "session_id": "019dc116-c183-74f3-8f98-b4e5bd8eddfa",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-24T22:50:02.885968Z",
+  "branch": "compact-transcript-pi",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-pi/internal/pi/compact.go"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.5",
+  "turn_id": "09a234332671",
+  "checkpoint_transcript_start": 278,
+  "transcript_lines_at_start": 278,
+  "token_usage": {
+    "input_tokens": 104879,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 535808,
+    "output_tokens": 1360,
+    "api_call_count": 7
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-24T22:50:02.861874Z",
+    "agent_lines": 6,
+    "agent_removed": 5,
+    "human_added": 2,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 8,
+    "total_lines_changed": 15,
+    "agent_percentage": 73.33333333333333,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 895,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".agents/skills/e2e-debug/SKILL.md": 116,
+        ".agents/skills/entire-external-agent/SKILL.md": 119,
+        ".agents/skills/entire-external-agent/implement.md": 131,
+        ".agents/skills/entire-external-agent/research.md": 360,
+        ".agents/skills/entire-external-agent/write-tests.md": 137,
+        "agents/entire-agent-kiro/.claude/settings.local.json": 32
+      }
+    }
+  ]
+}
