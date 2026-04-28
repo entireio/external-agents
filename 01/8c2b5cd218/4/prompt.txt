@@ -1,0 +1,19 @@
+/entire-external-agent research qwen
+
+---
+
+update the instruction to just read the procedures directly since the subcommand skills don't work. do this for all 3 ❯ /entire-external-agent research qwen
+
+⏺ ★ Insight ─────────────────────────────────────
+  This skill runs a structured research phase to understand how the Qwen agent (likely Qwen Code or a Qwen-based coding
+  assistant) handles lifecycle hooks, transcripts, and session management — all needed to build an Entire CLI external
+  agent binary that bridges the two systems.
+  ─────────────────────────────────────────────────
+
+  I'll run the research phase for the Qwen agent. Let me first read the research procedure and collect the parameters.
+
+⏺ Skill(entire-external-agent:research)
+  ⎿  Initializing…
+  ⎿  Error: Unknown skill: entire-external-agent:research
+
+⏺ Let me read the research procedure directly.
