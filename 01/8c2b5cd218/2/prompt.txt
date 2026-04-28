@@ -1,0 +1,1 @@
+its not showing up the subcommands. instead make each subcommand its own skill and make sure to name it entire-external-agent:{subcommand} and make sure entire-external-agent skill references the other subcommand skills
