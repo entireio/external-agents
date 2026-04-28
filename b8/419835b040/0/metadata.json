@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "b8419835b040",
+  "session_id": "7e8b8b3f-82a1-49a2-b167-839fde77b014",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-28T17:29:16.691361Z",
+  "branch": "docs/research-data-verification",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".claude/skills/entire-external-agent/research.md"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "b66d39019e8c",
+  "checkpoint_transcript_start": 137,
+  "token_usage": {
+    "input_tokens": 28,
+    "cache_creation_tokens": 30388,
+    "cache_read_tokens": 4055136,
+    "output_tokens": 6829,
+    "api_call_count": 21
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-21T21:59:45.744978Z",
+    "agent_lines": 83,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 83,
+    "total_lines_changed": 0,
+    "agent_percentage": 100
+  }
+}
