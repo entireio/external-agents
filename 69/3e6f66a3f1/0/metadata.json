@@ -1,0 +1,144 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "693e6f66a3f1",
+  "session_id": "019dd670-a928-7192-9a5b-84557bc273a1",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-29T19:15:44.550596Z",
+  "branch": "kiro-windows-bug",
+  "checkpoints_count": 8,
+  "files_touched": [
+    ".github/workflows/e2e.yml"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "2c8cee8002c1",
+  "checkpoint_transcript_start": 762,
+  "transcript_lines_at_start": 762,
+  "token_usage": {
+    "input_tokens": 2871646,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2297984,
+    "output_tokens": 9261,
+    "api_call_count": 23
+  },
+  "session_metrics": {
+    "turn_count": 14
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-29T19:15:44.518339Z",
+    "agent_lines": 12,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 12,
+    "total_lines_changed": 12,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 7,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 64,
+      "user_added_per_file": {
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 7
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 210,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 64,
+      "user_added_per_file": {
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 13,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054-timeline.md": 42,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054.md": 155
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 210,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 64,
+      "user_added_per_file": {
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 13,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054-timeline.md": 42,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054.md": 155
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 210,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 64,
+      "user_added_per_file": {
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 13,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054-timeline.md": 42,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054.md": 155
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 210,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 64,
+      "user_added_per_file": {
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 13,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054-timeline.md": 42,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054.md": 155
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 210,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 64,
+      "user_added_per_file": {
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 13,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054-timeline.md": 42,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054.md": 155
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 135,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 64,
+      "user_added_per_file": {
+        ".marvin/hooks/claude-code/3e3d3d56-c303-48ee-8a6d-c6511505c169.json": 15,
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 15,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054-timeline.md": 4,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054.md": 101
+      }
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 122,
+      "user_lines_removed": 0,
+      "agent_lines_added": 19,
+      "agent_lines_removed": 56,
+      "user_added_per_file": {
+        ".marvin/hooks/claude-code/3e3d3d56-c303-48ee-8a6d-c6511505c169.json": 15,
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 2,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054-timeline.md": 4,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054.md": 101
+      }
+    }
+  ]
+}

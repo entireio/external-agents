@@ -1,0 +1,29 @@
+commit everything
+
+---
+
+how to test tihs
+
+---
+
+how to test github action window workflow
+
+---
+
+I don't see the e2e workflow in github actions
+
+---
+
+I pushed and opened pr
+
+---
+
+https://github.com/entireio/external-agents/pull/22/changes#diff-3e103440521ada06efd263ae09b259e5507e4b8f7408308dc227621ad9efa31e
+
+---
+
+is that the only option? read this https://github.com/orgs/community/discussions/25746
+
+---
+
+yes
