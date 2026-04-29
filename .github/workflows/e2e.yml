@@ -1,6 +1,18 @@
 name: E2E
 
 on:
+  push:
+    branches:
+      - kiro-windows-bug
+    paths:
+      - ".github/workflows/e2e.yml"
+      - "e2e/**"
+      - "mise.toml"
+  pull_request:
+    paths:
+      - ".github/workflows/e2e.yml"
+      - "e2e/**"
+      - "mise.toml"
   workflow_dispatch:
     inputs:
       mode:
