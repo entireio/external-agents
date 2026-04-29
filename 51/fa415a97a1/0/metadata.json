@@ -1,0 +1,99 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "51fa415a97a1",
+  "session_id": "019dd670-a928-7192-9a5b-84557bc273a1",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-29T00:25:32.549982Z",
+  "branch": "kiro-windows-bug",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".github/workflows/e2e.yml",
+    "docs/rfds/windows-e2e-design-timeline.md",
+    "docs/rfds/windows-e2e-design.md",
+    "e2e/agents.test.exe",
+    "e2e/agents/bootstrap_test.go",
+    "e2e/agents/conpty_windows.go",
+    "e2e/agents/exec_helpers.go",
+    "e2e/agents/exec_helpers_test.go",
+    "e2e/agents/kiro.go",
+    "e2e/agents/pi.go",
+    "e2e/agents/proc_unix.go",
+    "e2e/agents/proc_windows.go",
+    "e2e/agents/session_common.go",
+    "e2e/agents/session_unix.go",
+    "e2e/agents/session_windows.go",
+    "e2e/agents/terminal_render.go",
+    "e2e/agents/terminal_render_test.go",
+    "e2e/agents/tmux.go",
+    "e2e/auth_helpers_test.go",
+    "e2e/build.go",
+    "e2e/build_test.go",
+    "e2e/go.mod",
+    "e2e/go.sum",
+    "e2e/lifecycle_test.go",
+    "e2e/setup_test.go",
+    "mise.toml"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "1592e80512d9",
+  "token_usage": {
+    "input_tokens": 11215840,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 10720768,
+    "output_tokens": 91587,
+    "api_call_count": 83
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-29T00:25:32.520482Z",
+    "agent_lines": 1093,
+    "agent_removed": 45,
+    "human_added": 84,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1177,
+    "total_lines_changed": 1222,
+    "agent_percentage": 93.12602291325696,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 939,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".marvin/hooks/claude-code/48c47012-0440-41d2-8b7a-bde289d34de5.json": 16,
+        ".marvin/hooks/codex/019dd66e-ee46-7320-bdb3-22a1e1687514.json": 18,
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 18,
+        "doc/windows-e2e-design.md": 297,
+        "docs/rfds/windows-e2e-design-timeline.md": 197,
+        "docs/rfds/windows-e2e-design.md": 393
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 20,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1011,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 20
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 64,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2014,
+      "agent_lines_removed": 45,
+      "user_added_per_file": {
+        ".marvin/hooks/codex/019dd670-a928-7192-9a5b-84557bc273a1.json": 64
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+do adversarial review of docs/rfds/windows-e2e-design.md use docs/rfds/windows-e2e-design-timeline.md for understanding decisions
+
+---
+
+update the rfd
+
+---
+
+update with stricter design
+
+---
+
+verify this is how it will work. when I run the e2e tests locally it should use my agents to run the e2e tests but when I run it in github action it should use api keys. also I should be able to choose which one to run locally meaning mac or windows so that windows devs can use these tests as well
+
+---
+
+no thats what I want. its good to go
+
+---
+
+yes please implement to psec
+
+---
+
+yes please implement to spec

@@ -1,0 +1,50 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "51fa415a97a1",
+  "strategy": "manual-commit",
+  "branch": "kiro-windows-bug",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".github/workflows/e2e.yml",
+    "docs/rfds/windows-e2e-design-timeline.md",
+    "docs/rfds/windows-e2e-design.md",
+    "e2e/agents.test.exe",
+    "e2e/agents/bootstrap_test.go",
+    "e2e/agents/conpty_windows.go",
+    "e2e/agents/exec_helpers.go",
+    "e2e/agents/exec_helpers_test.go",
+    "e2e/agents/kiro.go",
+    "e2e/agents/pi.go",
+    "e2e/agents/proc_unix.go",
+    "e2e/agents/proc_windows.go",
+    "e2e/agents/session_common.go",
+    "e2e/agents/session_unix.go",
+    "e2e/agents/session_windows.go",
+    "e2e/agents/terminal_render.go",
+    "e2e/agents/terminal_render_test.go",
+    "e2e/agents/tmux.go",
+    "e2e/auth_helpers_test.go",
+    "e2e/build.go",
+    "e2e/build_test.go",
+    "e2e/go.mod",
+    "e2e/go.sum",
+    "e2e/lifecycle_test.go",
+    "e2e/setup_test.go",
+    "mise.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/51/fa415a97a1/0/metadata.json",
+      "transcript": "/51/fa415a97a1/0/full.jsonl",
+      "content_hash": "/51/fa415a97a1/0/content_hash.txt",
+      "prompt": "/51/fa415a97a1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 11215840,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 10720768,
+    "output_tokens": 91587,
+    "api_call_count": 83
+  }
+}
