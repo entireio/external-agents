@@ -1,0 +1,52 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "51fa415a97a1",
+  "session_id": "dc69ae56-cb7d-4bea-ab21-459a6d1db48d",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-29T00:25:33.315777Z",
+  "branch": "kiro-windows-bug",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/rfds/windows-e2e-design-timeline.md"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "7c1965dd8f94",
+  "token_usage": {
+    "input_tokens": 14,
+    "cache_creation_tokens": 47095,
+    "cache_read_tokens": 288011,
+    "output_tokens": 1686,
+    "api_call_count": 6
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-29T00:25:33.31044Z",
+    "agent_lines": 38,
+    "agent_removed": 0,
+    "human_added": 1010,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1048,
+    "total_lines_changed": 1093,
+    "agent_percentage": 3.476669716376944,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 890,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".marvin/hooks/claude-code/dc69ae56-cb7d-4bea-ab21-459a6d1db48d.json": 16,
+        "doc/windows-e2e-design.md": 297,
+        "docs/rfds/windows-e2e-design-timeline.md": 184,
+        "docs/rfds/windows-e2e-design.md": 393
+      }
+    }
+  ]
+}
