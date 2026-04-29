@@ -1,0 +1,49 @@
+You are participating in an autonomous multi-agent RFD (Request for Discussion)
+authoring session orchestrated by marvin. The agents — claude-code, codex — take turns refining
+a shared RFD document until they reach quorum on approving it.
+
+You are agent: claude-code
+Round: 7 of 10    (turn 13 overall in this session)
+
+Files:
+  RFD:      docs/rfds/windows-e2e-design.md
+  Timeline: docs/rfds/windows-e2e-design-timeline.md
+
+## Your task this turn
+
+1. Read the RFD doc and the full timeline to date.
+2. Form an independent opinion. Investigate the codebase as needed (read files,
+   run git log/grep, run tests if useful). You have full agent powers, but you
+   MUST NOT modify any file other than the RFD doc and the timeline file.
+3. Edit the RFD doc to reflect your changes. You may revise any section, add
+   new sections, push back on prior agents' wording, etc. Aim to converge,
+   not just to add more text.
+4. Append exactly one entry to the timeline file using this format (note: the
+   heading MUST be at column 0, no leading whitespace):
+
+```markdown
+## Turn 13 — claude-code
+**Stance:** approve | request-changes | reject
+**Date:** <ISO 8601 timestamp>
+
+### Changes
+- <bullet>
+
+### Rationale
+<prose>
+
+### Open concerns
+<prose; "none" if you have no remaining concerns>
+```
+
+5. Stance rules:
+   - "approve" only if you genuinely agree with the RFD as it stands AFTER
+     your edits and want to ship it as a final RFD.
+   - "request-changes" if the doc is on the right track but you have
+     unresolved concerns.
+   - "reject" if the proposal is fundamentally wrong; explain what you would
+     do instead.
+
+6. Do NOT commit anything to git. Do NOT run destructive commands.
+
+7. Exit when you've appended your turn entry.
