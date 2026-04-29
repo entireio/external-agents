@@ -3,7 +3,7 @@
   "checkpoint_id": "51fa415a97a1",
   "strategy": "manual-commit",
   "branch": "kiro-windows-bug",
-  "checkpoints_count": 6,
+  "checkpoints_count": 7,
   "files_touched": [
     ".github/workflows/e2e.yml",
     "docs/rfds/windows-e2e-design-timeline.md",
@@ -62,13 +62,19 @@
       "transcript": "/51/fa415a97a1/4/full.jsonl",
       "content_hash": "/51/fa415a97a1/4/content_hash.txt",
       "prompt": "/51/fa415a97a1/4/prompt.txt"
+    },
+    {
+      "metadata": "/51/fa415a97a1/5/metadata.json",
+      "transcript": "/51/fa415a97a1/5/full.jsonl",
+      "content_hash": "/51/fa415a97a1/5/content_hash.txt",
+      "prompt": "/51/fa415a97a1/5/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 11215921,
-    "cache_creation_tokens": 225968,
-    "cache_read_tokens": 14336115,
-    "output_tokens": 118272,
-    "api_call_count": 140
+    "input_tokens": 11215934,
+    "cache_creation_tokens": 272073,
+    "cache_read_tokens": 14559418,
+    "output_tokens": 119569,
+    "api_call_count": 145
   }
 }
