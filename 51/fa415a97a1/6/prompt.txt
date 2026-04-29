@@ -1,0 +1,25 @@
+how do the ci tests work? and does it test windows?
+
+---
+
+are these real e2e tests? so it actual tests running the agents
+
+---
+
+can we set it up so its run on demand. not on every pr
+
+---
+
+trigger style + + issue_comment triggered on /test-e2e in a PR comment. add linux and windows-latest. need to figure out something thats like tmux but for windows
+
+---
+
+what is PowerShell and can we use it
+
+---
+
+lets d conpty all in this branch / pr
+
+---
+
+please write plan / design to a doc
