@@ -1,0 +1,16 @@
+{
+  "session_id": "48c47012-0440-41d2-8b7a-bde289d34de5",
+  "agent_type": "claude-code",
+  "files": {
+    ".marvin/hooks/claude-code/48c47012-0440-41d2-8b7a-bde289d34de5.json": "??",
+    "doc/windows-e2e-design.md": "??",
+    "docs/rfds/windows-e2e-design-timeline.md": "??",
+    "docs/rfds/windows-e2e-design.md": "??"
+  },
+  "hashes": {
+    ".marvin/hooks/claude-code/48c47012-0440-41d2-8b7a-bde289d34de5.json": "cdd2ba7b8c05f0a56c1f9e53c75b53b1ab00ddadab786a49d76d42d77b003897",
+    "doc/windows-e2e-design.md": "8ad7a66100128cdd2fada1c23c60431786c3882b498bb788eeb144b9a3f671ac",
+    "docs/rfds/windows-e2e-design-timeline.md": "1c1211512547d381cf269e07a13a6453024180a43c565113dde8071762a38a2b",
+    "docs/rfds/windows-e2e-design.md": "77d4156cc997623c12bb9fecc62c86cf1aaa4700aab4844df97c95f6146f689b"
+  }
+}

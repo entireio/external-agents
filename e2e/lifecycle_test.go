@@ -21,6 +21,7 @@ import (
 // agent creates a file → git add + commit → checkpoint exists with trailer.
 func TestLifecycle_SinglePromptManualCommit(t *testing.T) {
 	testutil.ForEachAgent(t, 2*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		requireAgentAuth(t)
 		_, err := s.RunPrompt(t, ctx, "Create a file called hello.txt with the content 'hello world'. Do not ask for confirmation.")
 		require.NoError(t, err, "prompt failed")
 
@@ -44,6 +45,7 @@ func TestLifecycle_SinglePromptManualCommit(t *testing.T) {
 // and verifies the checkpoint covers both files.
 func TestLifecycle_MultiplePromptsManualCommit(t *testing.T) {
 	testutil.ForEachAgent(t, 3*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		requireAgentAuth(t)
 		_, err := s.RunPrompt(t, ctx, "Create a file called foo.txt containing 'foo'. Do not ask for confirmation.")
 		require.NoError(t, err, "first prompt failed")
 
@@ -91,6 +93,7 @@ func TestLifecycle_HooksInstalledAfterEnable(t *testing.T) {
 // No commits happen — this tests pure shadow branch rewind points.
 func TestLifecycle_RewindPreCommit(t *testing.T) {
 	testutil.ForEachAgent(t, 3*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		requireAgentAuth(t)
 		// Agent creates file A (no commit).
 		_, err := s.RunPrompt(t, ctx, "Create a file called alpha.txt with content 'alpha'. Do not commit the file. Do not ask for confirmation.")
 		require.NoError(t, err, "first prompt failed")
@@ -123,6 +126,7 @@ func TestLifecycle_RewindPreCommit(t *testing.T) {
 // shadow branch ID should fail because condensation converts them to logs-only.
 func TestLifecycle_RewindAfterCommit(t *testing.T) {
 	testutil.ForEachAgent(t, 3*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		requireAgentAuth(t)
 		// Agent creates a file (no commit).
 		_, err := s.RunPrompt(t, ctx, "Create a file called first.txt with content 'first'. Do not commit the file. Do not ask for confirmation.")
 		require.NoError(t, err, "prompt failed")
@@ -172,6 +176,7 @@ func TestLifecycle_RewindAfterCommit(t *testing.T) {
 // .entire/tmp/ after running a prompt.
 func TestLifecycle_SessionPersistence(t *testing.T) {
 	testutil.ForEachAgent(t, 2*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		requireAgentAuth(t)
 		_, err := s.RunPrompt(t, ctx, "Create a file called session-test.txt with content 'test'. Do not ask for confirmation.")
 		require.NoError(t, err, "prompt failed")
 
@@ -194,6 +199,10 @@ func TestLifecycle_SessionPersistence(t *testing.T) {
 // can send prompts and receive responses.
 func TestLifecycle_InteractiveSession(t *testing.T) {
 	testutil.ForEachAgent(t, 3*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		requireAgentAuth(t)
+		if reason := interactiveSessionSkipReason(s.Agent); reason != "" {
+			t.Skip(reason)
+		}
 		session := s.StartSession(t, ctx)
 		if session == nil {
 			t.Skip("agent does not support interactive sessions")

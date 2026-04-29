@@ -5,7 +5,7 @@ _.path = ["bin"]
 go = "1.26.0"
 golangci-lint = "2.11.3"
 ruby = { version = "3.4.7", postinstall = "gem install license_finder -v 7.2.1" }
-tmux = "latest"
+tmux = { version = "latest", os = ["linux", "macos"] }
 "go:github.com/entireio/external-agents-tests" = "latest"
 
 [tasks.fmt]
@@ -16,10 +16,28 @@ run = "gofmt -s -w ."
 description = "Run e2e lifecycle tests"
 run = "mise run test:e2e:lifecycle"
 
+[tasks."test:e2e:bootstrap"]
+description = "Run agent bootstrap hooks (auth/config warmup) before full e2e"
+dir = "e2e"
+run = "go run ./bootstrap"
+
+[tasks."test:e2e:smoke"]
+description = "Run only the non-auth lifecycle checks"
+run = [
+  { task = "test:e2e:lifecycle", env = { E2E_NO_AUTH = "1" } },
+]
+
+[tasks."test:e2e:full"]
+description = "Run auth-backed lifecycle tests using the current environment"
+run = [
+  { task = "test:e2e:bootstrap", env = { E2E_API_KEY_AUTH = "1" } },
+  { task = "test:e2e:lifecycle", env = { E2E_API_KEY_AUTH = "1" } },
+]
+
 [tasks."test:e2e:lifecycle"]
 description = "Run e2e lifecycle tests (pass E2E_AGENT=<name> to target a specific agent)"
 dir = "e2e"
-run = "env GOCACHE=/tmp/go-build-cache go test -tags=e2e -v -count=1 -run TestLifecycle ./..."
+run = "go test -tags=e2e -v -count=1 -run TestLifecycle ./..."
 
 [tasks."test:ci"]
 description = "Run CI test suite"

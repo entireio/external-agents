@@ -1,3 +1,5 @@
+//go:build !windows
+
 package agents
 
 import (
@@ -89,21 +91,6 @@ func (s *TmuxSession) SendKeys(keys ...string) error {
 		return fmt.Errorf("tmux send-keys: %w\n%s", err, out)
 	}
 	return nil
-}
-
-const (
-	settleTime   = 2 * time.Second
-	pollInterval = 500 * time.Millisecond
-)
-
-// stableContent returns the content with the last few lines stripped,
-// so that TUI status bar updates don't prevent the settle timer.
-func stableContent(content string) string {
-	lines := strings.Split(content, "\n")
-	if len(lines) > 3 {
-		lines = lines[:len(lines)-3]
-	}
-	return strings.Join(lines, "\n")
 }
 
 func (s *TmuxSession) WaitFor(pattern string, timeout time.Duration) (string, error) {

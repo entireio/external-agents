@@ -32,7 +32,7 @@ func RepoRoot() string {
 func BuildAgent(agentName, outputDir string) (string, error) {
 	agentDir := filepath.Join(RepoRoot(), "agents", agentName)
 	mainPkg := "./cmd/" + agentName
-	binPath := filepath.Join(outputDir, agentName)
+	binPath := agentBinaryPath(outputDir, agentName, runtime.GOOS)
 
 	cmd := exec.Command("go", "build", "-o", binPath, mainPkg)
 	cmd.Dir = agentDir
@@ -42,6 +42,14 @@ func BuildAgent(agentName, outputDir string) (string, error) {
 		return "", fmt.Errorf("build %s: %w", agentName, err)
 	}
 	return binPath, nil
+}
+
+func agentBinaryPath(outputDir, agentName, goos string) string {
+	binPath := filepath.Join(outputDir, agentName)
+	if goos == "windows" {
+		binPath += ".exe"
+	}
+	return binPath
 }
 
 // DiscoverAgents returns relative paths (e.g. "agents/entire-agent-kiro") for

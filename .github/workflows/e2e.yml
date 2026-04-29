@@ -1,0 +1,156 @@
+name: E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Which profile to run
+        required: true
+        default: smoke
+        type: choice
+        options: [smoke, full]
+      pr:
+        description: Optional PR number to test
+        required: false
+        type: string
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: e2e-${{ github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request != null &&
+       (github.event.comment.body == '/test-e2e' ||
+        startsWith(github.event.comment.body, '/test-e2e ')) &&
+       (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'))
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+      mode: ${{ steps.resolve.outputs.mode }}
+      allow_auth: ${{ steps.resolve.outputs.allow_auth }}
+    steps:
+      - id: resolve
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "issue_comment" ]]; then
+            ref=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.issue.number }}" --jq .head.sha)
+            echo "mode=smoke" >> "$GITHUB_OUTPUT"
+            echo "allow_auth=false" >> "$GITHUB_OUTPUT"
+          else
+            mode="${{ inputs.mode }}"
+            if [[ -n "${{ inputs.pr }}" ]]; then
+              ref=$(gh api "repos/${{ github.repository }}/pulls/${{ inputs.pr }}" --jq .head.sha)
+              head_repo=$(gh api "repos/${{ github.repository }}/pulls/${{ inputs.pr }}" --jq .head.repo.full_name)
+            else
+              ref="${{ github.sha }}"
+              head_repo="${{ github.repository }}"
+            fi
+
+            allow_auth=false
+            if [[ "$mode" == "full" ]]; then
+              if [[ "$head_repo" != "${{ github.repository }}" ]]; then
+                echo "full mode is only allowed for refs in ${{ github.repository }}, got $head_repo" >&2
+                exit 1
+              fi
+              allow_auth=true
+            fi
+
+            echo "mode=$mode" >> "$GITHUB_OUTPUT"
+            echo "allow_auth=$allow_auth" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  e2e-smoke:
+    needs: gate
+    if: needs.gate.outputs.mode == 'smoke'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.gate.outputs.ref }}
+
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+
+      - name: Install Entire CLI
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/entireio/cli/cmd/entire@latest
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Run smoke lifecycle tests
+        env:
+          E2E_NO_AUTH: "1"
+        run: mise run test:e2e:lifecycle
+
+  e2e-full:
+    needs: gate
+    if: needs.gate.outputs.allow_auth == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.gate.outputs.ref }}
+
+      - uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+
+      - name: Install Entire CLI
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/entireio/cli/cmd/entire@latest
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Install Pi CLI
+        run: npm install -g @mariozechner/pi-coding-agent
+
+      - name: Install Kiro CLI (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: curl -fsSL https://cli.kiro.dev/install | bash
+
+      - name: Install Kiro CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: irm 'https://cli.kiro.dev/install.ps1' | iex
+
+      - name: Bootstrap agent auth/config
+        env:
+          E2E_API_KEY_AUTH: "1"
+          KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: mise run test:e2e:bootstrap
+
+      - name: Run full lifecycle tests
+        env:
+          E2E_API_KEY_AUTH: "1"
+          KIRO_API_KEY: ${{ secrets.KIRO_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: mise run test:e2e:lifecycle

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -49,6 +49,12 @@ func (p *Pi) IsTransientError(out Output, _ error) bool {
 }
 
 func (p *Pi) Bootstrap() error {
+	if !isAPIKeyAuthMode() {
+		return nil
+	}
+	if err := requireAnyEnv("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -71,10 +77,7 @@ func (p *Pi) RunPrompt(ctx context.Context, dir string, prompt string, opts ...O
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+	configureCmdProcAttr(cmd)
 	cmd.WaitDelay = 5 * time.Second
 
 	var stdout, stderr strings.Builder
@@ -93,7 +96,7 @@ func (p *Pi) RunPrompt(ctx context.Context, dir string, prompt string, opts ...O
 	}
 
 	return Output{
-		Command:  p.Binary() + " " + strings.Join(displayArgs, " "),
+		Command:  filepath.Base(bin) + " " + strings.Join(displayArgs, " "),
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),
 		ExitCode: exitCode,
@@ -103,7 +106,7 @@ func (p *Pi) RunPrompt(ctx context.Context, dir string, prompt string, opts ...O
 func (p *Pi) StartSession(ctx context.Context, dir string) (Session, error) {
 	name := fmt.Sprintf("pi-test-%d", time.Now().UnixNano())
 
-	s, err := NewTmuxSession(name, dir, []string{"ENTIRE_TEST_TTY"}, p.Binary())
+	s, err := newInteractiveSession(name, dir, []string{"ENTIRE_TEST_TTY"}, p.Binary())
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +116,5 @@ func (p *Pi) StartSession(ctx context.Context, dir string) (Session, error) {
 		_ = s.Close()
 		return nil, fmt.Errorf("waiting for initial prompt: %w", err)
 	}
-	s.stableAtSend = ""
-
 	return s, nil
 }

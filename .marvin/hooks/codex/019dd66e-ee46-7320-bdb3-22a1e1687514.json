@@ -1,0 +1,18 @@
+{
+  "session_id": "019dd66e-ee46-7320-bdb3-22a1e1687514",
+  "agent_type": "codex",
+  "files": {
+    ".marvin/hooks/claude-code/48c47012-0440-41d2-8b7a-bde289d34de5.json": "??",
+    ".marvin/hooks/codex/019dd66e-ee46-7320-bdb3-22a1e1687514.json": "??",
+    "doc/windows-e2e-design.md": "??",
+    "docs/rfds/windows-e2e-design-timeline.md": "??",
+    "docs/rfds/windows-e2e-design.md": "??"
+  },
+  "hashes": {
+    ".marvin/hooks/claude-code/48c47012-0440-41d2-8b7a-bde289d34de5.json": "cc795709d4850264d13e30f1b808b16ffd5162ae3a0ac732643d2d9352498722",
+    ".marvin/hooks/codex/019dd66e-ee46-7320-bdb3-22a1e1687514.json": "283b63164160e8e79c83ca063422ebc6c96fb46708eb5e5e01a88135d664f6c0",
+    "doc/windows-e2e-design.md": "8ad7a66100128cdd2fada1c23c60431786c3882b498bb788eeb144b9a3f671ac",
+    "docs/rfds/windows-e2e-design-timeline.md": "1c1211512547d381cf269e07a13a6453024180a43c565113dde8071762a38a2b",
+    "docs/rfds/windows-e2e-design.md": "77d4156cc997623c12bb9fecc62c86cf1aaa4700aab4844df97c95f6146f689b"
+  }
+}

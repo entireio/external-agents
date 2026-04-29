@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -49,7 +49,12 @@ func (k *Kiro) IsTransientError(out Output, _ error) bool {
 }
 
 func (k *Kiro) Bootstrap() error {
-	// No-op locally. On CI, write config for non-interactive auth if needed.
+	if !isAPIKeyAuthMode() {
+		return nil
+	}
+	if err := requireEnv("KIRO_API_KEY"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -59,9 +64,9 @@ func (k *Kiro) RunPrompt(ctx context.Context, dir string, prompt string, opts ..
 		o(cfg)
 	}
 
-	bin, err := exec.LookPath(k.Binary())
+	bin, err := lookPathAny("kiro-cli-chat", "kiro-cli")
 	if err != nil {
-		return Output{}, fmt.Errorf("%s not in PATH: %w", k.Binary(), err)
+		return Output{}, err
 	}
 
 	args := []string{"chat", "--no-interactive", "--trust-all-tools", "--agent", "entire", prompt}
@@ -72,10 +77,7 @@ func (k *Kiro) RunPrompt(ctx context.Context, dir string, prompt string, opts ..
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-	}
+	configureCmdProcAttr(cmd)
 	cmd.WaitDelay = 5 * time.Second
 
 	var stdout, stderr strings.Builder
@@ -94,7 +96,7 @@ func (k *Kiro) RunPrompt(ctx context.Context, dir string, prompt string, opts ..
 	}
 
 	return Output{
-		Command:  k.Binary() + " " + strings.Join(displayArgs, " "),
+		Command:  filepath.Base(bin) + " " + strings.Join(displayArgs, " "),
 		Stdout:   stdout.String(),
 		Stderr:   stderr.String(),
 		ExitCode: exitCode,
@@ -104,7 +106,12 @@ func (k *Kiro) RunPrompt(ctx context.Context, dir string, prompt string, opts ..
 func (k *Kiro) StartSession(ctx context.Context, dir string) (Session, error) {
 	name := fmt.Sprintf("kiro-test-%d", time.Now().UnixNano())
 
-	s, err := NewTmuxSession(name, dir, []string{"ENTIRE_TEST_TTY"}, k.Binary(), "chat", "--trust-all-tools", "--agent", "entire")
+	bin, err := lookPathAny("kiro-cli-chat", "kiro-cli")
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := newInteractiveSession(name, dir, []string{"ENTIRE_TEST_TTY"}, bin, "chat", "--trust-all-tools", "--agent", "entire")
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +121,5 @@ func (k *Kiro) StartSession(ctx context.Context, dir string) (Session, error) {
 		_ = s.Close()
 		return nil, fmt.Errorf("waiting for initial prompt: %w", err)
 	}
-	s.stableAtSend = ""
-
 	return s, nil
 }

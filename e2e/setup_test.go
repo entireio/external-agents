@@ -10,8 +10,7 @@ import (
 	"runtime"
 	"testing"
 
-	// Import agents package to trigger init() registration.
-	_ "github.com/entireio/external-agents/e2e/agents"
+	"github.com/entireio/external-agents/e2e/agents"
 	"github.com/entireio/external-agents/e2e/entire"
 	"github.com/entireio/external-agents/e2e/testutil"
 )
@@ -69,8 +68,10 @@ func TestMain(m *testing.M) {
 	}
 
 	// --- Preflight checks ---
-	if _, err := exec.LookPath("tmux"); err != nil {
-		fmt.Fprintln(os.Stderr, "warning: tmux not found — interactive session tests will fail")
+	if runtime.GOOS != "windows" {
+		if _, err := exec.LookPath("tmux"); err != nil {
+			fmt.Fprintln(os.Stderr, "warning: tmux not found — interactive session tests will fail")
+		}
 	}
 
 	// Write entire version info to artifact dir.
@@ -82,7 +83,35 @@ func TestMain(m *testing.M) {
 	_ = os.WriteFile(filepath.Join(runDir, "entire-version.txt"), []byte(preflight), 0o644)
 
 	// Isolate git config to prevent user's ~/.gitconfig from interfering.
-	os.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	gitConfig, err := os.CreateTemp("", "e2e-gitconfig-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create temp git config: %v\n", err)
+		os.Exit(1)
+	}
+	_ = gitConfig.Close()
+	defer os.Remove(gitConfig.Name())
+	os.Setenv("GIT_CONFIG_GLOBAL", gitConfig.Name())
 
 	os.Exit(m.Run())
+}
+
+func requireAgentAuth(t *testing.T) {
+	t.Helper()
+	if shouldSkipAuthGatedTests() {
+		t.Skip("skipping auth-gated test: E2E_NO_AUTH=1")
+	}
+}
+
+func shouldSkipAuthGatedTests() bool {
+	return os.Getenv("E2E_NO_AUTH") == "1"
+}
+
+func interactiveSessionSkipReason(agent agents.Agent) string {
+	if os.Getenv("E2E_API_KEY_AUTH") != "1" {
+		return ""
+	}
+	if agent.Name() == "kiro" {
+		return "kiro API key auth only supports non-interactive mode"
+	}
+	return ""
 }
