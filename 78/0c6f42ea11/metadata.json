@@ -1,0 +1,25 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "780c6f42ea11",
+  "strategy": "manual-commit",
+  "branch": "kiro-windows-bug",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "e2e/agents.test.exe"
+  ],
+  "sessions": [
+    {
+      "metadata": "/78/0c6f42ea11/0/metadata.json",
+      "transcript": "/78/0c6f42ea11/0/full.jsonl",
+      "content_hash": "/78/0c6f42ea11/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 944815,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 765312,
+    "output_tokens": 1216,
+    "api_call_count": 5
+  }
+}
