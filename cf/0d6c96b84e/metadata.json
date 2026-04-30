@@ -1,5 +1,5 @@
 {
-  "cli_version": "dev",
+  "cli_version": "0.5.6",
   "checkpoint_id": "cf0d6c96b84e",
   "strategy": "manual-commit",
   "branch": "main",

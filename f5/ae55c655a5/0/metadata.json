@@ -1,9 +1,9 @@
 {
-  "cli_version": "dev",
+  "cli_version": "0.5.6",
   "checkpoint_id": "f5ae55c655a5",
   "session_id": "012dbfb0-86fd-41e2-baf6-29dd614f08e4",
   "strategy": "manual-commit",
-  "created_at": "2026-03-20T19:19:22.170281Z",
+  "created_at": "2026-04-28T17:29:17.658459Z",
   "branch": "main",
   "checkpoints_count": 1,
   "files_touched": [],

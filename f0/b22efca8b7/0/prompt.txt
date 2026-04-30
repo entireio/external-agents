@@ -1,0 +1,17 @@
+Does @e2e/agents/pi.go work with https://github.com/can1357/oh-my-pi ?
+
+---
+
+Let's make a separate binary.
+
+---
+
+Hang on, you created a new e2e test but not the agent support for it. You need to create agents/entire-agent-omp
+
+---
+
+/review
+
+---
+
+/simplify

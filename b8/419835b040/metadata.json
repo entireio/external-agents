@@ -1,5 +1,5 @@
 {
-  "cli_version": "dev",
+  "cli_version": "0.5.6",
   "checkpoint_id": "b8419835b040",
   "strategy": "manual-commit",
   "branch": "docs/research-data-verification",
