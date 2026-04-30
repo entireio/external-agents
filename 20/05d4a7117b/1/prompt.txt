@@ -1,0 +1,2 @@
+time to do another deep dive. test repo is /Users/alisha/Projects/test-repos/kiroide. these are screenshots of the frontend. the first checkpoint the session is doubled and
+ the second checkpoint shows the first checkpoints session instead of its session about creating hello world rust

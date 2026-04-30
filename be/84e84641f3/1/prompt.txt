@@ -1,0 +1,1 @@
+update root level readme to say somthing like look at individual agent readme for setting them up
