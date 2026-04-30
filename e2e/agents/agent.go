@@ -2,9 +2,13 @@ package agents
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -123,6 +127,59 @@ func ReleaseSlot(a Agent) {
 // All returns all registered agents.
 func All() []Agent {
 	return registry
+}
+
+// runAgentCmd runs the agent binary with the given args and returns the captured
+// Output. displayArgs is what gets recorded in Output.Command (typically with the
+// prompt %q-quoted for log readability); args is what's actually exec'd.
+func runAgentCmd(ctx context.Context, dir, binary string, args, displayArgs []string) (Output, error) {
+	bin, err := exec.LookPath(binary)
+	if err != nil {
+		return Output{}, fmt.Errorf("%s not in PATH: %w", binary, err)
+	}
+
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Dir = dir
+	cmd.Env = filterEnv(os.Environ(), "ENTIRE_TEST_TTY")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = 5 * time.Second
+
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	runErr := cmd.Run()
+	exitCode := 0
+	if runErr != nil {
+		exitErr := &exec.ExitError{}
+		if errors.As(runErr, &exitErr) {
+			exitCode = exitErr.ExitCode()
+		} else {
+			exitCode = -1
+		}
+	}
+
+	return Output{
+		Command:  binary + " " + strings.Join(displayArgs, " "),
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
+		ExitCode: exitCode,
+	}, runErr
+}
+
+// isTransient returns true if the combined stdout+stderr of out contains any
+// of the given substring patterns. Used by per-agent IsTransientError methods.
+func isTransient(out Output, patterns []string) bool {
+	combined := out.Stdout + out.Stderr
+	for _, pat := range patterns {
+		if strings.Contains(combined, pat) {
+			return true
+		}
+	}
+	return false
 }
 
 // filterEnv returns env with entries matching any of the given variable names
