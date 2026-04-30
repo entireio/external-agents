@@ -193,7 +193,7 @@ File-modifying tools:
 - Agent CLI binary: `omp` (Node.js, installed via npm)
 - --no-skills --no-rules
 - Interactive mode: Supported — `omp` launches interactive TUI, `omp --continue` resumes
-- Expected prompt pattern: `\$\d` (same as pi)
+- Expected prompt pattern: `⬢` (model bullet in the bottom status bar). Unlike pi, omp hides the `$X.XX` cost indicator until tokens have been billed, so `\$\d` does not match a fresh interactive session.
 - Timeout multiplier: 1.5 (Node.js startup + LLM API calls)
 - Bootstrap steps: API key must be set (e.g., `ANTHROPIC_API_KEY`, or other provider key)
 - Transient error patterns: `"overloaded"`, `"rate limit"`, `"429"`, `"503"`, `"ECONNRESET"`, `"ETIMEDOUT"`, `"timeout"`

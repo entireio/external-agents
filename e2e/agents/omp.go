@@ -25,7 +25,10 @@ type Omp struct{}
 func (o *Omp) Name() string               { return "omp" }
 func (o *Omp) Binary() string             { return "omp" }
 func (o *Omp) EntireAgent() string        { return "omp" }
-func (o *Omp) PromptPattern() string      { return `\$\d` }
+// PromptPattern matches the model bullet (⬢) shown in omp's bottom status bar.
+// Unlike pi, omp omits the cost indicator ($X.XX) until tokens are billed, so
+// `\$\d` does not match a fresh session.
+func (o *Omp) PromptPattern() string      { return `⬢` }
 func (o *Omp) TimeoutMultiplier() float64 { return 1.5 }
 func (o *Omp) IsExternalAgent() bool      { return true }
 
