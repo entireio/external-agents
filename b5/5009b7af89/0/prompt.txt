@@ -1,0 +1,21 @@
+what is difference between test-e2e and test-e2e-lifecycle?
+
+---
+
+should @e2e/kiro_lifecycle_test.goand @e2e/kiro_test.go live in the @agents/entire-agent-kiro/ folder?
+
+---
+
+can they be put in a kiro folder? or better organized. it will get messy when I add more agents
+
+---
+
+yes
+
+---
+
+1
+
+---
+
+how to run e2e for specific agent
