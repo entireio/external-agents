@@ -1,0 +1,54 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "ff1555f60b11",
+  "session_id": "72dbae0c-943b-4e7f-b9b5-2c8b4e3dcd7a",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-30T06:41:53.988123Z",
+  "branch": "pr-10",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-omp/AGENT.md",
+    "e2e/agents/omp.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "213777072cd5",
+  "token_usage": {
+    "input_tokens": 46,
+    "cache_creation_tokens": 69978,
+    "cache_read_tokens": 2107134,
+    "output_tokens": 17405,
+    "api_call_count": 36
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-30T06:41:53.982416Z",
+    "agent_lines": 5,
+    "agent_removed": 2,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 5,
+    "total_lines_changed": 7,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 5,
+      "agent_lines_removed": 2
+    }
+  ]
+}
