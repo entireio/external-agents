@@ -1,0 +1,53 @@
+something is wrong with the kiro ide checkpoints checkout this commit a747bad83f135bbcb99825ab1682ca0c9a87f0f Add hello ghost python script there is no agent transcript. the test repo is /User/alisha/Projects/test-repo/kirocli
+
+---
+
+i tested and there are errors in the entire logs and I don't see a promt. should all be one transcript and initial prompt to delete files missing
+
+---
+
+no don't delete trimming. that works for cli need to use different path for IDE. can you pull in really ide data from my test repo and us it in unit test. unit test should fail then implement fix and it should pass
+
+---
+
+just tests and frontend doesn't see transcript sessions bug in the cli or frontend?
+
+---
+
+I ran make build and used the new external agent build
+
+---
+
+find a way to fix it in the external agent code not cli code
+
+---
+
+find a way to fix it in the external agent code not cli code
+
+---
+
+totally wrong session prompt should be add "add python hello world - ide" do a deep dive into the issue and solution needs to be in the external agent kiro code
+
+---
+
+no transcript from ide prompt in the kirocli test repo. write a test that fails using real kiro ide data
+
+---
+
+can you remove the Prompt matching: Cache the prompt from user-prompt-submit, use it to match the correct IDE session by title when multiple sessions exist/ I think that made it worse
+
+---
+
+the ide transcripts are missing tool calls etc...
+
+---
+
+no just look at the /Users/alisha/Projects/test-repos/kireide repo since that I've only use the kiro ide for
+
+---
+
+I added more kiro ide session data for kireide repo
+
+---
+
+I added more kiro ide session data for kireide repo please check again
