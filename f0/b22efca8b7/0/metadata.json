@@ -1,0 +1,100 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "f0b22efca8b7",
+  "session_id": "286761d2-ec70-4bd0-9106-a571f7d6d924",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-30T04:33:49.661901Z",
+  "branch": "add-omp-agent-support",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "agents/entire-agent-omp/.gitignore",
+    "agents/entire-agent-omp/AGENT.md",
+    "agents/entire-agent-omp/README.md",
+    "agents/entire-agent-omp/go.mod",
+    "agents/entire-agent-omp/internal/omp/agent.go",
+    "agents/entire-agent-omp/internal/omp/compact.go",
+    "agents/entire-agent-omp/internal/omp/compact_test.go",
+    "agents/entire-agent-omp/internal/omp/hooks.go",
+    "agents/entire-agent-omp/internal/omp/hooks_test.go",
+    "agents/entire-agent-omp/internal/omp/paths.go",
+    "agents/entire-agent-omp/internal/omp/transcript.go",
+    "agents/entire-agent-omp/internal/omp/transcript_test.go",
+    "agents/entire-agent-omp/internal/protocol/handlers_test.go",
+    "agents/entire-agent-omp/internal/protocol/protocol.go",
+    "agents/entire-agent-omp/internal/protocol/types.go",
+    "agents/entire-agent-omp/mise.toml",
+    "agents/entire-agent-omp/scripts/verify-omp.sh",
+    "e2e/agents/agent.go",
+    "e2e/agents/kiro.go",
+    "e2e/agents/omp.go",
+    "e2e/agents/pi.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "9639d90a23f1",
+  "token_usage": {
+    "input_tokens": 177,
+    "cache_creation_tokens": 269912,
+    "cache_read_tokens": 20713295,
+    "output_tokens": 80109,
+    "api_call_count": 149
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-30T04:33:49.598968Z",
+    "agent_lines": 3274,
+    "agent_removed": 116,
+    "human_added": 0,
+    "human_modified": 26,
+    "human_removed": 0,
+    "total_committed": 3287,
+    "total_lines_changed": 3416,
+    "agent_percentage": 99.23887587822014,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 122,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3288,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3289,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 13,
+      "user_lines_removed": 13,
+      "agent_lines_added": 3300,
+      "agent_lines_removed": 129,
+      "user_added_per_file": {
+        "agents/entire-agent-omp/scripts/verify-omp.sh": 13
+      },
+      "user_removed_per_file": {
+        "agents/entire-agent-omp/scripts/verify-omp.sh": 13
+      }
+    }
+  ]
+}

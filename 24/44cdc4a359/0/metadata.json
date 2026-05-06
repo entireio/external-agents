@@ -1,0 +1,54 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "2444cdc4a359",
+  "session_id": "4606c3cc-379e-49e0-ae0e-8a393cf85de5",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-24T19:04:21.629129Z",
+  "branch": "test",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "81b57220672e",
+  "token_usage": {
+    "input_tokens": 8,
+    "cache_creation_tokens": 14373,
+    "cache_read_tokens": 83051,
+    "output_tokens": 641,
+    "api_call_count": 3
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-24T19:04:21.624741Z",
+    "agent_lines": 1,
+    "agent_removed": 108,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1,
+    "total_lines_changed": 109,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 895,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".agents/skills/e2e-debug/SKILL.md": 116,
+        ".agents/skills/entire-external-agent/SKILL.md": 119,
+        ".agents/skills/entire-external-agent/implement.md": 131,
+        ".agents/skills/entire-external-agent/research.md": 360,
+        ".agents/skills/entire-external-agent/write-tests.md": 137,
+        "agents/entire-agent-kiro/.claude/settings.local.json": 32
+      }
+    }
+  ]
+}
