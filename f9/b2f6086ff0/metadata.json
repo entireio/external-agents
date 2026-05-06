@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.6.0",
+  "checkpoint_id": "f9b2f6086ff0",
+  "strategy": "manual-commit",
+  "branch": "kiro-windows-bugs",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "agents/entire-agent-kiro/internal/kiro/transcript.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f9/b2f6086ff0/0/metadata.json",
+      "transcript": "/f9/b2f6086ff0/0/transcript.jsonl",
+      "content_hash": "/f9/b2f6086ff0/0/transcript_hash.txt",
+      "prompt": "/f9/b2f6086ff0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 33,
+    "cache_creation_tokens": 12468,
+    "cache_read_tokens": 8286690,
+    "output_tokens": 7388,
+    "api_call_count": 13
+  }
+}
