@@ -36,15 +36,17 @@ Kiro has enough hook, session, and transcript surface area to fit the Entire ext
 - IDE hook config format: JSON with `enabled`, `name`, `description`, `version`, `when`, and `then`
 - IDE trigger types installed by Entire: `promptSubmit`, `agentStop`, `preToolUse`, `postToolUse`
 - IDE hook input: the adapter tolerates empty stdin and falls back to environment variables such as `USER_PROMPT`
+- IDE hook command form: macOS/Linux use `sh -c '<command> </dev/null'`; Windows uses `cmd /c "<command> <NUL"` so the parent `entire` CLI process inherits a closed stdin (Kiro IDE on Windows leaves stdin open, and the adapter's 100ms stdin timeout only covers the agent binary, not the CLI parent)
 
 ## Session Management
-- Session ID source: a stable Entire session ID is normally generated at `agentSpawn` and cached in `.entire/tmp/kiro-active-session`; if that cache is missing, including IDE flow where there is no IDE `agentSpawn` hook, the adapter falls back to generating and caching one during `userPromptSubmit`
+- Session ID source: `parse-hook` prefers native Kiro identifiers first (hook payload `session_id` / `sessionId` / `conversation_id` / `chatSessionId` when present, then the latest IDE `sessionId`, then the cached Entire session ID, then the CLI `conversation_id`, and only then a generated Entire ID)
+- Session cache lifetime: `.entire/tmp/kiro-active-session` persists across `stop` events so repeated prompts in the same IDE chat tab stay in one Entire session; the cache is replaced when a newer native Kiro session ID is observed
 - Session directory: `.entire/tmp/` under the repo root
 - Session file format: cached JSON transcript, one file per session ID
 - Session file path: `.entire/tmp/<session-id>.json`
-- Native CLI session lookup: SQLite database at `~/Library/Application Support/kiro-cli/data.sqlite3` on macOS or `~/.local/share/kiro-cli/data.sqlite3` on Linux
+- Native CLI session lookup: SQLite database at `~/Library/Application Support/kiro-cli/data.sqlite3` on macOS, `~/.local/share/kiro-cli/data.sqlite3` on Linux, or `%LOCALAPPDATA%/kiro-cli/data.sqlite3` on Windows
 - Native CLI lookup key: the current working directory is queried against `conversations_v2`
-- Native IDE session lookup: `~/Library/Application Support/Kiro/User/globalStorage/kiro.kiroagent/workspace-sessions/<base64(cwd)>/sessions.json` on macOS or the matching `~/.config/...` path on Linux
+- Native IDE session lookup: `~/Library/Application Support/Kiro/User/globalStorage/kiro.kiroagent/workspace-sessions/<base64(cwd)>/sessions.json` on macOS, `~/.config/Kiro/User/globalStorage/kiro.kiroagent/workspace-sessions/<base64(cwd)>/sessions.json` on Linux, or `%APPDATA%/Kiro/User/globalStorage/kiro.kiroagent/workspace-sessions/<base64(cwd)>/sessions.json` on Windows
 - IDE transcript source: the most recent entry in `sessions.json`, then `<sessionId>.json` in the same directory
 
 ## Transcript
@@ -97,4 +99,4 @@ Kiro has enough hook, session, and transcript surface area to fit the Entire ext
 - `kiro-cli` is not the right binary for headless support; the adapter uses `kiro-cli-chat` because it supports device-flow or SIGV4-based non-interactive use
 - The CLI transcript is only reliable at turn end because Kiro's SQLite conversation record is populated late
 - IDE prompt input may arrive through environment variables instead of stdin, so hook parsing must tolerate empty stdin
-- The native session ID from Kiro is not stable early in the turn, so Entire needs its own cached session ID file for hook coherence
+- CLI transcript capture now uses an embedded SQLite driver instead of the `sqlite3` shell command, so CLI-native transcript lookup no longer depends on an external binary being installed

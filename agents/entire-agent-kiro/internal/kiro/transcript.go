@@ -2,22 +2,122 @@ package kiro
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
+	_ "modernc.org/sqlite"
 )
 
 var runSQLiteCommand = func(args ...string) ([]byte, error) {
-	return exec.Command("sqlite3", args...).Output()
+	switch len(args) {
+	case 3:
+		if args[0] != "-json" {
+			return nil, fmt.Errorf("unsupported sqlite query mode: %q", args[0])
+		}
+		return querySQLiteJSON(args[1], args[2])
+	case 2:
+		return querySQLiteRaw(args[0], args[1])
+	default:
+		return nil, fmt.Errorf("unsupported sqlite invocation with %d args", len(args))
+	}
+}
+
+var runtimeGOOS = runtime.GOOS
+
+var userHomeDir = os.UserHomeDir
+
+func openSQLiteDB(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+func querySQLiteJSON(path string, query string) ([]byte, error) {
+	db, err := openSQLiteDB(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []map[string]string
+	for rows.Next() {
+		scanTargets := make([]sql.NullString, len(columns))
+		dest := make([]any, len(columns))
+		for i := range scanTargets {
+			dest[i] = &scanTargets[i]
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return nil, err
+		}
+
+		row := make(map[string]string, len(columns))
+		for i, col := range columns {
+			if scanTargets[i].Valid {
+				row[col] = scanTargets[i].String
+			} else {
+				row[col] = ""
+			}
+		}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(result) == 0 {
+		return []byte("[]"), nil
+	}
+	return json.Marshal(result)
+}
+
+func querySQLiteRaw(path string, query string) ([]byte, error) {
+	db, err := openSQLiteDB(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	var value sql.NullString
+	err = db.QueryRow(query).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return []byte{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !value.Valid {
+		return []byte{}, nil
+	}
+	return []byte(value.String), nil
 }
 
 var kiroFileModificationTools = map[string]struct{}{
@@ -243,26 +343,10 @@ func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error
 	if err != nil {
 		return "", err
 	}
-
-	indexPath := filepath.Join(sessionsDir, "sessions.json")
-	indexData, err := os.ReadFile(indexPath)
+	ideSessionID, err := latestIDESessionID(cwd)
 	if err != nil {
-		return "", fmt.Errorf("IDE sessions.json not found: %w", err)
+		return "", err
 	}
-
-	var sessions []ideSessionIndexEntry
-	if err := json.Unmarshal(indexData, &sessions); err != nil {
-		return "", fmt.Errorf("failed to parse IDE sessions.json: %w", err)
-	}
-	if len(sessions) == 0 {
-		return "", errors.New("no IDE sessions found")
-	}
-
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].DateCreated > sessions[j].DateCreated
-	})
-
-	ideSessionID := sessions[0].SessionID
 	if !filepath.IsLocal(ideSessionID + ".json") {
 		return "", fmt.Errorf("invalid session ID: %q", ideSessionID)
 	}
@@ -347,16 +431,98 @@ func enrichIDETranscriptWithToolCalls(ideData []byte, toolCalls []kiroToolCall) 
 }
 
 func (a *Agent) captureTranscriptForStop(cwd string, sessionID string, conversationID string) string {
+	debugLog := newCaptureDebugLogger(cwd, sessionID, conversationID)
+	defer debugLog.close()
+
+	debugLog.logf("captureTranscriptForStop start: cwd=%q sessionID=%q conversationID=%q goos=%q", cwd, sessionID, conversationID, runtimeGOOS)
+	if extDir, err := kiroExtensionStorageDir(); err == nil {
+		debugLog.logf("kiroExtensionStorageDir=%q", extDir)
+	} else {
+		debugLog.logf("kiroExtensionStorageDir error: %v", err)
+	}
+	if wsDir, err := ideWorkspaceSessionsDir(cwd); err == nil {
+		debugLog.logf("ideWorkspaceSessionsDir=%q", wsDir)
+		if _, statErr := os.Stat(wsDir); statErr != nil {
+			debugLog.logf("ideWorkspaceSessionsDir stat error: %v", statErr)
+		} else {
+			debugLog.logf("ideWorkspaceSessionsDir exists")
+		}
+	} else {
+		debugLog.logf("ideWorkspaceSessionsDir error: %v", err)
+	}
+	if dbPath, err := kiroCLIDataDBPath(); err == nil {
+		debugLog.logf("kiroCLIDataDBPath=%q", dbPath)
+		if _, statErr := os.Stat(dbPath); statErr != nil {
+			debugLog.logf("kiroCLIDataDBPath stat error: %v", statErr)
+		} else {
+			debugLog.logf("kiroCLIDataDBPath exists")
+		}
+	} else {
+		debugLog.logf("kiroCLIDataDBPath error: %v", err)
+	}
+
 	// Try IDE workspace sessions first — the stop hook is fired by the IDE,
 	// so IDE data is the most accurate source. CLI DB is a fallback for
 	// kiro-cli (non-IDE) sessions where no IDE workspace data exists.
 	if sessionRef, err := a.ensureIDETranscript(cwd, sessionID); err == nil && sessionRef != "" {
+		debugLog.logf("ensureIDETranscript ok: %q", sessionRef)
 		return sessionRef
+	} else if err != nil {
+		debugLog.logf("ensureIDETranscript error: %v", err)
+	} else {
+		debugLog.logf("ensureIDETranscript returned empty sessionRef without error")
 	}
 	if sessionRef, err := a.ensureCachedTranscript(cwd, sessionID, conversationID); err == nil && sessionRef != "" {
+		debugLog.logf("ensureCachedTranscript ok: %q", sessionRef)
 		return sessionRef
+	} else if err != nil {
+		debugLog.logf("ensureCachedTranscript error: %v", err)
+	} else {
+		debugLog.logf("ensureCachedTranscript returned empty sessionRef without error")
 	}
+	debugLog.logf("falling through to createPlaceholderTranscript")
 	return a.createPlaceholderTranscript(cwd, sessionID)
+}
+
+type captureDebugLogger struct {
+	f *os.File
+}
+
+func newCaptureDebugLogger(cwd, sessionID, conversationID string) *captureDebugLogger {
+	if os.Getenv("KIRO_DEBUG") == "" {
+		return &captureDebugLogger{}
+	}
+	repoRoot := protocol.RepoRoot()
+	if repoRoot == "" {
+		repoRoot = cwd
+	}
+	if repoRoot == "" {
+		return &captureDebugLogger{}
+	}
+	dir := filepath.Join(repoRoot, ".entire", "tmp")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return &captureDebugLogger{}
+	}
+	path := filepath.Join(dir, "kiro-debug.log")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return &captureDebugLogger{}
+	}
+	return &captureDebugLogger{f: f}
+}
+
+func (l *captureDebugLogger) logf(format string, args ...any) {
+	if l == nil || l.f == nil {
+		return
+	}
+	line := fmt.Sprintf("["+time.Now().UTC().Format(time.RFC3339Nano)+"] "+format+"\n", args...)
+	_, _ = l.f.WriteString(line)
+}
+
+func (l *captureDebugLogger) close() {
+	if l != nil && l.f != nil {
+		_ = l.f.Close()
+	}
 }
 
 func (a *Agent) createPlaceholderTranscript(cwd string, sessionID string) string {
@@ -386,13 +552,19 @@ func (a *Agent) cacheTranscriptPath(cwd string, sessionID string) (string, error
 }
 
 func kiroDataDir() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	switch runtime.GOOS {
+	switch runtimeGOOS {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support"), nil
+	case "windows":
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		return localAppData, nil
 	default:
 		return filepath.Join(home, ".local", "share"), nil
 	}
@@ -409,16 +581,52 @@ func kiroCLIDataDBPath() (string, error) {
 // kiroExtensionStorageDir returns the platform-specific base directory for
 // Kiro IDE extension data (workspace sessions, execution logs, etc.).
 func kiroExtensionStorageDir() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	switch runtime.GOOS {
+	switch runtimeGOOS {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support", "Kiro", "User", "globalStorage", "kiro.kiroagent"), nil
+	case "windows":
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		return filepath.Join(appData, "Kiro", "User", "globalStorage", "kiro.kiroagent"), nil
 	default:
 		return filepath.Join(home, ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent"), nil
 	}
+}
+
+func latestIDESessionID(cwd string) (string, error) {
+	sessionsDir, err := ideWorkspaceSessionsDir(cwd)
+	if err != nil {
+		return "", err
+	}
+
+	indexPath := filepath.Join(sessionsDir, "sessions.json")
+	indexData, err := os.ReadFile(indexPath)
+	if err != nil {
+		return "", fmt.Errorf("IDE sessions.json not found: %w", err)
+	}
+
+	var sessions []ideSessionIndexEntry
+	if err := json.Unmarshal(indexData, &sessions); err != nil {
+		return "", fmt.Errorf("failed to parse IDE sessions.json: %w", err)
+	}
+	if len(sessions) == 0 {
+		return "", errors.New("no IDE sessions found")
+	}
+
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].DateCreated > sessions[j].DateCreated
+	})
+
+	if sessions[0].SessionID == "" {
+		return "", errors.New("latest IDE session is missing sessionId")
+	}
+	return sessions[0].SessionID, nil
 }
 
 func ideWorkspaceSessionsDir(cwd string) (string, error) {
@@ -426,9 +634,25 @@ func ideWorkspaceSessionsDir(cwd string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Kiro IDE on Windows encodes the cwd in its native Windows form before
+	// base64: backslash separators and a lowercased drive letter. Go's
+	// os.Getwd() and the entire CLI's ENTIRE_REPO_ROOT may use uppercase
+	// drives or forward slashes, so we must normalize before encoding or
+	// the workspace-sessions lookup misses Kiro's directory.
+	if runtimeGOOS == "windows" {
+		cwd = normalizeWindowsCWDForKiro(cwd)
+	}
 	// Kiro IDE uses standard base64 with '=' padding replaced by '_'.
 	encoded := strings.ReplaceAll(base64.StdEncoding.EncodeToString([]byte(cwd)), "=", "_")
 	return filepath.Join(baseDir, "workspace-sessions", encoded), nil
+}
+
+func normalizeWindowsCWDForKiro(p string) string {
+	p = strings.ReplaceAll(p, "/", `\`)
+	if len(p) >= 2 && p[1] == ':' && p[0] >= 'A' && p[0] <= 'Z' {
+		return string(p[0]+('a'-'A')) + p[1:]
+	}
+	return p
 }
 
 func escapeSQLString(s string) string {

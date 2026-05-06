@@ -2,16 +2,18 @@ package kiro
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
+
+	_ "modernc.org/sqlite"
 )
 
 const testCLIAnalyzerTranscript = `{
@@ -140,6 +142,25 @@ func TestQuerySessionIDParsesSQLiteJSON(t *testing.T) {
 	}
 }
 
+func TestQuerySessionIDWorksWithoutSQLite3BinaryOnPath(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+
+	dbPath := expectedCLIKiroDBPath(home)
+	createSQLiteConversationDB(t, dbPath, repoRoot, `{"conversation_id":"native-session","history":[]}`)
+
+	sessionID, err := New().querySessionID(repoRoot)
+	if err != nil {
+		t.Fatalf("querySessionID() error = %v", err)
+	}
+	if sessionID != "native-session" {
+		t.Fatalf("sessionID = %q, want %q", sessionID, "native-session")
+	}
+}
+
 func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
@@ -181,6 +202,34 @@ func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 	}
 	if result.ConversationID != "cli-session" || len(result.History) != 2 || result.CLIVersion != "3.4.5" {
 		t.Fatalf("cached transcript conv=%q history=%d cli_version=%q, want cli-session/2/3.4.5", result.ConversationID, len(result.History), result.CLIVersion)
+	}
+}
+
+func TestEnsureCachedTranscriptWorksWithoutSQLite3BinaryOnPath(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+
+	dbPath := expectedCLIKiroDBPath(home)
+	createSQLiteConversationDB(t, dbPath, repoRoot, string(buildTranscript("native-session", 2)))
+
+	cachePath, err := New().ensureCachedTranscript(repoRoot, "stable-session", "")
+	if err != nil {
+		t.Fatalf("ensureCachedTranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+	var result kiroTranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+	if result.ConversationID != "native-session" || len(result.History) != 2 {
+		t.Fatalf("cached transcript conv=%q history=%d, want native-session/2", result.ConversationID, len(result.History))
 	}
 }
 
@@ -411,11 +460,34 @@ func createFakeKiroDB(t *testing.T, home string) string {
 	return db
 }
 
+func createSQLiteConversationDB(t *testing.T, dbPath string, key string, value string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
+		t.Fatalf("mkdir db dir: %v", err)
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	if _, err := db.Exec(`CREATE TABLE conversations_v2 (key TEXT, value TEXT, updated_at INTEGER)`); err != nil {
+		t.Fatalf("create conversations_v2: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO conversations_v2 (key, value, updated_at) VALUES (?, ?, 1)`, key, value); err != nil {
+		t.Fatalf("insert conversation row: %v", err)
+	}
+}
+
 func kiroExtensionTestDir(t *testing.T, home string) string {
 	t.Helper()
-	switch runtime.GOOS {
+	switch runtimeGOOS {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support", "Kiro", "User", "globalStorage", "kiro.kiroagent")
+	case "windows":
+		return filepath.Join(home, "AppData", "Roaming", "Kiro", "User", "globalStorage", "kiro.kiroagent")
 	default:
 		return filepath.Join(home, ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent")
 	}
@@ -432,11 +504,119 @@ func createIDEWorkspaceSessionsDir(t *testing.T, home string, cwd string) string
 }
 
 func expectedCLIKiroDBPath(home string) string {
-	switch runtime.GOOS {
+	switch runtimeGOOS {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support", "kiro-cli", "data.sqlite3")
+	case "windows":
+		return filepath.Join(home, "AppData", "Local", "kiro-cli", "data.sqlite3")
 	default:
 		return filepath.Join(home, ".local", "share", "kiro-cli", "data.sqlite3")
+	}
+}
+
+func TestKiroCLIDataDBPathWindowsUsesLocalAppData(t *testing.T) {
+	withRuntimeGOOS(t, "windows")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "LocalAppData"))
+
+	path, err := kiroCLIDataDBPath()
+	if err != nil {
+		t.Fatalf("kiroCLIDataDBPath() error = %v", err)
+	}
+	want := filepath.Join(home, "LocalAppData", "kiro-cli", "data.sqlite3")
+	if path != want {
+		t.Fatalf("path = %q, want %q", path, want)
+	}
+}
+
+func TestKiroExtensionStorageDirWindowsUsesAppData(t *testing.T) {
+	withRuntimeGOOS(t, "windows")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", filepath.Join(home, "RoamingAppData"))
+
+	dir, err := kiroExtensionStorageDir()
+	if err != nil {
+		t.Fatalf("kiroExtensionStorageDir() error = %v", err)
+	}
+	want := filepath.Join(home, "RoamingAppData", "Kiro", "User", "globalStorage", "kiro.kiroagent")
+	if dir != want {
+		t.Fatalf("dir = %q, want %q", dir, want)
+	}
+}
+
+func TestIDEWorkspaceSessionsDirWindowsNormalizesForwardSlashCwd(t *testing.T) {
+	// The entire CLI may pass cwd to the agent with forward-slash separators
+	// (Unix-style for portability), but Kiro IDE encodes paths with native
+	// Windows backslashes. The agent must normalize before base64-encoding
+	// or the workspace-sessions lookup misses the directory Kiro wrote.
+	withRuntimeGOOS(t, "windows")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", filepath.Join(home, "RoamingAppData"))
+
+	forwardSlashCWD := "C:/Users/alisha/testrepo"
+	dir, err := ideWorkspaceSessionsDir(forwardSlashCWD)
+	if err != nil {
+		t.Fatalf("ideWorkspaceSessionsDir() error = %v", err)
+	}
+
+	// Expected: base64 of `c:\Users\alisha\testrepo` (lowercase drive, backslashes)
+	wantEncoded := strings.ReplaceAll(
+		base64.StdEncoding.EncodeToString([]byte(`c:\Users\alisha\testrepo`)),
+		"=", "_",
+	)
+	wantDir := filepath.Join(
+		home, "RoamingAppData", "Kiro", "User", "globalStorage", "kiro.kiroagent",
+		"workspace-sessions", wantEncoded,
+	)
+	if dir != wantDir {
+		t.Fatalf("workspace-sessions dir = %q, want %q (backslashes + lowercase drive)", dir, wantDir)
+	}
+}
+
+func TestIDEWorkspaceSessionsDirWindowsLowercasesDriveLetter(t *testing.T) {
+	// Kiro IDE on Windows normalizes drive letters to lowercase before
+	// base64-encoding the cwd into the workspace-sessions directory name.
+	// Go's os.Getwd() can return either case, so the agent must lowercase
+	// the drive letter to find the directory Kiro actually wrote.
+	withRuntimeGOOS(t, "windows")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", filepath.Join(home, "RoamingAppData"))
+
+	upperCWD := `C:\Users\alisha\testrepo`
+	dir, err := ideWorkspaceSessionsDir(upperCWD)
+	if err != nil {
+		t.Fatalf("ideWorkspaceSessionsDir() error = %v", err)
+	}
+
+	// Expected: base64 of `c:\Users\alisha\testrepo` with `=` padding -> `_`
+	wantEncoded := strings.ReplaceAll(
+		base64.StdEncoding.EncodeToString([]byte(`c:\Users\alisha\testrepo`)),
+		"=", "_",
+	)
+	wantDir := filepath.Join(
+		home, "RoamingAppData", "Kiro", "User", "globalStorage", "kiro.kiroagent",
+		"workspace-sessions", wantEncoded,
+	)
+	if dir != wantDir {
+		t.Fatalf("workspace-sessions dir = %q, want %q (lowercase drive letter)", dir, wantDir)
+	}
+
+	// Lowercase input should resolve to the same directory.
+	lowerCWD := `c:\Users\alisha\testrepo`
+	dirLower, err := ideWorkspaceSessionsDir(lowerCWD)
+	if err != nil {
+		t.Fatalf("ideWorkspaceSessionsDir(lowercase) error = %v", err)
+	}
+	if dirLower != dir {
+		t.Fatalf("lowercase cwd resolved to different dir: %q vs %q", dirLower, dir)
 	}
 }
 

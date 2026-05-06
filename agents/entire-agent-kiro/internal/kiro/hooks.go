@@ -1,6 +1,7 @@
 package kiro
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -14,20 +15,16 @@ import (
 )
 
 const (
-	hooksFileName       = "entire.json"
-	hooksDir            = "agents"
-	ideHooksDir         = "hooks"
-	ideHookFileSuffix   = ".kiro.hook"
-	ideHookVersion      = "1"
-	vscodeSettingsDir   = ".vscode"
-	vscodeSettingsFile  = "settings.json"
-	trustedCommandsKey  = "kiroAgent.trustedCommands"
-	prodTrustedCommand  = "sh -c 'entire hooks *"
-	localDevCommandBase = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
-	localDevTrustedCmd  = "sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
-	prodHookCommandBase = "entire hooks kiro "
-	sessionIDFile       = "kiro-active-session"
-	toolCallsFile       = "kiro-tool-calls.jsonl"
+	hooksFileName      = "entire.json"
+	hooksDir           = "agents"
+	ideHooksDir        = "hooks"
+	ideHookFileSuffix  = ".kiro.hook"
+	ideHookVersion     = "1"
+	vscodeSettingsDir  = ".vscode"
+	vscodeSettingsFile = "settings.json"
+	trustedCommandsKey = "kiroAgent.trustedCommands"
+	sessionIDFile      = "kiro-active-session"
+	toolCallsFile      = "kiro-tool-calls.jsonl"
 )
 
 type ideHookDef struct {
@@ -60,9 +57,15 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		}, nil
 	case HookNameUserPromptSubmit:
-		sessionID := a.readCachedSessionID()
+		cwd := raw.CWD
+		if cwd == "" {
+			cwd = protocol.RepoRoot()
+		}
+		sessionID, _ := a.resolveHookSessionIdentity(cwd, raw)
 		if sessionID == "" {
 			sessionID = a.generateAndCacheSessionID()
+		} else {
+			a.cacheSessionID(sessionID)
 		}
 		prompt := raw.Prompt
 		if prompt == "" {
@@ -86,17 +89,13 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		if cwd == "" {
 			cwd = protocol.RepoRoot()
 		}
-		sessionID := a.readCachedSessionID()
-		conversationID, _ := a.querySessionID(cwd)
+		sessionID, conversationID := a.resolveHookSessionIdentity(cwd, raw)
 		if sessionID == "" {
-			if conversationID != "" {
-				sessionID = conversationID
-			} else {
-				sessionID = fallbackStopSessionID()
-			}
+			sessionID = fallbackStopSessionID()
 		}
+		a.cacheSessionID(sessionID)
 		sessionRef := a.captureTranscriptForStop(cwd, sessionID, conversationID)
-		a.clearCachedSessionID()
+		a.clearToolCalls()
 		return &protocol.EventJSON{
 			Type:       3,
 			SessionID:  sessionID,
@@ -315,11 +314,7 @@ func installTrustedCommands(repoRoot string, localDev bool) error {
 		return err
 	}
 	want := trustedCommand(localDev)
-	for _, command := range commands {
-		if command == want {
-			return nil
-		}
-	}
+	commands = removeKnownTrustedCommands(commands)
 	commands = append(commands, want)
 	raw, err := json.Marshal(commands)
 	if err != nil {
@@ -347,7 +342,7 @@ func uninstallTrustedCommands(repoRoot string) error {
 	}
 	filtered := commands[:0]
 	for _, command := range commands {
-		if command != prodTrustedCommand && command != localDevTrustedCmd {
+		if !isKnownTrustedCommand(command) {
 			filtered = append(filtered, command)
 		}
 	}
@@ -365,25 +360,69 @@ func uninstallTrustedCommands(repoRoot string) error {
 
 func hookCommandBase(localDev bool) string {
 	if localDev {
-		return localDevCommandBase
+		if runtimeGOOS == "windows" {
+			return "go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks kiro "
+		}
+		return "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
 	}
-	return prodHookCommandBase
+	return "entire hooks kiro "
 }
 
-// shellWrappedCommand wraps a hook command in "sh -c" with a /dev/null stdin
-// redirect. IDEs typically run hook commands directly without a shell, so a
-// bare "</dev/null" suffix is passed as a literal argument instead of being
-// interpreted as a redirect. Wrapping in sh ensures the redirect works.
+// shellWrappedCommand wraps a hook command so the IDE-spawned process always
+// has a closed stdin. IDEs run hook commands directly without a shell, so a
+// bare redirect token is passed as a literal arg instead of being interpreted.
+// On POSIX we wrap in `sh -c '<cmd> </dev/null'`; on Windows we wrap in
+// `cmd /c "<cmd> <NUL"` so the parent CLI process does not block reading from
+// an inherited Kiro IDE stdin pipe that never gets closed.
 // The command content is built from compile-time constants (not user input).
 func shellWrappedCommand(cmd string) string {
+	if runtimeGOOS == "windows" {
+		return `cmd /c "` + cmd + ` <NUL"`
+	}
 	return "sh -c '" + cmd + " </dev/null'"
 }
 
 func trustedCommand(localDev bool) string {
 	if localDev {
-		return localDevTrustedCmd
+		if runtimeGOOS == "windows" {
+			return `cmd /c "go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks *`
+		}
+		return "sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
 	}
-	return prodTrustedCommand
+	if runtimeGOOS == "windows" {
+		return `cmd /c "entire hooks *`
+	}
+	return "sh -c 'entire hooks *"
+}
+
+func knownTrustedCommands() []string {
+	return []string{
+		"sh -c 'entire hooks *",
+		"sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *",
+		`cmd /c "entire hooks *`,
+		`cmd /c "go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks *`,
+		"entire hooks *",
+		"go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks *",
+	}
+}
+
+func isKnownTrustedCommand(command string) bool {
+	for _, known := range knownTrustedCommands() {
+		if command == known {
+			return true
+		}
+	}
+	return false
+}
+
+func removeKnownTrustedCommands(commands []string) []string {
+	filtered := commands[:0]
+	for _, command := range commands {
+		if !isKnownTrustedCommand(command) {
+			filtered = append(filtered, command)
+		}
+	}
+	return filtered
 }
 
 func readSettings(path string) (map[string]json.RawMessage, error) {
@@ -428,11 +467,14 @@ func writeSettings(path string, settings map[string]json.RawMessage) error {
 }
 
 func marshalJSON(v any) ([]byte, error) {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
-	return append(data, '\n'), nil
+	return buf.Bytes(), nil
 }
 
 func (a *Agent) generateAndCacheSessionID() string {
@@ -452,8 +494,22 @@ func (a *Agent) readCachedSessionID() string {
 	return strings.TrimSpace(string(data))
 }
 
+func (a *Agent) cacheSessionID(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	cachePath := a.sessionIDCachePath()
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o700); err == nil {
+		_ = os.WriteFile(cachePath, []byte(sessionID), 0o600)
+	}
+}
+
 func (a *Agent) clearCachedSessionID() {
 	_ = os.Remove(a.sessionIDCachePath())
+	_ = os.Remove(a.toolCallsPath())
+}
+
+func (a *Agent) clearToolCalls() {
 	_ = os.Remove(a.toolCallsPath())
 }
 
@@ -502,6 +558,63 @@ func (a *Agent) toolCallsPath() string {
 
 func (a *Agent) sessionIDCachePath() string {
 	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", sessionIDFile)
+}
+
+func (a *Agent) resolveHookSessionIdentity(cwd string, raw hookInputRaw) (string, string) {
+	if sessionID := rawSessionID(raw); sessionID != "" {
+		return sessionID, rawConversationID(raw)
+	}
+
+	ideSessionID := ""
+	if cwd != "" {
+		if sessionID, err := latestIDESessionID(cwd); err == nil {
+			ideSessionID = sessionID
+		}
+	}
+
+	conversationID := ""
+	if cwd != "" {
+		if sessionID, err := a.querySessionID(cwd); err == nil {
+			conversationID = sessionID
+		}
+	}
+
+	if ideSessionID != "" {
+		return ideSessionID, conversationID
+	}
+	if cached := a.readCachedSessionID(); cached != "" {
+		return cached, conversationID
+	}
+	if conversationID != "" {
+		return conversationID, conversationID
+	}
+	return "", ""
+}
+
+func rawSessionID(raw hookInputRaw) string {
+	for _, value := range []string{
+		raw.SessionID,
+		raw.SessionIDAlt,
+		raw.ChatSessionID,
+		raw.ConversationID,
+	} {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func rawConversationID(raw hookInputRaw) string {
+	for _, value := range []string{
+		raw.ConversationID,
+		raw.ChatSessionID,
+	} {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func fallbackStopSessionID() string {
