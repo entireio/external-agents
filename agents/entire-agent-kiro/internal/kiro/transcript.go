@@ -247,7 +247,15 @@ func (a *Agent) ensureCachedTranscript(cwd string, sessionID string, conversatio
 	}
 
 	data := []byte(raw)
-	if filtered, ok := a.trimTranscriptHistory([]byte(raw)); ok {
+	// Use the CLI conversation_id (or, if absent, the cwd-derived key) as
+	// the trim bucket so concurrent CLI sessions don't share an offset.
+	trimKey := conversationID
+	if trimKey == "" {
+		if parsed, parseErr := parseTranscript(data); parseErr == nil {
+			trimKey = parsed.ConversationID
+		}
+	}
+	if filtered, ok := a.trimTranscriptHistory([]byte(raw), trimKey); ok {
 		data = filtered
 	}
 	data = injectTranscriptCLIVersion(data, currentCLIVersion())
@@ -265,12 +273,40 @@ func (a *Agent) ensureCachedTranscript(cwd string, sessionID string, conversatio
 }
 
 type transcriptOffset struct {
-	ConversationID string `json:"conversation_id"`
-	Position       int    `json:"position"`
+	Key      string `json:"key"`
+	Position int    `json:"position"`
 }
 
-func (a *Agent) transcriptOffsetPath() string {
-	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", "kiro-transcript-offset.json")
+// transcriptOffsetPath returns the offset file for a given chat/session key.
+// Each Kiro chat (IDE session ID or CLI conversation ID) gets its own offset
+// file so concurrent chats can never collapse into one shared bucket and
+// silently trim each other's history.
+func (a *Agent) transcriptOffsetPath(key string) string {
+	dir := filepath.Join(protocol.RepoRoot(), ".entire", "tmp")
+	if key == "" {
+		// No per-chat key (very early CLI flow before a conversation_id is
+		// known). Use the legacy single-bucket file so we don't churn its
+		// contents from elsewhere.
+		return filepath.Join(dir, "kiro-transcript-offset.json")
+	}
+	return filepath.Join(dir, "kiro-transcript-offset-"+sanitizeForFilename(key)+".json")
+}
+
+// sanitizeForFilename strips characters that aren't safe in a filename across
+// macOS/Linux/Windows. Kiro IDE session IDs are UUIDs (always safe); CLI
+// conversation IDs are unverified, so we filter defensively.
+func sanitizeForFilename(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '-', r == '_':
+			return r
+		default:
+			return '_'
+		}
+	}, s)
 }
 
 func readTranscriptOffset(path string) transcriptOffset {
@@ -297,29 +333,34 @@ func writeTranscriptOffset(path string, offset transcriptOffset) error {
 }
 
 // trimTranscriptHistory trims already-checkpointed entries from a cumulative
-// kiro transcript using a stored offset. Returns the re-serialized trimmed
-// JSON and true if trimming was applied, or (nil, false) if the full
-// transcript should be used as-is.
-func (a *Agent) trimTranscriptHistory(raw []byte) ([]byte, bool) {
+// kiro transcript using a stored offset keyed by `chatKey`. Returns the
+// re-serialized trimmed JSON and true if trimming was applied, or (nil,
+// false) if the full transcript should be used as-is. Each chat must pass a
+// unique chatKey or it will share an offset bucket with other chats and
+// silently drop history.
+func (a *Agent) trimTranscriptHistory(raw []byte, chatKey string) ([]byte, bool) {
 	parsed, err := parseTranscript(raw)
 	if err != nil || len(parsed.History) == 0 {
 		return nil, false
 	}
 
-	offsetPath := a.transcriptOffsetPath()
+	offsetPath := a.transcriptOffsetPath(chatKey)
 	prev := readTranscriptOffset(offsetPath)
 	totalLen := len(parsed.History)
 
 	trimFrom := 0
-	if prev.ConversationID == parsed.ConversationID && prev.Position > 0 && prev.Position <= totalLen {
+	// Per-key offset files mean we don't need to compare keys here — file
+	// identity already binds the offset to one chat. The Key field is only
+	// stored for human-debuggability.
+	if prev.Position > 0 && prev.Position <= totalLen {
 		trimFrom = prev.Position
 	}
 
 	// Only update offset when there are new entries to capture.
 	if trimFrom < totalLen {
 		_ = writeTranscriptOffset(offsetPath, transcriptOffset{
-			ConversationID: parsed.ConversationID,
-			Position:       totalLen,
+			Key:      chatKey,
+			Position: totalLen,
 		})
 	}
 
@@ -396,7 +437,11 @@ func (a *Agent) ensureIDETranscript(cwd string, entireSessionID string, ideSessi
 	}
 
 	// Trim already-checkpointed entries from cumulative IDE transcript.
-	if filtered, ok := a.trimTranscriptHistory(data); ok {
+	// Key by the IDE session ID so different chats in the same workspace
+	// each track their own offset (IDE transcripts have no
+	// `conversation_id` field, so without an explicit key every chat would
+	// collapse into the same global bucket).
+	if filtered, ok := a.trimTranscriptHistory(data, resolvedID); ok {
 		data = filtered
 	}
 	data = injectTranscriptCLIVersion(data, currentCLIVersion())
@@ -641,6 +686,51 @@ func latestIDESessionID(cwd string) (string, error) {
 		return "", errors.New("latest IDE session is missing sessionId")
 	}
 	return sessions[0].SessionID, nil
+}
+
+// mostRecentlyActiveIDESessionID returns the IDE session whose `<id>.json`
+// file was modified most recently in the workspace-sessions directory. This
+// is the closest signal we have to "which Kiro chat tab fired the hook"
+// when Kiro doesn't pipe a session identifier on stdin: the IDE always
+// writes the user's prompt or the assistant's response to the active chat's
+// transcript file before invoking the hook.
+//
+// Sorting by file mtime (rather than the index-entry `dateCreated` used by
+// latestIDESessionID) avoids a class of multi-chat bugs where a newly
+// opened tab is "newest by creation date" but the hook actually fired from
+// an older tab the user is still working in.
+func mostRecentlyActiveIDESessionID(cwd string) (string, error) {
+	sessionsDir, err := ideWorkspaceSessionsDir(cwd)
+	if err != nil {
+		return "", err
+	}
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		return "", fmt.Errorf("read IDE sessions dir: %w", err)
+	}
+	var bestName string
+	var bestMtime time.Time
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name == "sessions.json" || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if bestName == "" || info.ModTime().After(bestMtime) {
+			bestName = name
+			bestMtime = info.ModTime()
+		}
+	}
+	if bestName == "" {
+		return "", errors.New("no IDE session transcripts found")
+	}
+	return strings.TrimSuffix(bestName, ".json"), nil
 }
 
 func ideWorkspaceSessionsDir(cwd string) (string, error) {

@@ -4,7 +4,22 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+// writeIDESessionFile creates a workspace-sessions transcript file with a
+// guaranteed mtime so tests can deterministically control which session is
+// considered "most recently active" by the mtime-based resolver.
+func writeIDESessionFile(t *testing.T, sessionsDir, sessionID string, content string, mtime time.Time) {
+	t.Helper()
+	path := filepath.Join(sessionsDir, sessionID+".json")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+	if err := os.Chtimes(path, mtime, mtime); err != nil {
+		t.Fatalf("chtimes %s: %v", path, err)
+	}
+}
 
 func TestParseHookAgentSpawnCachesStableSessionID(t *testing.T) {
 	repoRoot := t.TempDir()
@@ -75,6 +90,8 @@ func TestParseHookUserPromptSubmitSupportsIDEFallback(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
 		t.Fatalf("write sessions.json: %v", err)
 	}
+	writeIDESessionFile(t, sessionsDir, "older", `{"history":[]}`, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	writeIDESessionFile(t, sessionsDir, "latest", `{"history":[]}`, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
 
 	event, err := New().ParseHook(HookNameUserPromptSubmit, nil)
 	if err != nil {
@@ -106,6 +123,7 @@ func TestParseHookUserPromptSubmitPrefersIDESessionOverStaleCache(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
 		t.Fatalf("write sessions.json: %v", err)
 	}
+	writeIDESessionFile(t, sessionsDir, "latest", `{"history":[]}`, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
 	seedSessionIDCache(t, repoRoot, "stale-session")
 
 	event, err := New().ParseHook(HookNameUserPromptSubmit, nil)
@@ -121,10 +139,9 @@ func TestParseHookUserPromptSubmitPrefersIDESessionOverStaleCache(t *testing.T) 
 }
 
 func TestParseHookSessionIDStableAcrossTurnsInSameIDEChat(t *testing.T) {
-	// Regression: previously every turn re-resolved the IDE session ID and
-	// could rekey the Entire session mid-conversation. Now the resolver
-	// reuses the cached Entire session ID when the IDE session ID hasn't
-	// changed, so all turns in the same chat share one Entire session.
+	// Each Kiro IDE chat is keyed by its UUID for the lifetime of the chat.
+	// Two turns in the same chat (same `<id>.json` file getting touched)
+	// must produce the same Entire session ID without rekey.
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
@@ -136,19 +153,20 @@ func TestParseHookSessionIDStableAcrossTurnsInSameIDEChat(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
 		t.Fatalf("write sessions.json: %v", err)
 	}
+	writeIDESessionFile(t, sessionsDir, "chat-1", `{"history":[]}`, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
 
 	first, err := New().ParseHook(HookNameUserPromptSubmit, nil)
 	if err != nil {
 		t.Fatalf("first ParseHook() error = %v", err)
-	}
-	if first.PreviousSessionID != "" {
-		t.Fatalf("first turn should not rekey, previous_session_id = %q", first.PreviousSessionID)
 	}
 	if first.SessionID != "chat-1" {
 		t.Fatalf("first session_id = %q, want %q", first.SessionID, "chat-1")
 	}
 
 	t.Setenv("USER_PROMPT", "second")
+	// Simulate the IDE writing the second prompt — refresh chat-1's mtime.
+	writeIDESessionFile(t, sessionsDir, "chat-1", `{"history":[]}`, time.Date(2026, 2, 1, 0, 1, 0, 0, time.UTC))
+
 	second, err := New().ParseHook(HookNameUserPromptSubmit, nil)
 	if err != nil {
 		t.Fatalf("second ParseHook() error = %v", err)
@@ -156,42 +174,23 @@ func TestParseHookSessionIDStableAcrossTurnsInSameIDEChat(t *testing.T) {
 	if second.SessionID != first.SessionID {
 		t.Fatalf("second turn rekeyed session: got %q, want stable %q", second.SessionID, first.SessionID)
 	}
-	if second.PreviousSessionID != "" {
-		t.Fatalf("second turn should not rekey, previous_session_id = %q", second.PreviousSessionID)
-	}
 }
 
-func TestParseHookRekeysAndEmitsPreviousSessionIDOnNewKiroChat(t *testing.T) {
-	// Regression: when the user opens a new Kiro chat tab (the IDE session
-	// ID on disk changes), the resolver must rekey the Entire session AND
-	// emit the prior Entire session ID via PreviousSessionID so downstream
-	// consumers can merge or close out the old session instead of orphaning
-	// its history.
+func TestParseHookSwitchingKiroChatTabsResolvesEachTabIndependently(t *testing.T) {
+	// Regression: a previous design tied the resolved Entire session to a
+	// repo-global cache, which meant switching to an older tab — or having
+	// two tabs interleaved — would silently rekey one chat's prompts onto
+	// another chat's session ID. Each Kiro chat must produce a distinct,
+	// deterministic Entire session ID derived from the active IDE
+	// `<id>.json` file's mtime, so tab switches resolve correctly without
+	// any cross-tab state.
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
 	t.Setenv("HOME", home)
-	t.Setenv("USER_PROMPT", "first")
+	t.Setenv("USER_PROMPT", "in tab A")
 
 	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
-	if err := os.WriteFile(
-		filepath.Join(sessionsDir, "sessions.json"),
-		[]byte(`[{"sessionId":"chat-A","title":"A","dateCreated":"2026-02-01T00:00:00Z"}]`),
-		0o600,
-	); err != nil {
-		t.Fatalf("write sessions.json (A): %v", err)
-	}
-
-	first, err := New().ParseHook(HookNameUserPromptSubmit, nil)
-	if err != nil {
-		t.Fatalf("first ParseHook() error = %v", err)
-	}
-	if first.SessionID != "chat-A" {
-		t.Fatalf("first session_id = %q, want %q", first.SessionID, "chat-A")
-	}
-
-	// User opens a new Kiro chat tab — the IDE writes a new sessionId entry
-	// that's now the latest.
 	if err := os.WriteFile(
 		filepath.Join(sessionsDir, "sessions.json"),
 		[]byte(`[
@@ -200,19 +199,46 @@ func TestParseHookRekeysAndEmitsPreviousSessionIDOnNewKiroChat(t *testing.T) {
 ]`),
 		0o600,
 	); err != nil {
-		t.Fatalf("write sessions.json (B): %v", err)
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	// User starts in tab A — A's transcript was just written.
+	writeIDESessionFile(t, sessionsDir, "chat-A", `{"history":[]}`, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	writeIDESessionFile(t, sessionsDir, "chat-B", `{"history":[]}`, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	// Bump A again so it's unambiguously newest.
+	writeIDESessionFile(t, sessionsDir, "chat-A", `{"history":[]}`, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+
+	turnA, err := New().ParseHook(HookNameUserPromptSubmit, nil)
+	if err != nil {
+		t.Fatalf("turn-A ParseHook() error = %v", err)
+	}
+	if turnA.SessionID != "chat-A" {
+		t.Fatalf("turn-A session_id = %q, want %q", turnA.SessionID, "chat-A")
 	}
 
-	t.Setenv("USER_PROMPT", "second")
-	second, err := New().ParseHook(HookNameUserPromptSubmit, nil)
+	// User switches to tab B — Kiro updates B's transcript file.
+	t.Setenv("USER_PROMPT", "in tab B")
+	writeIDESessionFile(t, sessionsDir, "chat-B", `{"history":[]}`, time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC))
+
+	turnB, err := New().ParseHook(HookNameUserPromptSubmit, nil)
 	if err != nil {
-		t.Fatalf("second ParseHook() error = %v", err)
+		t.Fatalf("turn-B ParseHook() error = %v", err)
 	}
-	if second.SessionID != "chat-B" {
-		t.Fatalf("second session_id = %q, want %q", second.SessionID, "chat-B")
+	if turnB.SessionID != "chat-B" {
+		t.Fatalf("turn-B session_id = %q, want %q", turnB.SessionID, "chat-B")
 	}
-	if second.PreviousSessionID != first.SessionID {
-		t.Fatalf("second previous_session_id = %q, want %q", second.PreviousSessionID, first.SessionID)
+
+	// User goes back to the older tab A — Kiro updates A's transcript file
+	// when the user types. The hook MUST resolve to A again, not stay
+	// pinned to whichever tab was last seen.
+	t.Setenv("USER_PROMPT", "back in tab A")
+	writeIDESessionFile(t, sessionsDir, "chat-A", `{"history":[]}`, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+
+	turnA2, err := New().ParseHook(HookNameUserPromptSubmit, nil)
+	if err != nil {
+		t.Fatalf("turn-A2 ParseHook() error = %v", err)
+	}
+	if turnA2.SessionID != "chat-A" {
+		t.Fatalf("returning to tab A: session_id = %q, want %q (stable per chat)", turnA2.SessionID, "chat-A")
 	}
 }
 

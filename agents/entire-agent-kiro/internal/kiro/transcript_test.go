@@ -370,6 +370,86 @@ func TestEnsureIDETranscriptFallsBackToLatestWhenIDESessionMissing(t *testing.T)
 	}
 }
 
+func TestEnsureIDETranscriptOffsetsAreIsolatedPerChat(t *testing.T) {
+	// Regression: IDE transcripts have no `conversation_id`, so when the
+	// trim-offset file was keyed by ConversationID, every IDE chat
+	// collapsed into the same global offset bucket. After capturing chat A
+	// (advancing the bucket to position N), capturing chat B would think
+	// chat B's first N entries had already been seen and silently drop
+	// them. Per-IDE-session-key offset files must keep each chat's offset
+	// independent.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	if err := os.WriteFile(
+		filepath.Join(sessionsDir, "sessions.json"),
+		[]byte(`[
+  {"sessionId":"chat-A","title":"A","dateCreated":"2026-02-01T00:00:00Z"},
+  {"sessionId":"chat-B","title":"B","dateCreated":"2026-03-01T00:00:00Z"}
+]`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+
+	chatA := `{"history":[
+		{"message":{"role":"user","content":"A0"}},{"message":{"role":"assistant","content":"a0"}},
+		{"message":{"role":"user","content":"A1"}},{"message":{"role":"assistant","content":"a1"}}
+	]}`
+	chatB := `{"history":[
+		{"message":{"role":"user","content":"B0"}},{"message":{"role":"assistant","content":"b0"}},
+		{"message":{"role":"user","content":"B1"}},{"message":{"role":"assistant","content":"b1"}}
+	]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "chat-A.json"), []byte(chatA), 0o600); err != nil {
+		t.Fatalf("write chat-A: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionsDir, "chat-B.json"), []byte(chatB), 0o600); err != nil {
+		t.Fatalf("write chat-B: %v", err)
+	}
+
+	// First capture chat A — should write the full transcript and advance
+	// chat A's per-key offset to its full length.
+	if _, err := New().ensureIDETranscript(cwd, "entire-A", "chat-A"); err != nil {
+		t.Fatalf("ensureIDETranscript(chat-A) error = %v", err)
+	}
+	offsetA := readTestTranscriptOffset(t, repoRoot, "chat-A")
+	if offsetA.Position == 0 {
+		t.Fatalf("chat-A offset should advance after first capture, got %+v", offsetA)
+	}
+	chatAFirstPos := offsetA.Position
+
+	// Then capture chat B — its history must NOT be trimmed by chat A's
+	// position. We expect the cached transcript to contain B's entries,
+	// not an empty slice.
+	cachePathB, err := New().ensureIDETranscript(cwd, "entire-B", "chat-B")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript(chat-B) error = %v", err)
+	}
+	dataB, err := os.ReadFile(cachePathB)
+	if err != nil {
+		t.Fatalf("read chat-B cached transcript: %v", err)
+	}
+	parsedB, err := parseTranscript(dataB)
+	if err != nil {
+		t.Fatalf("parse chat-B cached transcript: %v", err)
+	}
+	if len(parsedB.History) == 0 {
+		t.Fatalf("chat-B history was silently trimmed away — per-chat offset isolation broken")
+	}
+
+	// Chat A's offset must remain untouched by chat B's capture.
+	if offsetA2 := readTestTranscriptOffset(t, repoRoot, "chat-A"); offsetA2.Position != chatAFirstPos {
+		t.Fatalf("chat-A offset mutated by chat-B capture: %d -> %d", chatAFirstPos, offsetA2.Position)
+	}
+}
+
 func TestEnsureIDETranscriptRejectsPathTraversal(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
@@ -894,22 +974,29 @@ func buildTranscript(convID string, numPrompts int) []byte {
 	return data
 }
 
-func seedTranscriptOffset(t *testing.T, repoRoot string, convID string, position int) {
+func seedTranscriptOffset(t *testing.T, repoRoot string, key string, position int) {
 	t.Helper()
-	offsetPath := filepath.Join(repoRoot, ".entire", "tmp", "kiro-transcript-offset.json")
+	offsetPath := perKeyOffsetPath(repoRoot, key)
 	if err := os.MkdirAll(filepath.Dir(offsetPath), 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	data, _ := json.Marshal(transcriptOffset{ConversationID: convID, Position: position})
+	data, _ := json.Marshal(transcriptOffset{Key: key, Position: position})
 	if err := os.WriteFile(offsetPath, data, 0o600); err != nil {
 		t.Fatalf("write offset: %v", err)
 	}
 }
 
-func readTestTranscriptOffset(t *testing.T, repoRoot string) transcriptOffset {
+func readTestTranscriptOffset(t *testing.T, repoRoot string, key string) transcriptOffset {
 	t.Helper()
-	offsetPath := filepath.Join(repoRoot, ".entire", "tmp", "kiro-transcript-offset.json")
-	return readTranscriptOffset(offsetPath)
+	return readTranscriptOffset(perKeyOffsetPath(repoRoot, key))
+}
+
+func perKeyOffsetPath(repoRoot string, key string) string {
+	dir := filepath.Join(repoRoot, ".entire", "tmp")
+	if key == "" {
+		return filepath.Join(dir, "kiro-transcript-offset.json")
+	}
+	return filepath.Join(dir, "kiro-transcript-offset-"+sanitizeForFilename(key)+".json")
 }
 
 func TestEnsureCachedTranscriptTrimsWithOffset(t *testing.T) {
@@ -955,7 +1042,7 @@ func TestEnsureCachedTranscriptTrimsWithOffset(t *testing.T) {
 		t.Fatalf("first prompt = %q, want %q", firstPrompt, "prompt 4")
 	}
 
-	offset := readTestTranscriptOffset(t, repoRoot)
+	offset := readTestTranscriptOffset(t, repoRoot, "conv-1")
 	if offset.Position != 8 {
 		t.Fatalf("offset position = %d, want 8", offset.Position)
 	}
@@ -998,8 +1085,8 @@ func TestEnsureCachedTranscriptFirstCapture(t *testing.T) {
 		t.Fatalf("history length = %d, want 4 (full transcript)", len(result.History))
 	}
 
-	offset := readTestTranscriptOffset(t, repoRoot)
-	if offset.ConversationID != "conv-1" || offset.Position != 4 {
+	offset := readTestTranscriptOffset(t, repoRoot, "conv-1")
+	if offset.Key != "conv-1" || offset.Position != 4 {
 		t.Fatalf("offset = %+v, want {conv-1, 4}", offset)
 	}
 }
@@ -1039,14 +1126,21 @@ func TestEnsureCachedTranscriptConversationIDChange(t *testing.T) {
 		t.Fatalf("parse cached transcript: %v", err)
 	}
 
-	// Full transcript (no trimming) since conversation_id changed.
+	// Full transcript (no trimming) since the new conversation gets its own
+	// per-key offset file independent of the old-conv bucket.
 	if len(result.History) != 3 {
 		t.Fatalf("history length = %d, want 3 (full, new conversation)", len(result.History))
 	}
 
-	offset := readTestTranscriptOffset(t, repoRoot)
-	if offset.ConversationID != "new-conv" || offset.Position != 3 {
-		t.Fatalf("offset = %+v, want {new-conv, 3}", offset)
+	newOffset := readTestTranscriptOffset(t, repoRoot, "new-conv")
+	if newOffset.Key != "new-conv" || newOffset.Position != 3 {
+		t.Fatalf("new-conv offset = %+v, want {new-conv, 3}", newOffset)
+	}
+	// And the old-conv bucket is left untouched (so resuming that
+	// conversation later would still trim correctly).
+	oldOffset := readTestTranscriptOffset(t, repoRoot, "old-conv")
+	if oldOffset.Position != 5 {
+		t.Fatalf("old-conv offset = %+v, want {old-conv, 5} preserved", oldOffset)
 	}
 }
 
@@ -1090,7 +1184,7 @@ func TestEnsureCachedTranscriptOffsetExceedsLength(t *testing.T) {
 		t.Fatalf("history length = %d, want 3 (full, offset exceeded)", len(result.History))
 	}
 
-	offset := readTestTranscriptOffset(t, repoRoot)
+	offset := readTestTranscriptOffset(t, repoRoot, "conv-1")
 	if offset.Position != 3 {
 		t.Fatalf("offset position = %d, want 3 (reset)", offset.Position)
 	}
@@ -1138,7 +1232,7 @@ func TestEnsureCachedTranscriptNoNewEntriesReturnsFull(t *testing.T) {
 	}
 
 	// Offset should NOT advance (still 4).
-	offset := readTestTranscriptOffset(t, repoRoot)
+	offset := readTestTranscriptOffset(t, repoRoot, "conv-1")
 	if offset.Position != 4 {
 		t.Fatalf("offset position = %d, want 4 (should not advance)", offset.Position)
 	}
@@ -1816,8 +1910,9 @@ func TestEnsureIDETranscriptTrimsWithOffset(t *testing.T) {
 	}
 
 	// Seed offset at position 2 — first 2 pairs already checkpointed.
-	// IDE transcripts have empty conversation_id after conversion.
-	seedTranscriptOffset(t, repoRoot, "", 2)
+	// IDE transcripts are now keyed by the IDE session ID so each chat
+	// gets its own offset bucket.
+	seedTranscriptOffset(t, repoRoot, "ide-sess", 2)
 
 	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
@@ -1846,7 +1941,7 @@ func TestEnsureIDETranscriptTrimsWithOffset(t *testing.T) {
 	}
 
 	// Offset should be updated to 4 (total length).
-	offset := readTestTranscriptOffset(t, repoRoot)
+	offset := readTestTranscriptOffset(t, repoRoot, "ide-sess")
 	if offset.Position != 4 {
 		t.Fatalf("offset position = %d, want 4", offset.Position)
 	}
@@ -1896,8 +1991,8 @@ func TestEnsureIDETranscriptFirstCapture(t *testing.T) {
 		t.Fatalf("history length = %d, want 2 (full transcript)", len(result.History))
 	}
 
-	// Offset file should be created with position 2.
-	offset := readTestTranscriptOffset(t, repoRoot)
+	// Offset file should be created with position 2 keyed by IDE session ID.
+	offset := readTestTranscriptOffset(t, repoRoot, "ide-sess")
 	if offset.Position != 2 {
 		t.Fatalf("offset position = %d, want 2", offset.Position)
 	}
