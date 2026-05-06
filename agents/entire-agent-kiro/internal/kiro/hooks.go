@@ -90,7 +90,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 			if cwd == "" {
 				cwd = protocol.RepoRoot()
 			}
-			a.appendToolCall(raw.ToolName, raw.ToolInput, a.activeTurnOrLatestIDESessionID(cwd))
+			a.appendToolCall(raw.ToolName, raw.ToolInput, a.resolvePostToolUseChatKey(cwd, raw))
 		}
 		return nil, nil
 	case HookNameStop:
@@ -614,11 +614,31 @@ func (a *Agent) clearActiveTurnIDESessionID() {
 	_ = os.Remove(a.activeTurnIDECachePath())
 }
 
-// activeTurnOrLatestIDESessionID returns the IDE session ID bound at the
-// current turn's prompt-submit, or — if no turn is bound (e.g. a stray
-// tool-use without preceding prompt) — falls back to mtime discovery.
-// Returns "" for CLI-only flows with no IDE chats present at all.
-func (a *Agent) activeTurnOrLatestIDESessionID(cwd string) string {
+// resolvePostToolUseChatKey decides which tool-calls jsonl file a
+// post-tool-use hook should append to. The key MUST match what the
+// corresponding stop hook will read with, or the tool calls get
+// stranded in a file the stop never consumes.
+//
+// Precedence:
+//  1. Explicit IDE session ID in payload — write to that IDE chat's file
+//     (matches resolveStopIdentity / resolveHookSessionIdentity).
+//  2. Explicit CLI conversation_id in payload — write to the global file
+//     (key=""), matching CLI stop's `clearToolCalls("")`. We do NOT fall
+//     back to the latest IDE chat here; that would silently route CLI
+//     tool calls into an IDE-scoped file that CLI stop never clears.
+//  3. Active-turn IDE cache — write to that IDE chat's file.
+//  4. Most-recently-active IDE chat by mtime — best-effort guess for a
+//     stray post-tool-use without prior prompt-submit.
+//  5. "" (global file) when no IDE chat exists at all (pure CLI flow).
+func (a *Agent) resolvePostToolUseChatKey(cwd string, raw hookInputRaw) string {
+	if ideID := rawIDESessionID(raw); ideID != "" {
+		return ideID
+	}
+	if convID := rawConversationID(raw); convID != "" {
+		// CLI flow — global tool-calls file (CLI is single-conversation
+		// per cwd, and stop will clear with key="").
+		return ""
+	}
 	if id := a.readActiveTurnIDESessionID(); id != "" {
 		return id
 	}
@@ -643,6 +663,16 @@ func (a *Agent) resolveStopIdentity(cwd string, raw hookInputRaw) sessionIdentit
 			entireSessionID: ideID,
 			ideSessionID:    ideID,
 			conversationID:  rawConversationID(raw),
+		}
+	}
+	// Explicit CLI conversation_id in the payload must beat the IDE
+	// active-turn cache. The cache is repo-global, so a concurrent IDE
+	// turn could otherwise hijack a CLI stop and route it through the
+	// IDE transcript path.
+	if convID := rawConversationID(raw); convID != "" {
+		return sessionIdentity{
+			entireSessionID: convID,
+			conversationID:  convID,
 		}
 	}
 	if turnIDE := a.readActiveTurnIDESessionID(); turnIDE != "" {

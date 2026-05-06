@@ -370,6 +370,106 @@ func TestParseHookToolCallsAreIsolatedPerChat(t *testing.T) {
 	}
 }
 
+func TestResolveStopIdentityPrefersConversationIDOverActiveTurnCache(t *testing.T) {
+	// Regression: resolveStopIdentity used to consult the repo-global
+	// active-turn IDE cache before honoring a CLI-only payload that
+	// supplied conversation_id. With both an in-flight IDE turn and a
+	// concurrent CLI turn in the same repo, the CLI stop would inherit
+	// the IDE turn binding and capture the wrong transcript. Explicit
+	// CLI signal in the payload must short-circuit the IDE turn cache.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	// Plant unrelated IDE workspace data so ensureIDETranscript could
+	// silently fall back if the resolver leaks the IDE turn ID.
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
+	if err := os.WriteFile(
+		filepath.Join(sessionsDir, "sessions.json"),
+		[]byte(`[{"sessionId":"ide-turn-in-flight","title":"in-flight","dateCreated":"2026-02-01T00:00:00Z"}]`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	writeIDESessionFile(t, sessionsDir, "ide-turn-in-flight", `{"history":[
+		{"message":{"role":"user","content":"in-flight IDE prompt"}},
+		{"message":{"role":"assistant","content":"in-flight IDE response"}}
+	]}`, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+
+	// Simulate an in-flight IDE turn: a previous prompt-submit on the IDE
+	// side wrote the active-turn cache.
+	tmpDir := filepath.Join(repoRoot, ".entire", "tmp")
+	if err := os.MkdirAll(tmpDir, 0o750); err != nil {
+		t.Fatalf("mkdir tmp: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "kiro-active-turn"), []byte("ide-turn-in-flight"), 0o600); err != nil {
+		t.Fatalf("seed active-turn cache: %v", err)
+	}
+
+	// CLI stop arrives with explicit conversation_id.
+	stop, err := New().ParseHook(HookNameStop, []byte(`{"conversation_id":"cli-conv"}`))
+	if err != nil {
+		t.Fatalf("ParseHook(stop) error = %v", err)
+	}
+	if stop.SessionID != "cli-conv" {
+		t.Fatalf("session_id = %q, want %q (CLI conv must beat in-flight IDE turn cache)", stop.SessionID, "cli-conv")
+	}
+	if !strings.HasSuffix(stop.SessionRef, "cli-conv.json") {
+		t.Fatalf("session_ref = %q, want suffix cli-conv.json", stop.SessionRef)
+	}
+	data, err := os.ReadFile(stop.SessionRef)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+	if strings.Contains(string(data), "in-flight IDE") {
+		t.Fatalf("CLI stop captured in-flight IDE transcript content: %s", data)
+	}
+}
+
+func TestPostToolUseWithConversationIDDoesNotLeakIntoIDEChat(t *testing.T) {
+	// Regression: post-tool-use used to resolve its tool-call file purely
+	// via activeTurnOrLatestIDESessionID, which falls back to the
+	// most-recently-active IDE chat. CLI tool calls in a repo with any
+	// IDE workspace data therefore got appended to an IDE-scoped jsonl;
+	// CLI stop only clears the global file, so the IDE-keyed file
+	// survived and would later contaminate an IDE transcript.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
+	if err := os.WriteFile(
+		filepath.Join(sessionsDir, "sessions.json"),
+		[]byte(`[{"sessionId":"ide-chat","title":"ide","dateCreated":"2026-02-01T00:00:00Z"}]`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	writeIDESessionFile(t, sessionsDir, "ide-chat", `{"history":[]}`, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+
+	// CLI post-tool-use: explicit conversation_id, no IDE session id.
+	if _, err := New().ParseHook(HookNamePostToolUse, []byte(`{"conversation_id":"cli-conv","tool_name":"fs_write","tool_input":{"path":"cli.txt"}}`)); err != nil {
+		t.Fatalf("ParseHook(post-tool-use) error = %v", err)
+	}
+
+	tmpDir := filepath.Join(repoRoot, ".entire", "tmp")
+	// The IDE chat's tool-calls file must not exist — the CLI tool call
+	// belonged to a CLI conversation.
+	if _, err := os.Stat(filepath.Join(tmpDir, "kiro-tool-calls-ide-chat.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf("CLI tool call leaked into IDE chat's tool-calls file (err=%v)", err)
+	}
+	// And the global / CLI tool-calls file must contain the call.
+	data, err := os.ReadFile(filepath.Join(tmpDir, "kiro-tool-calls.jsonl"))
+	if err != nil {
+		t.Fatalf("read global tool-calls file: %v", err)
+	}
+	if !strings.Contains(string(data), "cli.txt") {
+		t.Fatalf("global tool-calls = %q, want cli.txt", data)
+	}
+}
+
 func TestParseHookCLIConversationIDDoesNotMasqueradeAsIDESession(t *testing.T) {
 	// Regression: rawSessionID used to fall through to conversation_id, so
 	// a CLI hook with only conversation_id set populated ideSessionID with
