@@ -24,6 +24,7 @@ const (
 	vscodeSettingsFile = "settings.json"
 	trustedCommandsKey = "kiroAgent.trustedCommands"
 	sessionIDFile      = "kiro-active-session"
+	ideSessionIDFile   = "kiro-active-ide-session"
 	toolCallsFile      = "kiro-tool-calls.jsonl"
 )
 
@@ -61,21 +62,22 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		if cwd == "" {
 			cwd = protocol.RepoRoot()
 		}
-		sessionID, _ := a.resolveHookSessionIdentity(cwd, raw)
-		if sessionID == "" {
-			sessionID = a.generateAndCacheSessionID()
+		identity := a.resolveHookSessionIdentity(cwd, raw)
+		if identity.entireSessionID == "" {
+			identity.entireSessionID = a.generateAndCacheSessionID()
 		} else {
-			a.cacheSessionID(sessionID)
+			a.commitSessionIdentity(identity)
 		}
 		prompt := raw.Prompt
 		if prompt == "" {
 			prompt = os.Getenv("USER_PROMPT")
 		}
 		return &protocol.EventJSON{
-			Type:      2,
-			SessionID: sessionID,
-			Prompt:    prompt,
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Type:              2,
+			SessionID:         identity.entireSessionID,
+			PreviousSessionID: identity.previousSessionID,
+			Prompt:            prompt,
+			Timestamp:         time.Now().UTC().Format(time.RFC3339),
 		}, nil
 	case HookNamePreToolUse:
 		return nil, nil
@@ -89,18 +91,19 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		if cwd == "" {
 			cwd = protocol.RepoRoot()
 		}
-		sessionID, conversationID := a.resolveHookSessionIdentity(cwd, raw)
-		if sessionID == "" {
-			sessionID = fallbackStopSessionID()
+		identity := a.resolveHookSessionIdentity(cwd, raw)
+		if identity.entireSessionID == "" {
+			identity.entireSessionID = fallbackStopSessionID()
 		}
-		a.cacheSessionID(sessionID)
-		sessionRef := a.captureTranscriptForStop(cwd, sessionID, conversationID)
+		a.commitSessionIdentity(identity)
+		sessionRef := a.captureTranscriptForStop(cwd, identity)
 		a.clearToolCalls()
 		return &protocol.EventJSON{
-			Type:       3,
-			SessionID:  sessionID,
-			SessionRef: sessionRef,
-			Timestamp:  time.Now().UTC().Format(time.RFC3339),
+			Type:              3,
+			SessionID:         identity.entireSessionID,
+			PreviousSessionID: identity.previousSessionID,
+			SessionRef:        sessionRef,
+			Timestamp:         time.Now().UTC().Format(time.RFC3339),
 		}, nil
 	default:
 		return nil, nil
@@ -504,9 +507,23 @@ func (a *Agent) cacheSessionID(sessionID string) {
 	}
 }
 
-func (a *Agent) clearCachedSessionID() {
-	_ = os.Remove(a.sessionIDCachePath())
-	_ = os.Remove(a.toolCallsPath())
+func (a *Agent) readCachedIDESessionID() string {
+	data, err := os.ReadFile(a.ideSessionIDCachePath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func (a *Agent) cacheIDESessionID(ideSessionID string) {
+	cachePath := a.ideSessionIDCachePath()
+	if ideSessionID == "" {
+		_ = os.Remove(cachePath)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o700); err == nil {
+		_ = os.WriteFile(cachePath, []byte(ideSessionID), 0o600)
+	}
 }
 
 func (a *Agent) clearToolCalls() {
@@ -560,35 +577,104 @@ func (a *Agent) sessionIDCachePath() string {
 	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", sessionIDFile)
 }
 
-func (a *Agent) resolveHookSessionIdentity(cwd string, raw hookInputRaw) (string, string) {
+func (a *Agent) ideSessionIDCachePath() string {
+	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", ideSessionIDFile)
+}
+
+// sessionIdentity is the resolved session state for a single hook invocation.
+//   - entireSessionID is the stable Entire-side ID emitted on EventJSON.
+//   - ideSessionID is the Kiro IDE session UUID we map to (used for
+//     transcript file lookup; empty when no IDE chat is in play).
+//   - conversationID is the Kiro CLI conversation_id (used for SQLite
+//     transcript queries; empty when no CLI session is in play).
+//   - previousSessionID is set only when the resolver detects a chat
+//     transition that rekeys entireSessionID. Callers emit it on EventJSON
+//     so downstream consumers can migrate / merge prior session artifacts.
+type sessionIdentity struct {
+	entireSessionID   string
+	ideSessionID      string
+	conversationID    string
+	previousSessionID string
+}
+
+// resolveHookSessionIdentity decides the (entireSessionID, ideSessionID,
+// conversationID) tuple for the current hook event.
+//
+// Precedence:
+//  1. Explicit `session_id` / `sessionId` / `chatSessionId` / `conversation_id`
+//     in the raw hook payload — Kiro is telling us directly.
+//  2. Same Kiro IDE chat as the previous turn (cached IDE session ID matches
+//     latest-on-disk) — reuse the cached Entire session ID for stability.
+//  3. New Kiro IDE chat detected (cached IDE differs from latest-on-disk) —
+//     adopt the new IDE session ID as the Entire session ID and record the
+//     prior Entire ID in previousSessionID so callers can migrate.
+//  4. First IDE turn (no cache yet) — adopt the latest IDE session ID.
+//  5. Cached Entire ID with no IDE signal at all — keep using it.
+//  6. Fall back to CLI conversation_id, or empty (caller mints a UUID).
+func (a *Agent) resolveHookSessionIdentity(cwd string, raw hookInputRaw) sessionIdentity {
+	identity := sessionIdentity{}
+
 	if sessionID := rawSessionID(raw); sessionID != "" {
-		return sessionID, rawConversationID(raw)
+		identity.entireSessionID = sessionID
+		identity.ideSessionID = sessionID
+		identity.conversationID = rawConversationID(raw)
+		return identity
 	}
 
-	ideSessionID := ""
 	if cwd != "" {
-		if sessionID, err := latestIDESessionID(cwd); err == nil {
-			ideSessionID = sessionID
+		if cid, err := a.querySessionID(cwd); err == nil {
+			identity.conversationID = cid
 		}
 	}
 
-	conversationID := ""
+	latestIDE := ""
 	if cwd != "" {
-		if sessionID, err := a.querySessionID(cwd); err == nil {
-			conversationID = sessionID
+		if id, err := latestIDESessionID(cwd); err == nil {
+			latestIDE = id
 		}
 	}
 
-	if ideSessionID != "" {
-		return ideSessionID, conversationID
+	cachedEntire := a.readCachedSessionID()
+	cachedIDE := a.readCachedIDESessionID()
+
+	if latestIDE != "" {
+		switch {
+		case cachedIDE == latestIDE && cachedEntire != "":
+			// Same IDE chat as last turn — keep the same Entire session ID.
+			identity.entireSessionID = cachedEntire
+			identity.ideSessionID = cachedIDE
+		case cachedIDE != "" && cachedIDE != latestIDE && cachedEntire != "":
+			// IDE chat changed — rekey, but record the prior Entire ID so
+			// downstream consumers can merge or close out the old session.
+			identity.previousSessionID = cachedEntire
+			identity.entireSessionID = latestIDE
+			identity.ideSessionID = latestIDE
+		default:
+			// First IDE turn (no cache, or partial cache).
+			identity.entireSessionID = latestIDE
+			identity.ideSessionID = latestIDE
+		}
+		return identity
 	}
-	if cached := a.readCachedSessionID(); cached != "" {
-		return cached, conversationID
+
+	if cachedEntire != "" {
+		identity.entireSessionID = cachedEntire
+		identity.ideSessionID = cachedIDE
+		return identity
 	}
-	if conversationID != "" {
-		return conversationID, conversationID
+
+	if identity.conversationID != "" {
+		identity.entireSessionID = identity.conversationID
 	}
-	return "", ""
+	return identity
+}
+
+// commitSessionIdentity persists both halves of the resolved identity so the
+// next hook invocation can reuse them. ideSessionID is intentionally allowed
+// to be empty (cleared) when the current event has no IDE backing.
+func (a *Agent) commitSessionIdentity(identity sessionIdentity) {
+	a.cacheSessionID(identity.entireSessionID)
+	a.cacheIDESessionID(identity.ideSessionID)
 }
 
 func rawSessionID(raw hookInputRaw) string {

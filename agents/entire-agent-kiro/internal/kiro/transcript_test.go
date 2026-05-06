@@ -259,7 +259,7 @@ func TestEnsureIDETranscriptCopiesLatestWorkspaceSession(t *testing.T) {
 		t.Fatalf("write latest transcript: %v", err)
 	}
 
-	cachePath, err := New().ensureIDETranscript(cwd, "stable-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "stable-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -282,6 +282,94 @@ func TestEnsureIDETranscriptCopiesLatestWorkspaceSession(t *testing.T) {
 	}
 }
 
+func TestEnsureIDETranscriptPrefersResolvedIDESessionOverLatest(t *testing.T) {
+	// Regression: in workspaces with multiple IDE chats, ensureIDETranscript
+	// previously ignored its sessionID parameter and always read the newest
+	// `<id>.json` by dateCreated. That meant a stop event from an older chat
+	// tab would checkpoint the wrong chat's transcript and persist the wrong
+	// trim offset for future turns. Fix: when an ideSessionID is provided and
+	// the matching file exists, use it directly.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	t.Setenv("ENTIRE_CLI_VERSION", "4.5.6")
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	// "latest" is newer by dateCreated, but the resolver tells us the active
+	// chat is "older" (e.g. the user is back in an older tab).
+	index := `[
+  {"sessionId":"older","title":"Old","dateCreated":"2026-01-01T00:00:00Z","workspaceDirectory":"` + cwd + `"},
+  {"sessionId":"latest","title":"New","dateCreated":"2026-02-01T00:00:00Z","workspaceDirectory":"` + cwd + `"}
+]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionsDir, "older.json"), []byte(`{"history":[{"message":{"role":"assistant","content":"older-chat"}}]}`), 0o600); err != nil {
+		t.Fatalf("write older transcript: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionsDir, "latest.json"), []byte(`{"history":[{"message":{"role":"assistant","content":"latest-chat"}}]}`), 0o600); err != nil {
+		t.Fatalf("write latest transcript: %v", err)
+	}
+
+	cachePath, err := New().ensureIDETranscript(cwd, "stable-session", "older")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached IDE transcript: %v", err)
+	}
+	if !strings.Contains(string(data), "older-chat") {
+		t.Fatalf("cached transcript should contain content from the resolved chat, got: %s", data)
+	}
+	if strings.Contains(string(data), "latest-chat") {
+		t.Fatalf("cached transcript should NOT contain content from the latest-by-dateCreated chat, got: %s", data)
+	}
+}
+
+func TestEnsureIDETranscriptFallsBackToLatestWhenIDESessionMissing(t *testing.T) {
+	// When the resolver doesn't know the IDE session (e.g. first turn in a
+	// fresh repo), ensureIDETranscript should still produce a transcript by
+	// falling back to the latest entry in sessions.json — same behavior as
+	// before the multi-chat fix.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	t.Setenv("ENTIRE_CLI_VERSION", "4.5.6")
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"latest","title":"New","dateCreated":"2026-02-01T00:00:00Z","workspaceDirectory":"` + cwd + `"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionsDir, "latest.json"), []byte(`{"history":[{"message":{"role":"assistant","content":"latest-chat"}}]}`), 0o600); err != nil {
+		t.Fatalf("write latest transcript: %v", err)
+	}
+
+	cachePath, err := New().ensureIDETranscript(cwd, "stable-session", "")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+	if !strings.Contains(string(data), "latest-chat") {
+		t.Fatalf("expected fallback to latest, got: %s", data)
+	}
+}
+
 func TestEnsureIDETranscriptRejectsPathTraversal(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
@@ -299,7 +387,7 @@ func TestEnsureIDETranscriptRejectsPathTraversal(t *testing.T) {
 		t.Fatalf("write sessions.json: %v", err)
 	}
 
-	_, err := New().ensureIDETranscript(cwd, "stable-session")
+	_, err := New().ensureIDETranscript(cwd, "stable-session", "")
 	if err == nil {
 		t.Fatal("expected error for path-traversal session ID, got nil")
 	}
@@ -1107,7 +1195,7 @@ func TestEnsureIDETranscriptWithModifiedBase64Encoding(t *testing.T) {
 		t.Fatalf("write IDE transcript: %v", err)
 	}
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1276,7 +1364,7 @@ func TestEnsureIDETranscriptMergesToolCalls(t *testing.T) {
 		t.Fatalf("write tool calls: %v", err)
 	}
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1331,7 +1419,7 @@ func TestEnsureIDETranscriptWithoutToolCalls(t *testing.T) {
 	}
 
 	// No tool calls file — should still work, caching IDE format as-is
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1632,7 +1720,7 @@ func TestEnsureIDETranscriptWithExecutionLogs(t *testing.T) {
 		},
 	})
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1685,7 +1773,7 @@ func TestEnsureIDETranscriptFallsBackToToolCallsWhenNoExecLogs(t *testing.T) {
 		t.Fatalf("write tool calls: %v", err)
 	}
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1731,7 +1819,7 @@ func TestEnsureIDETranscriptTrimsWithOffset(t *testing.T) {
 	// IDE transcripts have empty conversation_id after conversion.
 	seedTranscriptOffset(t, repoRoot, "", 2)
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1789,7 +1877,7 @@ func TestEnsureIDETranscriptFirstCapture(t *testing.T) {
 	}
 
 	// No offset file — first capture should return full transcript and create offset.
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1843,7 +1931,7 @@ func TestEnsureIDETranscriptNoNewEntriesSucceeds(t *testing.T) {
 	// full transcript is kept (same behavior as ensureCachedTranscript).
 	seedTranscriptOffset(t, repoRoot, "", 1)
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() should succeed with full transcript when no new entries, got error: %v", err)
 	}

@@ -39,8 +39,8 @@ Kiro has enough hook, session, and transcript surface area to fit the Entire ext
 - IDE hook command form: macOS/Linux use `sh -c '<command> </dev/null'`; Windows uses `cmd /c "<command> <NUL"` so the parent `entire` CLI process inherits a closed stdin (Kiro IDE on Windows leaves stdin open, and the adapter's 100ms stdin timeout only covers the agent binary, not the CLI parent)
 
 ## Session Management
-- Session ID source: `parse-hook` prefers native Kiro identifiers first (hook payload `session_id` / `sessionId` / `conversation_id` / `chatSessionId` when present, then the latest IDE `sessionId`, then the cached Entire session ID, then the CLI `conversation_id`, and only then a generated Entire ID)
-- Session cache lifetime: `.entire/tmp/kiro-active-session` persists across `stop` events so repeated prompts in the same IDE chat tab stay in one Entire session; the cache is replaced when a newer native Kiro session ID is observed
+- Session ID source: `parse-hook` resolves identity in this order: (1) explicit `session_id` / `sessionId` / `conversation_id` / `chatSessionId` in the hook payload; (2) cached Entire session ID when the cached IDE `sessionId` matches the latest IDE `sessionId` on disk (same chat tab as last turn → keep stable); (3) the latest IDE `sessionId` itself when no cache exists or when the cached IDE session ID differs from latest (new chat → adopt the new ID and emit `previous_session_id` so consumers can migrate); (4) cached Entire session ID when no IDE chat is in play; (5) CLI `conversation_id`; (6) a generated Entire ID
+- Session cache: two files in `.entire/tmp/` — `kiro-active-session` holds the Entire session ID emitted on events, `kiro-active-ide-session` holds the Kiro IDE `sessionId` we map to. Both persist across `stop` events; the IDE-session cache is what lets the resolver detect "new chat" transitions and is what the IDE-transcript reader uses to pick the right `<sessionId>.json` file in workspaces with multiple chats
 - Session directory: `.entire/tmp/` under the repo root
 - Session file format: cached JSON transcript, one file per session ID
 - Session file path: `.entire/tmp/<session-id>.json`

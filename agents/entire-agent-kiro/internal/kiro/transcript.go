@@ -338,20 +338,34 @@ func (a *Agent) trimTranscriptHistory(raw []byte) ([]byte, bool) {
 	return filtered, true
 }
 
-func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error) {
+func (a *Agent) ensureIDETranscript(cwd string, entireSessionID string, ideSessionID string) (string, error) {
 	sessionsDir, err := ideWorkspaceSessionsDir(cwd)
 	if err != nil {
 		return "", err
 	}
-	ideSessionID, err := latestIDESessionID(cwd)
-	if err != nil {
-		return "", err
+
+	// Prefer the explicit IDE session ID resolved by the hook so multi-chat
+	// workspaces always read the transcript that actually fired the hook,
+	// not whichever chat happens to be newest. Fall back to "latest by
+	// dateCreated" only when the resolver couldn't identify a chat.
+	resolvedID := ""
+	if ideSessionID != "" && filepath.IsLocal(ideSessionID+".json") {
+		if _, statErr := os.Stat(filepath.Join(sessionsDir, ideSessionID+".json")); statErr == nil {
+			resolvedID = ideSessionID
+		}
 	}
-	if !filepath.IsLocal(ideSessionID + ".json") {
-		return "", fmt.Errorf("invalid session ID: %q", ideSessionID)
+	if resolvedID == "" {
+		latest, err := latestIDESessionID(cwd)
+		if err != nil {
+			return "", err
+		}
+		resolvedID = latest
+	}
+	if !filepath.IsLocal(resolvedID + ".json") {
+		return "", fmt.Errorf("invalid session ID: %q", resolvedID)
 	}
 
-	transcriptPath := filepath.Join(sessionsDir, ideSessionID+".json")
+	transcriptPath := filepath.Join(sessionsDir, resolvedID+".json")
 	transcriptData, err := os.ReadFile(transcriptPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read IDE transcript %s: %w", transcriptPath, err)
@@ -391,7 +405,7 @@ func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error
 		return "", errors.New("IDE transcript has no history entries after trimming")
 	}
 
-	cachePath, err := a.cacheTranscriptPath(cwd, sessionID)
+	cachePath, err := a.cacheTranscriptPath(cwd, entireSessionID)
 	if err != nil {
 		return "", err
 	}
@@ -430,11 +444,11 @@ func enrichIDETranscriptWithToolCalls(ideData []byte, toolCalls []kiroToolCall) 
 	return result
 }
 
-func (a *Agent) captureTranscriptForStop(cwd string, sessionID string, conversationID string) string {
-	debugLog := newCaptureDebugLogger(cwd, sessionID, conversationID)
+func (a *Agent) captureTranscriptForStop(cwd string, identity sessionIdentity) string {
+	debugLog := newCaptureDebugLogger(cwd, identity.entireSessionID, identity.conversationID)
 	defer debugLog.close()
 
-	debugLog.logf("captureTranscriptForStop start: cwd=%q sessionID=%q conversationID=%q goos=%q", cwd, sessionID, conversationID, runtimeGOOS)
+	debugLog.logf("captureTranscriptForStop start: cwd=%q entireSessionID=%q ideSessionID=%q conversationID=%q goos=%q", cwd, identity.entireSessionID, identity.ideSessionID, identity.conversationID, runtimeGOOS)
 	if extDir, err := kiroExtensionStorageDir(); err == nil {
 		debugLog.logf("kiroExtensionStorageDir=%q", extDir)
 	} else {
@@ -464,7 +478,7 @@ func (a *Agent) captureTranscriptForStop(cwd string, sessionID string, conversat
 	// Try IDE workspace sessions first — the stop hook is fired by the IDE,
 	// so IDE data is the most accurate source. CLI DB is a fallback for
 	// kiro-cli (non-IDE) sessions where no IDE workspace data exists.
-	if sessionRef, err := a.ensureIDETranscript(cwd, sessionID); err == nil && sessionRef != "" {
+	if sessionRef, err := a.ensureIDETranscript(cwd, identity.entireSessionID, identity.ideSessionID); err == nil && sessionRef != "" {
 		debugLog.logf("ensureIDETranscript ok: %q", sessionRef)
 		return sessionRef
 	} else if err != nil {
@@ -472,7 +486,7 @@ func (a *Agent) captureTranscriptForStop(cwd string, sessionID string, conversat
 	} else {
 		debugLog.logf("ensureIDETranscript returned empty sessionRef without error")
 	}
-	if sessionRef, err := a.ensureCachedTranscript(cwd, sessionID, conversationID); err == nil && sessionRef != "" {
+	if sessionRef, err := a.ensureCachedTranscript(cwd, identity.entireSessionID, identity.conversationID); err == nil && sessionRef != "" {
 		debugLog.logf("ensureCachedTranscript ok: %q", sessionRef)
 		return sessionRef
 	} else if err != nil {
@@ -481,7 +495,7 @@ func (a *Agent) captureTranscriptForStop(cwd string, sessionID string, conversat
 		debugLog.logf("ensureCachedTranscript returned empty sessionRef without error")
 	}
 	debugLog.logf("falling through to createPlaceholderTranscript")
-	return a.createPlaceholderTranscript(cwd, sessionID)
+	return a.createPlaceholderTranscript(cwd, identity.entireSessionID)
 }
 
 type captureDebugLogger struct {
