@@ -492,111 +492,29 @@ func enrichIDETranscriptWithToolCalls(ideData []byte, toolCalls []kiroToolCall) 
 }
 
 func (a *Agent) captureTranscriptForStop(cwd string, identity sessionIdentity) string {
-	debugLog := newCaptureDebugLogger(cwd, identity.entireSessionID, identity.conversationID)
-	defer debugLog.close()
-
-	debugLog.logf("captureTranscriptForStop start: cwd=%q entireSessionID=%q ideSessionID=%q conversationID=%q goos=%q", cwd, identity.entireSessionID, identity.ideSessionID, identity.conversationID, runtimeGOOS)
-	if extDir, err := kiroExtensionStorageDir(); err == nil {
-		debugLog.logf("kiroExtensionStorageDir=%q", extDir)
-	} else {
-		debugLog.logf("kiroExtensionStorageDir error: %v", err)
-	}
-	if wsDir, err := ideWorkspaceSessionsDir(cwd); err == nil {
-		debugLog.logf("ideWorkspaceSessionsDir=%q", wsDir)
-		if _, statErr := os.Stat(wsDir); statErr != nil {
-			debugLog.logf("ideWorkspaceSessionsDir stat error: %v", statErr)
-		} else {
-			debugLog.logf("ideWorkspaceSessionsDir exists")
-		}
-	} else {
-		debugLog.logf("ideWorkspaceSessionsDir error: %v", err)
-	}
-	if dbPath, err := kiroCLIDataDBPath(); err == nil {
-		debugLog.logf("kiroCLIDataDBPath=%q", dbPath)
-		if _, statErr := os.Stat(dbPath); statErr != nil {
-			debugLog.logf("kiroCLIDataDBPath stat error: %v", statErr)
-		} else {
-			debugLog.logf("kiroCLIDataDBPath exists")
-		}
-	} else {
-		debugLog.logf("kiroCLIDataDBPath error: %v", err)
-	}
-
 	// Try IDE workspace sessions first — the stop hook is fired by the
 	// IDE, so IDE data is the most accurate source. SKIP this when the
 	// resolver didn't identify an IDE chat: ensureIDETranscript would
 	// otherwise fall back to "latest IDE session" and silently checkpoint
 	// an unrelated chat for what's actually a CLI-only turn.
-	if identity.ideSessionID == "" {
-		debugLog.logf("skipping ensureIDETranscript: identity has no ideSessionID (CLI-only turn)")
-	} else if sessionRef, err := a.ensureIDETranscript(cwd, identity.entireSessionID, identity.ideSessionID); err == nil && sessionRef != "" {
-		debugLog.logf("ensureIDETranscript ok: %q", sessionRef)
-		return sessionRef
-	} else if err != nil {
-		debugLog.logf("ensureIDETranscript error: %v", err)
-	} else {
-		debugLog.logf("ensureIDETranscript returned empty sessionRef without error")
+	if identity.ideSessionID != "" {
+		if sessionRef, err := a.ensureIDETranscript(cwd, identity.entireSessionID, identity.ideSessionID); err == nil && sessionRef != "" {
+			return sessionRef
+		}
 	}
 	// CLI cached transcript fallback. Only attempt when the identity is
 	// either CLI-only (no ideSessionID) or has an explicit CLI
-	// conversation_id link from the payload. An IDE-bound stop without a
-	// proven conversation link must not fall through to ensureCachedTranscript,
-	// which would otherwise query SQLite by cwd and capture whatever
-	// unrelated CLI conversation happens to be latest in this repo under
-	// the IDE session's file.
-	if identity.ideSessionID != "" && identity.conversationID == "" {
-		debugLog.logf("skipping ensureCachedTranscript: IDE-bound identity has no proven CLI conversation_id")
-	} else if sessionRef, err := a.ensureCachedTranscript(cwd, identity.entireSessionID, identity.conversationID); err == nil && sessionRef != "" {
-		debugLog.logf("ensureCachedTranscript ok: %q", sessionRef)
-		return sessionRef
-	} else if err != nil {
-		debugLog.logf("ensureCachedTranscript error: %v", err)
-	} else {
-		debugLog.logf("ensureCachedTranscript returned empty sessionRef without error")
+	// conversation_id link from the payload. An IDE-bound stop without
+	// a proven conversation link must not fall through to
+	// ensureCachedTranscript, which would otherwise query SQLite by cwd
+	// and capture whatever unrelated CLI conversation happens to be
+	// latest in this repo under the IDE session's file.
+	if identity.ideSessionID == "" || identity.conversationID != "" {
+		if sessionRef, err := a.ensureCachedTranscript(cwd, identity.entireSessionID, identity.conversationID); err == nil && sessionRef != "" {
+			return sessionRef
+		}
 	}
-	debugLog.logf("falling through to createPlaceholderTranscript")
 	return a.createPlaceholderTranscript(cwd, identity.entireSessionID)
-}
-
-type captureDebugLogger struct {
-	f *os.File
-}
-
-func newCaptureDebugLogger(cwd, sessionID, conversationID string) *captureDebugLogger {
-	if os.Getenv("KIRO_DEBUG") == "" {
-		return &captureDebugLogger{}
-	}
-	repoRoot := protocol.RepoRoot()
-	if repoRoot == "" {
-		repoRoot = cwd
-	}
-	if repoRoot == "" {
-		return &captureDebugLogger{}
-	}
-	dir := filepath.Join(repoRoot, ".entire", "tmp")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return &captureDebugLogger{}
-	}
-	path := filepath.Join(dir, "kiro-debug.log")
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return &captureDebugLogger{}
-	}
-	return &captureDebugLogger{f: f}
-}
-
-func (l *captureDebugLogger) logf(format string, args ...any) {
-	if l == nil || l.f == nil {
-		return
-	}
-	line := fmt.Sprintf("["+time.Now().UTC().Format(time.RFC3339Nano)+"] "+format+"\n", args...)
-	_, _ = l.f.WriteString(line)
-}
-
-func (l *captureDebugLogger) close() {
-	if l != nil && l.f != nil {
-		_ = l.f.Close()
-	}
 }
 
 func (a *Agent) createPlaceholderTranscript(cwd string, sessionID string) string {
