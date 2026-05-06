@@ -1,0 +1,27 @@
+/codex:adversarial-review
+
+---
+
+/codex:adversarial-review of all code changes on this branch
+
+---
+
+/codex:adversarial-review of all code changes on this branch
+
+---
+
+<task-notification>
+<task-id>bg8ooaw1x</task-id>
+<tool-use-id>toolu_01DTueY9eTbor44JDbdJJnvE</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-alisha--marvin-worktrees-kiro-windows-bugs/3365817c-93c4-4ded-bacc-cff7e8d0a0b2/tasks/bg8ooaw1x.output</output-file>
+<status>completed</status>
+<summary>Background command "Codex adversarial review" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+fix these
+
+---
+
+fix these then do another review
