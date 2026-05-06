@@ -1,0 +1,14 @@
+<task-notification>
+<task-id>bar14zaz2</task-id>
+<tool-use-id>toolu_018bu3MYYgGyj1jGfuTwngkv</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-alisha--marvin-worktrees-kiro-windows-bugs/3365817c-93c4-4ded-bacc-cff7e8d0a0b2/tasks/bar14zaz2.output</output-file>
+<status>completed</status>
+<summary>Background command "Codex adversarial review (round 4)" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+fix this one  2. conversation_id misclassification — rawSessionID puts CLI's conversation_id into the
+  IDE-session bucket, so on stop we'd try <conversation_id>.json (miss) then fall back to "latest
+   IDE session" (wrong chat). Real bug, easy fix: conversation_id only populates conversationID,
+  never ideSessionID; and ensureIDETranscript should be skipped when the identity is CLI-only.
