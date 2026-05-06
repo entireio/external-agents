@@ -537,7 +537,16 @@ func (a *Agent) captureTranscriptForStop(cwd string, identity sessionIdentity) s
 	} else {
 		debugLog.logf("ensureIDETranscript returned empty sessionRef without error")
 	}
-	if sessionRef, err := a.ensureCachedTranscript(cwd, identity.entireSessionID, identity.conversationID); err == nil && sessionRef != "" {
+	// CLI cached transcript fallback. Only attempt when the identity is
+	// either CLI-only (no ideSessionID) or has an explicit CLI
+	// conversation_id link from the payload. An IDE-bound stop without a
+	// proven conversation link must not fall through to ensureCachedTranscript,
+	// which would otherwise query SQLite by cwd and capture whatever
+	// unrelated CLI conversation happens to be latest in this repo under
+	// the IDE session's file.
+	if identity.ideSessionID != "" && identity.conversationID == "" {
+		debugLog.logf("skipping ensureCachedTranscript: IDE-bound identity has no proven CLI conversation_id")
+	} else if sessionRef, err := a.ensureCachedTranscript(cwd, identity.entireSessionID, identity.conversationID); err == nil && sessionRef != "" {
 		debugLog.logf("ensureCachedTranscript ok: %q", sessionRef)
 		return sessionRef
 	} else if err != nil {

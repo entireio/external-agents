@@ -470,6 +470,88 @@ func TestPostToolUseWithConversationIDDoesNotLeakIntoIDEChat(t *testing.T) {
 	}
 }
 
+func TestCLIStopPreservesInFlightIDETurnCache(t *testing.T) {
+	// Regression: ParseHook(stop) used to clear kiro-active-turn
+	// unconditionally. With concurrent CLI+IDE activity in the same repo,
+	// a CLI stop would delete the in-flight IDE turn binding, causing the
+	// IDE's later post-tool-use/stop to fall back to mtime resolution and
+	// possibly finalize the wrong chat. CLI stops must leave the IDE turn
+	// cache alone.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	tmpDir := filepath.Join(repoRoot, ".entire", "tmp")
+	if err := os.MkdirAll(tmpDir, 0o750); err != nil {
+		t.Fatalf("mkdir tmp: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "kiro-active-turn"), []byte("ide-in-flight"), 0o600); err != nil {
+		t.Fatalf("seed active-turn: %v", err)
+	}
+
+	if _, err := New().ParseHook(HookNameStop, []byte(`{"conversation_id":"cli-conv"}`)); err != nil {
+		t.Fatalf("CLI stop error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "kiro-active-turn"))
+	if err != nil {
+		t.Fatalf("active-turn was deleted by CLI stop: %v", err)
+	}
+	if string(data) != "ide-in-flight" {
+		t.Fatalf("active-turn = %q, want %q (CLI stop must not touch IDE turn cache)", data, "ide-in-flight")
+	}
+}
+
+func TestIDEStopFromTurnCacheDoesNotInjectArbitraryConversationID(t *testing.T) {
+	// Regression: when resolveStopIdentity served an IDE turn from the
+	// active-turn cache, it also queried SQLite for "the latest CLI
+	// conversation in this repo" and stuffed that into conversationID.
+	// If ensureIDETranscript later degraded for any reason,
+	// captureTranscriptForStop's CLI fallback would then capture an
+	// unrelated CLI transcript under the IDE session's file. An
+	// IDE-bound stop must not pick up a random CLI conversation_id from
+	// the database.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	// Plant an unrelated CLI conversation in the kiro DB AND a matching
+	// transcript so the CLI fallback would succeed if it were ever
+	// reached. We then force ensureIDETranscript to fail (no IDE
+	// workspace data) and verify the captured ref is a placeholder, NOT
+	// the unrelated CLI transcript content.
+	dbPath := filepath.Join(home, "Library", "Application Support", "kiro-cli", "data.sqlite3")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
+		t.Fatalf("mkdir db dir: %v", err)
+	}
+	createSQLiteConversationDB(t, dbPath, repoRoot, `{"conversation_id":"unrelated-cli","history":[{"user":{"content":{"Prompt":{"prompt":"unrelated CLI prompt"}}},"assistant":null}]}`)
+
+	tmpDir := filepath.Join(repoRoot, ".entire", "tmp")
+	if err := os.MkdirAll(tmpDir, 0o750); err != nil {
+		t.Fatalf("mkdir tmp: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "kiro-active-turn"), []byte("ide-only-chat"), 0o600); err != nil {
+		t.Fatalf("seed active-turn: %v", err)
+	}
+
+	stop, err := New().ParseHook(HookNameStop, nil)
+	if err != nil {
+		t.Fatalf("stop error = %v", err)
+	}
+	if stop.SessionID != "ide-only-chat" {
+		t.Fatalf("session_id = %q, want %q", stop.SessionID, "ide-only-chat")
+	}
+	data, err := os.ReadFile(stop.SessionRef)
+	if err != nil {
+		t.Fatalf("read transcript: %v", err)
+	}
+	if strings.Contains(string(data), "unrelated CLI prompt") {
+		t.Fatalf("IDE stop captured unrelated CLI transcript via SQLite fallback: %s", data)
+	}
+}
+
 func TestParseHookCLIConversationIDDoesNotMasqueradeAsIDESession(t *testing.T) {
 	// Regression: rawSessionID used to fall through to conversation_id, so
 	// a CLI hook with only conversation_id set populated ideSessionID with

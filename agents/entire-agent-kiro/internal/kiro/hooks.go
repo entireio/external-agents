@@ -105,9 +105,12 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		a.commitSessionIdentity(identity)
 		sessionRef := a.captureTranscriptForStop(cwd, identity)
 		a.clearToolCalls(identity.ideSessionID)
-		// Turn finished: drop the binding so the next prompt-submit is
-		// free to discover the (potentially different) active chat.
-		a.clearActiveTurnIDESessionID()
+		// Only clear the IDE turn binding when this stop owns it. CLI
+		// stops (no ideSessionID) must leave kiro-active-turn alone so a
+		// concurrent in-flight IDE turn isn't stranded.
+		if identity.ideSessionID != "" {
+			a.clearActiveTurnIDESessionID()
+		}
 		return &protocol.EventJSON{
 			Type:       3,
 			SessionID:  identity.entireSessionID,
@@ -676,16 +679,15 @@ func (a *Agent) resolveStopIdentity(cwd string, raw hookInputRaw) sessionIdentit
 		}
 	}
 	if turnIDE := a.readActiveTurnIDESessionID(); turnIDE != "" {
-		identity := sessionIdentity{
+		// Intentionally leave conversationID empty. We have no proof
+		// that any CLI conversation in this repo belongs to this IDE
+		// turn, and if ensureIDETranscript later degrades the CLI
+		// fallback would otherwise capture an unrelated CLI transcript
+		// under the IDE session's file.
+		return sessionIdentity{
 			entireSessionID: turnIDE,
 			ideSessionID:    turnIDE,
 		}
-		if cwd != "" {
-			if cid, err := a.querySessionID(cwd); err == nil {
-				identity.conversationID = cid
-			}
-		}
-		return identity
 	}
 	return a.resolveHookSessionIdentity(cwd, raw)
 }
