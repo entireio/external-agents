@@ -24,6 +24,7 @@ const (
 	vscodeSettingsFile = "settings.json"
 	trustedCommandsKey = "kiroAgent.trustedCommands"
 	sessionIDFile      = "kiro-active-session"
+	activeTurnFile     = "kiro-active-turn"
 	toolCallsFile      = "kiro-tool-calls.jsonl"
 )
 
@@ -67,6 +68,10 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		} else {
 			a.commitSessionIdentity(identity)
 		}
+		// Bind this turn to the resolved IDE chat so post-tool-use and
+		// stop hooks read/write the same chat even if the user switches
+		// tabs mid-turn (re-resolving by mtime alone could rebind).
+		a.writeActiveTurnIDESessionID(identity.ideSessionID)
 		prompt := raw.Prompt
 		if prompt == "" {
 			prompt = os.Getenv("USER_PROMPT")
@@ -81,7 +86,11 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		return nil, nil
 	case HookNamePostToolUse:
 		if raw.ToolName != "" {
-			a.appendToolCall(raw.ToolName, raw.ToolInput)
+			cwd := raw.CWD
+			if cwd == "" {
+				cwd = protocol.RepoRoot()
+			}
+			a.appendToolCall(raw.ToolName, raw.ToolInput, a.activeTurnOrLatestIDESessionID(cwd))
 		}
 		return nil, nil
 	case HookNameStop:
@@ -89,13 +98,16 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		if cwd == "" {
 			cwd = protocol.RepoRoot()
 		}
-		identity := a.resolveHookSessionIdentity(cwd, raw)
+		identity := a.resolveStopIdentity(cwd, raw)
 		if identity.entireSessionID == "" {
 			identity.entireSessionID = fallbackStopSessionID()
 		}
 		a.commitSessionIdentity(identity)
 		sessionRef := a.captureTranscriptForStop(cwd, identity)
-		a.clearToolCalls()
+		a.clearToolCalls(identity.ideSessionID)
+		// Turn finished: drop the binding so the next prompt-submit is
+		// free to discover the (potentially different) active chat.
+		a.clearActiveTurnIDESessionID()
 		return &protocol.EventJSON{
 			Type:       3,
 			SessionID:  identity.entireSessionID,
@@ -504,17 +516,24 @@ func (a *Agent) cacheSessionID(sessionID string) {
 	}
 }
 
-func (a *Agent) clearToolCalls() {
-	_ = os.Remove(a.toolCallsPath())
+// clearToolCalls removes the per-chat tool-calls jsonl file (if any).
+// Called defensively at end-of-turn in case enrichment skipped the
+// readAndClearToolCalls path. chatKey="" targets the legacy global file
+// used by Kiro CLI sessions that have no IDE chat ID.
+func (a *Agent) clearToolCalls(chatKey string) {
+	_ = os.Remove(a.toolCallsPath(chatKey))
 }
 
-func (a *Agent) appendToolCall(name string, input json.RawMessage) {
+// appendToolCall records one post-tool-use entry to the jsonl file for the
+// given chat. Per-chat keying prevents one Kiro chat's tool calls from
+// being captured by another chat's stop hook in multi-chat workspaces.
+func (a *Agent) appendToolCall(name string, input json.RawMessage, chatKey string) {
 	call := kiroToolCall{Name: name, Args: input}
 	line, err := json.Marshal(call)
 	if err != nil {
 		return
 	}
-	path := a.toolCallsPath()
+	path := a.toolCallsPath(chatKey)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return
 	}
@@ -526,8 +545,10 @@ func (a *Agent) appendToolCall(name string, input json.RawMessage) {
 	_, _ = f.Write(append(line, '\n'))
 }
 
-func (a *Agent) readAndClearToolCalls() []kiroToolCall {
-	path := a.toolCallsPath()
+// readAndClearToolCalls drains the per-chat tool-calls jsonl into memory
+// and removes the file. chatKey="" reads the legacy global file (CLI flow).
+func (a *Agent) readAndClearToolCalls(chatKey string) []kiroToolCall {
+	path := a.toolCallsPath(chatKey)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -547,12 +568,96 @@ func (a *Agent) readAndClearToolCalls() []kiroToolCall {
 	return calls
 }
 
-func (a *Agent) toolCallsPath() string {
-	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", toolCallsFile)
+// toolCallsPath returns the per-chat tool-calls file. chatKey="" returns
+// the legacy global file shared by all Kiro CLI sessions on this repo
+// (CLI is single-conversation per-cwd, so global is fine there).
+func (a *Agent) toolCallsPath(chatKey string) string {
+	dir := filepath.Join(protocol.RepoRoot(), ".entire", "tmp")
+	if chatKey == "" {
+		return filepath.Join(dir, toolCallsFile)
+	}
+	return filepath.Join(dir, "kiro-tool-calls-"+sanitizeForFilename(chatKey)+".jsonl")
 }
 
 func (a *Agent) sessionIDCachePath() string {
 	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", sessionIDFile)
+}
+
+// activeTurnIDECachePath holds the IDE session ID for the in-flight turn
+// (set at user-prompt-submit, cleared at stop). It binds the whole turn —
+// post-tool-use writes and stop reads — to the chat that fired prompt-submit
+// so a tab switch mid-turn cannot rebind to a different chat.
+func (a *Agent) activeTurnIDECachePath() string {
+	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", activeTurnFile)
+}
+
+func (a *Agent) readActiveTurnIDESessionID() string {
+	data, err := os.ReadFile(a.activeTurnIDECachePath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func (a *Agent) writeActiveTurnIDESessionID(ideSessionID string) {
+	path := a.activeTurnIDECachePath()
+	if ideSessionID == "" {
+		_ = os.Remove(path)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err == nil {
+		_ = os.WriteFile(path, []byte(ideSessionID), 0o600)
+	}
+}
+
+func (a *Agent) clearActiveTurnIDESessionID() {
+	_ = os.Remove(a.activeTurnIDECachePath())
+}
+
+// activeTurnOrLatestIDESessionID returns the IDE session ID bound at the
+// current turn's prompt-submit, or — if no turn is bound (e.g. a stray
+// tool-use without preceding prompt) — falls back to mtime discovery.
+// Returns "" for CLI-only flows with no IDE chats present at all.
+func (a *Agent) activeTurnOrLatestIDESessionID(cwd string) string {
+	if id := a.readActiveTurnIDESessionID(); id != "" {
+		return id
+	}
+	if cwd == "" {
+		return ""
+	}
+	id, err := mostRecentlyActiveIDESessionID(cwd)
+	if err != nil {
+		return ""
+	}
+	return id
+}
+
+// resolveStopIdentity is the stop-hook variant of resolveHookSessionIdentity
+// that prefers the IDE session ID bound to the current turn (set at
+// user-prompt-submit) over fresh mtime resolution. Without this, a tab
+// switch between user-prompt-submit and stop would let the turn finalize
+// against a different chat than the one that fired the prompt.
+func (a *Agent) resolveStopIdentity(cwd string, raw hookInputRaw) sessionIdentity {
+	if sessionID := rawSessionID(raw); sessionID != "" {
+		return sessionIdentity{
+			entireSessionID: sessionID,
+			ideSessionID:    sessionID,
+			conversationID:  rawConversationID(raw),
+		}
+	}
+	if turnIDE := a.readActiveTurnIDESessionID(); turnIDE != "" {
+		identity := sessionIdentity{
+			entireSessionID: turnIDE,
+			ideSessionID:    turnIDE,
+		}
+		if cwd != "" {
+			if cid, err := a.querySessionID(cwd); err == nil {
+				identity.conversationID = cid
+			}
+		}
+		return identity
+	}
+	return a.resolveHookSessionIdentity(cwd, raw)
 }
 
 // sessionIdentity is the resolved session state for a single hook invocation.

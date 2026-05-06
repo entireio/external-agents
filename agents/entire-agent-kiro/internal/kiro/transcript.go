@@ -429,7 +429,9 @@ func (a *Agent) ensureIDETranscript(cwd string, entireSessionID string, ideSessi
 		}
 	}
 	if !enriched {
-		if toolCalls := a.readAndClearToolCalls(); len(toolCalls) > 0 {
+		// Per-chat key matches what post-tool-use wrote so multi-chat
+		// workspaces don't cross-contaminate tool-call history.
+		if toolCalls := a.readAndClearToolCalls(resolvedID); len(toolCalls) > 0 {
 			if result := enrichIDETranscriptWithToolCalls(transcriptData, toolCalls); result != nil {
 				data = result
 			}

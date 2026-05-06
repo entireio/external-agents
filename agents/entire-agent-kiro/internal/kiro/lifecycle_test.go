@@ -3,6 +3,7 @@ package kiro
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -239,6 +240,133 @@ func TestParseHookSwitchingKiroChatTabsResolvesEachTabIndependently(t *testing.T
 	}
 	if turnA2.SessionID != "chat-A" {
 		t.Fatalf("returning to tab A: session_id = %q, want %q (stable per chat)", turnA2.SessionID, "chat-A")
+	}
+}
+
+func TestParseHookTurnIdentityStableAcrossTabSwitchBetweenPromptAndStop(t *testing.T) {
+	// Regression: previously stop re-resolved the IDE session via mtime,
+	// so if the user switched tabs after prompt-submit fired, stop would
+	// rebind the turn to a different chat and emit the wrong session_id.
+	// Now prompt-submit caches the resolved IDE session in
+	// kiro-active-turn and stop reads from that cache before falling back.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	t.Setenv("USER_PROMPT", "in tab A")
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
+	if err := os.WriteFile(
+		filepath.Join(sessionsDir, "sessions.json"),
+		[]byte(`[
+  {"sessionId":"chat-A","title":"A","dateCreated":"2026-02-01T00:00:00Z"},
+  {"sessionId":"chat-B","title":"B","dateCreated":"2026-03-01T00:00:00Z"}
+]`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	// User starts in tab A — A's transcript is the most recently modified.
+	writeIDESessionFile(t, sessionsDir, "chat-B", `{"history":[]}`, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	writeIDESessionFile(t, sessionsDir, "chat-A", `{"history":[]}`, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+
+	prompt, err := New().ParseHook(HookNameUserPromptSubmit, nil)
+	if err != nil {
+		t.Fatalf("prompt-submit error = %v", err)
+	}
+	if prompt.SessionID != "chat-A" {
+		t.Fatalf("prompt-submit session_id = %q, want %q", prompt.SessionID, "chat-A")
+	}
+
+	// User switches to tab B — bump B's mtime so it would now win mtime
+	// resolution, then fire stop for the original turn.
+	writeIDESessionFile(t, sessionsDir, "chat-B", `{"history":[]}`, time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC))
+
+	stop, err := New().ParseHook(HookNameStop, nil)
+	if err != nil {
+		t.Fatalf("stop error = %v", err)
+	}
+	if stop.SessionID != "chat-A" {
+		t.Fatalf("stop session_id = %q, want %q (turn must stay bound to prompt-submit's chat)", stop.SessionID, "chat-A")
+	}
+
+	// And the turn cache should be cleared after stop so the next
+	// prompt-submit re-resolves freshly.
+	turnCache := filepath.Join(repoRoot, ".entire", "tmp", "kiro-active-turn")
+	if _, err := os.Stat(turnCache); !os.IsNotExist(err) {
+		t.Fatalf("kiro-active-turn should be removed after stop, got err=%v", err)
+	}
+}
+
+func TestParseHookToolCallsAreIsolatedPerChat(t *testing.T) {
+	// Regression: tool calls used to be appended to a single repo-global
+	// .entire/tmp/kiro-tool-calls.jsonl, so in a multi-chat workspace one
+	// chat's stop would consume another chat's tool history. Per-chat
+	// keying (kiro-tool-calls-<sanitized-id>.jsonl) keeps each chat's
+	// tool calls isolated.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
+	if err := os.WriteFile(
+		filepath.Join(sessionsDir, "sessions.json"),
+		[]byte(`[
+  {"sessionId":"chat-A","title":"A","dateCreated":"2026-02-01T00:00:00Z"},
+  {"sessionId":"chat-B","title":"B","dateCreated":"2026-03-01T00:00:00Z"}
+]`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+
+	// Bind turn to chat-A via prompt-submit.
+	writeIDESessionFile(t, sessionsDir, "chat-B", `{"history":[]}`, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	writeIDESessionFile(t, sessionsDir, "chat-A", `{"history":[]}`, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+	t.Setenv("USER_PROMPT", "tab A prompt")
+	if _, err := New().ParseHook(HookNameUserPromptSubmit, nil); err != nil {
+		t.Fatalf("prompt-submit A error = %v", err)
+	}
+	// Post-tool-use under chat A.
+	if _, err := New().ParseHook(HookNamePostToolUse, []byte(`{"tool_name":"fs_write","tool_input":{"path":"a.txt"}}`)); err != nil {
+		t.Fatalf("post-tool-use A error = %v", err)
+	}
+	// Finish chat A's turn.
+	if _, err := New().ParseHook(HookNameStop, nil); err != nil {
+		t.Fatalf("stop A error = %v", err)
+	}
+
+	// Now bind a turn to chat-B and emit its own tool call.
+	writeIDESessionFile(t, sessionsDir, "chat-B", `{"history":[]}`, time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC))
+	t.Setenv("USER_PROMPT", "tab B prompt")
+	if _, err := New().ParseHook(HookNameUserPromptSubmit, nil); err != nil {
+		t.Fatalf("prompt-submit B error = %v", err)
+	}
+	if _, err := New().ParseHook(HookNamePostToolUse, []byte(`{"tool_name":"fs_write","tool_input":{"path":"b.txt"}}`)); err != nil {
+		t.Fatalf("post-tool-use B error = %v", err)
+	}
+
+	// Each chat must have its own tool-calls file. Chat A's was consumed
+	// by stop A; chat B's must contain only the b.txt call (NOT a.txt).
+	tmpDir := filepath.Join(repoRoot, ".entire", "tmp")
+	if _, err := os.Stat(filepath.Join(tmpDir, "kiro-tool-calls-chat-A.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf("chat-A tool-calls file should be cleared by stop A, got err=%v", err)
+	}
+	bData, err := os.ReadFile(filepath.Join(tmpDir, "kiro-tool-calls-chat-B.jsonl"))
+	if err != nil {
+		t.Fatalf("read chat-B tool-calls: %v", err)
+	}
+	if !strings.Contains(string(bData), "b.txt") {
+		t.Fatalf("chat-B tool-calls = %q, want b.txt", bData)
+	}
+	if strings.Contains(string(bData), "a.txt") {
+		t.Fatalf("chat-B tool-calls leaked chat-A's content: %q", bData)
+	}
+	// And the legacy global file should never have been written for an
+	// IDE-backed turn.
+	if _, err := os.Stat(filepath.Join(tmpDir, "kiro-tool-calls.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf("global kiro-tool-calls.jsonl should not exist for IDE turns, got err=%v", err)
 	}
 }
 

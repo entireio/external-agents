@@ -1448,17 +1448,20 @@ func TestEnsureIDETranscriptMergesToolCalls(t *testing.T) {
 		t.Fatalf("write IDE transcript: %v", err)
 	}
 
-	// Seed tool calls JSONL (simulating post-tool-use hooks that fired)
+	// Seed tool calls JSONL keyed by the IDE session ID (post-tool-use
+	// hooks now write per-chat files so multi-chat workspaces don't
+	// cross-contaminate).
 	toolCallsDir := filepath.Join(repoRoot, ".entire", "tmp")
 	if err := os.MkdirAll(toolCallsDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	toolCallLine := `{"name":"fs_write","args":{"path":"/repo/hello.py","command":"create","file_text":"print('hello')"}}` + "\n"
-	if err := os.WriteFile(filepath.Join(toolCallsDir, toolCallsFile), []byte(toolCallLine), 0o600); err != nil {
+	perChatToolCalls := filepath.Join(toolCallsDir, "kiro-tool-calls-"+sanitizeForFilename("ide-sess")+".jsonl")
+	if err := os.WriteFile(perChatToolCalls, []byte(toolCallLine), 0o600); err != nil {
 		t.Fatalf("write tool calls: %v", err)
 	}
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "ide-sess")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1487,7 +1490,7 @@ func TestEnsureIDETranscriptMergesToolCalls(t *testing.T) {
 	}
 
 	// Tool calls JSONL should be consumed (deleted)
-	if _, err := os.Stat(filepath.Join(toolCallsDir, toolCallsFile)); !os.IsNotExist(err) {
+	if _, err := os.Stat(perChatToolCalls); !os.IsNotExist(err) {
 		t.Fatal("tool calls JSONL should be deleted after consumption")
 	}
 }
@@ -1857,17 +1860,20 @@ func TestEnsureIDETranscriptFallsBackToToolCallsWhenNoExecLogs(t *testing.T) {
 		t.Fatalf("write IDE transcript: %v", err)
 	}
 
-	// No execution logs dir — seed JSONL tool calls as fallback
+	// No execution logs dir — seed JSONL tool calls (per-chat keyed) as
+	// fallback. The reader uses the same key the post-tool-use writer
+	// would have used (the IDE session ID).
 	toolCallsDir := filepath.Join(repoRoot, ".entire", "tmp")
 	if err := os.MkdirAll(toolCallsDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	toolCallLine := `{"name":"fs_write","args":{"path":"hello.py"}}` + "\n"
-	if err := os.WriteFile(filepath.Join(toolCallsDir, toolCallsFile), []byte(toolCallLine), 0o600); err != nil {
+	perChatToolCalls := filepath.Join(toolCallsDir, "kiro-tool-calls-"+sanitizeForFilename("ide-sess")+".jsonl")
+	if err := os.WriteFile(perChatToolCalls, []byte(toolCallLine), 0o600); err != nil {
 		t.Fatalf("write tool calls: %v", err)
 	}
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "ide-sess")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
