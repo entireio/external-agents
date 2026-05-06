@@ -3,9 +3,10 @@
   "checkpoint_id": "c029e9e70480",
   "strategy": "manual-commit",
   "branch": "kiro-windows-bugs",
-  "checkpoints_count": 22,
+  "checkpoints_count": 49,
   "files_touched": [
     "agents/entire-agent-kiro/AGENT.md",
+    "agents/entire-agent-kiro/README.md",
     "agents/entire-agent-kiro/go.mod",
     "agents/entire-agent-kiro/internal/kiro/hooks.go",
     "agents/entire-agent-kiro/internal/kiro/hooks_test.go",
@@ -20,13 +21,19 @@
       "transcript": "/c0/29e9e70480/0/transcript.jsonl",
       "content_hash": "/c0/29e9e70480/0/transcript_hash.txt",
       "prompt": "/c0/29e9e70480/0/prompt.txt"
+    },
+    {
+      "metadata": "/c0/29e9e70480/1/metadata.json",
+      "transcript": "/c0/29e9e70480/1/transcript.jsonl",
+      "content_hash": "/c0/29e9e70480/1/transcript_hash.txt",
+      "prompt": "/c0/29e9e70480/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 172,
-    "cache_creation_tokens": 172460,
-    "cache_read_tokens": 3661293,
-    "output_tokens": 28087,
-    "api_call_count": 53
+    "input_tokens": 542,
+    "cache_creation_tokens": 2136411,
+    "cache_read_tokens": 39162322,
+    "output_tokens": 187729,
+    "api_call_count": 218
   }
 }
