@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bgsire188</task-id>
+<tool-use-id>toolu_01H4ySH6a6CeoxnuH1gJhhNd</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-alisha--marvin-worktrees-kiro-windows-bugs/3365817c-93c4-4ded-bacc-cff7e8d0a0b2/tasks/bgsire188.output</output-file>
+<status>completed</status>
+<summary>Background command "Codex adversarial review (round 7)" completed (exit code 0)</summary>
+</task-notification>
