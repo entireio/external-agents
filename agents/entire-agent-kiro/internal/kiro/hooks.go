@@ -71,7 +71,12 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		// Bind this turn to the resolved IDE chat so post-tool-use and
 		// stop hooks read/write the same chat even if the user switches
 		// tabs mid-turn (re-resolving by mtime alone could rebind).
-		a.writeActiveTurnIDESessionID(identity.ideSessionID)
+		// Only write when this is actually an IDE prompt — a CLI
+		// prompt with empty ideSessionID would otherwise DELETE the
+		// cache and strand any in-flight IDE turn's binding.
+		if identity.ideSessionID != "" {
+			a.writeActiveTurnIDESessionID(identity.ideSessionID)
+		}
 		prompt := raw.Prompt
 		if prompt == "" {
 			prompt = os.Getenv("USER_PROMPT")
@@ -106,10 +111,16 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		sessionRef := a.captureTranscriptForStop(cwd, identity)
 		a.clearToolCalls(identity.ideSessionID)
 		// Only clear the IDE turn binding when this stop owns it. CLI
-		// stops (no ideSessionID) must leave kiro-active-turn alone so a
-		// concurrent in-flight IDE turn isn't stranded.
+		// stops (no ideSessionID) must leave kiro-active-turn alone so
+		// a concurrent in-flight IDE turn isn't stranded; and an IDE
+		// stop must only clear the cache when it still names THIS
+		// stop's chat — otherwise overlapping IDE turns
+		// (A prompt -> B prompt -> A stop) would let A's stop delete
+		// B's binding.
 		if identity.ideSessionID != "" {
-			a.clearActiveTurnIDESessionID()
+			if cached := a.readActiveTurnIDESessionID(); cached == identity.ideSessionID {
+				a.clearActiveTurnIDESessionID()
+			}
 		}
 		return &protocol.EventJSON{
 			Type:       3,

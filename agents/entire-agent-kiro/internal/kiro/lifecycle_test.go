@@ -470,6 +470,72 @@ func TestPostToolUseWithConversationIDDoesNotLeakIntoIDEChat(t *testing.T) {
 	}
 }
 
+func TestCLIPromptSubmitDoesNotClearInFlightIDETurnCache(t *testing.T) {
+	// Regression: ParseHook(user-prompt-submit) used to call
+	// writeActiveTurnIDESessionID(identity.ideSessionID) unconditionally.
+	// For CLI prompts that's the empty string, which DELETES the
+	// kiro-active-turn file. A CLI prompt arriving while an IDE turn was
+	// in flight would therefore strand the IDE turn's binding.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	tmpDir := filepath.Join(repoRoot, ".entire", "tmp")
+	if err := os.MkdirAll(tmpDir, 0o750); err != nil {
+		t.Fatalf("mkdir tmp: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "kiro-active-turn"), []byte("ide-in-flight"), 0o600); err != nil {
+		t.Fatalf("seed active-turn: %v", err)
+	}
+
+	if _, err := New().ParseHook(HookNameUserPromptSubmit, []byte(`{"conversation_id":"cli-conv","prompt":"hi"}`)); err != nil {
+		t.Fatalf("CLI prompt-submit error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "kiro-active-turn"))
+	if err != nil {
+		t.Fatalf("active-turn was deleted by CLI prompt-submit: %v", err)
+	}
+	if string(data) != "ide-in-flight" {
+		t.Fatalf("active-turn = %q, want %q (CLI prompt must not touch IDE turn cache)", data, "ide-in-flight")
+	}
+}
+
+func TestOverlappingIDEStopOnlyClearsItsOwnTurnCache(t *testing.T) {
+	// Regression: ParseHook(stop) cleared kiro-active-turn whenever the
+	// stop was IDE-bound, without checking ownership. With overlapping
+	// IDE turns (A prompt -> B prompt -> A stop), A's stop would delete
+	// B's binding. Now the clear is gated on the cache still matching
+	// the stopping turn's IDE session ID.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	tmpDir := filepath.Join(repoRoot, ".entire", "tmp")
+	if err := os.MkdirAll(tmpDir, 0o750); err != nil {
+		t.Fatalf("mkdir tmp: %v", err)
+	}
+	// Cache currently holds B (the newer in-flight IDE turn).
+	if err := os.WriteFile(filepath.Join(tmpDir, "kiro-active-turn"), []byte("chat-B"), 0o600); err != nil {
+		t.Fatalf("seed active-turn: %v", err)
+	}
+
+	// A's stop arrives with explicit IDE session id "chat-A" in payload.
+	if _, err := New().ParseHook(HookNameStop, []byte(`{"sessionId":"chat-A"}`)); err != nil {
+		t.Fatalf("IDE stop A error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "kiro-active-turn"))
+	if err != nil {
+		t.Fatalf("B's active-turn binding was deleted by A's stop: %v", err)
+	}
+	if string(data) != "chat-B" {
+		t.Fatalf("active-turn = %q, want %q (A's stop must not clobber B's binding)", data, "chat-B")
+	}
+}
+
 func TestCLIStopPreservesInFlightIDETurnCache(t *testing.T) {
 	// Regression: ParseHook(stop) used to clear kiro-active-turn
 	// unconditionally. With concurrent CLI+IDE activity in the same repo,
