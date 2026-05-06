@@ -370,6 +370,62 @@ func TestParseHookToolCallsAreIsolatedPerChat(t *testing.T) {
 	}
 }
 
+func TestParseHookCLIConversationIDDoesNotMasqueradeAsIDESession(t *testing.T) {
+	// Regression: rawSessionID used to fall through to conversation_id, so
+	// a CLI hook with only conversation_id set populated ideSessionID with
+	// the CLI value. The stop path then tried ensureIDETranscript first
+	// and — when no <conversation_id>.json existed — fell back to "latest
+	// IDE session", checkpointing a totally unrelated IDE chat.
+	//
+	// This test puts unrelated IDE workspace data on disk AND fires a
+	// CLI-only stop with conversation_id. The captured transcript must
+	// NOT come from the IDE chat; it must come from the CLI SQLite path
+	// (or the placeholder), with session_id == conversation_id.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+
+	// Plant unrelated IDE workspace data in the same repo.
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
+	if err := os.WriteFile(
+		filepath.Join(sessionsDir, "sessions.json"),
+		[]byte(`[{"sessionId":"ide-chat","title":"unrelated","dateCreated":"2026-02-01T00:00:00Z"}]`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	writeIDESessionFile(t, sessionsDir, "ide-chat", `{"history":[
+		{"message":{"role":"user","content":"unrelated IDE prompt"}},
+		{"message":{"role":"assistant","content":"unrelated IDE response"}}
+	]}`, time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC))
+
+	// Fire a CLI-only stop hook: only conversation_id, no IDE session ID.
+	stop, err := New().ParseHook(HookNameStop, []byte(`{"conversation_id":"cli-conv"}`))
+	if err != nil {
+		t.Fatalf("ParseHook(stop) error = %v", err)
+	}
+	if stop.SessionID != "cli-conv" {
+		t.Fatalf("session_id = %q, want %q (CLI conversation_id)", stop.SessionID, "cli-conv")
+	}
+
+	// The cached transcript file must be addressed by the CLI conversation
+	// id (cli-conv.json), not the unrelated IDE chat (ide-chat.json).
+	if !strings.HasSuffix(stop.SessionRef, "cli-conv.json") {
+		t.Fatalf("session_ref = %q, want suffix %q", stop.SessionRef, "cli-conv.json")
+	}
+
+	// And the captured content must NOT contain the unrelated IDE chat's
+	// transcript content (which would prove ensureIDETranscript leaked).
+	data, err := os.ReadFile(stop.SessionRef)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+	if strings.Contains(string(data), "unrelated IDE prompt") || strings.Contains(string(data), "unrelated IDE response") {
+		t.Fatalf("CLI stop captured unrelated IDE transcript content: %s", data)
+	}
+}
+
 func TestParseHookPassThroughHooksReturnNil(t *testing.T) {
 	for _, hookName := range []string{HookNamePreToolUse, HookNamePostToolUse} {
 		event, err := New().ParseHook(hookName, []byte(`{"tool_name":"read"}`))

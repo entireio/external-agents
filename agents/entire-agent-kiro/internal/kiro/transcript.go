@@ -522,10 +522,14 @@ func (a *Agent) captureTranscriptForStop(cwd string, identity sessionIdentity) s
 		debugLog.logf("kiroCLIDataDBPath error: %v", err)
 	}
 
-	// Try IDE workspace sessions first — the stop hook is fired by the IDE,
-	// so IDE data is the most accurate source. CLI DB is a fallback for
-	// kiro-cli (non-IDE) sessions where no IDE workspace data exists.
-	if sessionRef, err := a.ensureIDETranscript(cwd, identity.entireSessionID, identity.ideSessionID); err == nil && sessionRef != "" {
+	// Try IDE workspace sessions first — the stop hook is fired by the
+	// IDE, so IDE data is the most accurate source. SKIP this when the
+	// resolver didn't identify an IDE chat: ensureIDETranscript would
+	// otherwise fall back to "latest IDE session" and silently checkpoint
+	// an unrelated chat for what's actually a CLI-only turn.
+	if identity.ideSessionID == "" {
+		debugLog.logf("skipping ensureIDETranscript: identity has no ideSessionID (CLI-only turn)")
+	} else if sessionRef, err := a.ensureIDETranscript(cwd, identity.entireSessionID, identity.ideSessionID); err == nil && sessionRef != "" {
 		debugLog.logf("ensureIDETranscript ok: %q", sessionRef)
 		return sessionRef
 	} else if err != nil {

@@ -638,10 +638,10 @@ func (a *Agent) activeTurnOrLatestIDESessionID(cwd string) string {
 // switch between user-prompt-submit and stop would let the turn finalize
 // against a different chat than the one that fired the prompt.
 func (a *Agent) resolveStopIdentity(cwd string, raw hookInputRaw) sessionIdentity {
-	if sessionID := rawSessionID(raw); sessionID != "" {
+	if ideID := rawIDESessionID(raw); ideID != "" {
 		return sessionIdentity{
-			entireSessionID: sessionID,
-			ideSessionID:    sessionID,
+			entireSessionID: ideID,
+			ideSessionID:    ideID,
 			conversationID:  rawConversationID(raw),
 		}
 	}
@@ -694,13 +694,28 @@ type sessionIdentity struct {
 func (a *Agent) resolveHookSessionIdentity(cwd string, raw hookInputRaw) sessionIdentity {
 	identity := sessionIdentity{}
 
-	if sessionID := rawSessionID(raw); sessionID != "" {
-		identity.entireSessionID = sessionID
-		identity.ideSessionID = sessionID
+	// Explicit IDE session ID in the payload wins for IDE flows.
+	if ideID := rawIDESessionID(raw); ideID != "" {
+		identity.entireSessionID = ideID
+		identity.ideSessionID = ideID
 		identity.conversationID = rawConversationID(raw)
 		return identity
 	}
 
+	// Explicit CLI conversation_id in the payload tells us this is a CLI
+	// turn — short-circuit before IDE mtime discovery so a repo that
+	// happens to have IDE workspace data alongside CLI usage doesn't
+	// accidentally checkpoint an unrelated IDE chat. ideSessionID stays
+	// empty so captureTranscriptForStop skips IDE transcript capture.
+	if convID := rawConversationID(raw); convID != "" {
+		identity.entireSessionID = convID
+		identity.conversationID = convID
+		return identity
+	}
+
+	// No payload signals — fall back to disk discovery. CLI conversation
+	// queried from SQLite goes only into conversationID; mtime-detected
+	// IDE chat sets both entireSessionID and ideSessionID.
 	if cwd != "" {
 		if cid, err := a.querySessionID(cwd); err == nil {
 			identity.conversationID = cid
@@ -741,30 +756,31 @@ func (a *Agent) commitSessionIdentity(identity sessionIdentity) {
 	a.cacheSessionID(identity.entireSessionID)
 }
 
-func rawSessionID(raw hookInputRaw) string {
+// rawIDESessionID returns the IDE session UUID supplied in the hook
+// payload, if any. CLI's `conversation_id` is intentionally NOT
+// considered here: mistaking it for an IDE session ID would cause the
+// stop hook to attempt IDE transcript capture against a non-existent
+// `<conversation_id>.json` and then silently fall back to the latest IDE
+// session, checkpointing an unrelated chat.
+func rawIDESessionID(raw hookInputRaw) string {
 	for _, value := range []string{
 		raw.SessionID,
 		raw.SessionIDAlt,
 		raw.ChatSessionID,
-		raw.ConversationID,
 	} {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
+		if v := strings.TrimSpace(value); v != "" {
+			return v
 		}
 	}
 	return ""
 }
 
+// rawConversationID returns only the CLI `conversation_id` field. It does
+// NOT fall back to `chatSessionId`, which references a Kiro IDE
+// execution log and would point ensureCachedTranscript at a wrong
+// SQLite row.
 func rawConversationID(raw hookInputRaw) string {
-	for _, value := range []string{
-		raw.ConversationID,
-		raw.ChatSessionID,
-	} {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+	return strings.TrimSpace(raw.ConversationID)
 }
 
 func fallbackStopSessionID() string {
