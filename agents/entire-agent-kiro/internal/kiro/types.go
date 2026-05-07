@@ -11,12 +11,16 @@ const (
 )
 
 type hookInputRaw struct {
-	HookEventName string          `json:"hook_event_name"`
-	CWD           string          `json:"cwd"`
-	Prompt        string          `json:"prompt,omitempty"`
-	ToolName      string          `json:"tool_name,omitempty"`
-	ToolInput     json.RawMessage `json:"tool_input,omitempty"`
-	ToolResponse  json.RawMessage `json:"tool_response,omitempty"`
+	HookEventName  string          `json:"hook_event_name"`
+	CWD            string          `json:"cwd"`
+	Prompt         string          `json:"prompt,omitempty"`
+	SessionID      string          `json:"session_id,omitempty"`
+	SessionIDAlt   string          `json:"sessionId,omitempty"`
+	ConversationID string          `json:"conversation_id,omitempty"`
+	ChatSessionID  string          `json:"chatSessionId,omitempty"`
+	ToolName       string          `json:"tool_name,omitempty"`
+	ToolInput      json.RawMessage `json:"tool_input,omitempty"`
+	ToolResponse   json.RawMessage `json:"tool_response,omitempty"`
 }
 
 type kiroAgentFile struct {

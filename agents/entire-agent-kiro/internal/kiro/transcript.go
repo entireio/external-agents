@@ -2,22 +2,130 @@ package kiro
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
+	// modernc.org/sqlite registers the "sqlite" driver used by sql.Open
+	// in openSQLiteDB. The blank import is the standard way to opt into
+	// a database/sql driver; without it, sql.Open returns an error.
+	_ "modernc.org/sqlite"
 )
 
 var runSQLiteCommand = func(args ...string) ([]byte, error) {
-	return exec.Command("sqlite3", args...).Output()
+	switch len(args) {
+	case 3:
+		if args[0] != "-json" {
+			return nil, fmt.Errorf("unsupported sqlite query mode: %q", args[0])
+		}
+		return querySQLiteJSON(args[1], args[2])
+	case 2:
+		return querySQLiteRaw(args[0], args[1])
+	default:
+		return nil, fmt.Errorf("unsupported sqlite invocation with %d args", len(args))
+	}
+}
+
+// osWindows is the value of runtime.GOOS on Windows. Used in the many
+// platform branches across this package; declared as a constant so the
+// linter doesn't flag the repeated string literal.
+const osWindows = "windows"
+
+var runtimeGOOS = runtime.GOOS
+
+var userHomeDir = os.UserHomeDir
+
+func openSQLiteDB(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+func querySQLiteJSON(path string, query string) ([]byte, error) {
+	db, err := openSQLiteDB(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var result []map[string]string
+	for rows.Next() {
+		scanTargets := make([]sql.NullString, len(columns))
+		dest := make([]any, len(columns))
+		for i := range scanTargets {
+			dest[i] = &scanTargets[i]
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return nil, err
+		}
+
+		row := make(map[string]string, len(columns))
+		for i, col := range columns {
+			if scanTargets[i].Valid {
+				row[col] = scanTargets[i].String
+			} else {
+				row[col] = ""
+			}
+		}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(result) == 0 {
+		return []byte("[]"), nil
+	}
+	return json.Marshal(result)
+}
+
+func querySQLiteRaw(path string, query string) ([]byte, error) {
+	db, err := openSQLiteDB(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	var value sql.NullString
+	err = db.QueryRow(query).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return []byte{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !value.Valid {
+		return []byte{}, nil
+	}
+	return []byte(value.String), nil
 }
 
 var kiroFileModificationTools = map[string]struct{}{
@@ -147,7 +255,15 @@ func (a *Agent) ensureCachedTranscript(cwd string, sessionID string, conversatio
 	}
 
 	data := []byte(raw)
-	if filtered, ok := a.trimTranscriptHistory([]byte(raw)); ok {
+	// Use the CLI conversation_id (or, if absent, the cwd-derived key) as
+	// the trim bucket so concurrent CLI sessions don't share an offset.
+	trimKey := conversationID
+	if trimKey == "" {
+		if parsed, parseErr := parseTranscript(data); parseErr == nil {
+			trimKey = parsed.ConversationID
+		}
+	}
+	if filtered, ok := a.trimTranscriptHistory([]byte(raw), trimKey); ok {
 		data = filtered
 	}
 	data = injectTranscriptCLIVersion(data, currentCLIVersion())
@@ -165,12 +281,40 @@ func (a *Agent) ensureCachedTranscript(cwd string, sessionID string, conversatio
 }
 
 type transcriptOffset struct {
-	ConversationID string `json:"conversation_id"`
-	Position       int    `json:"position"`
+	Key      string `json:"key"`
+	Position int    `json:"position"`
 }
 
-func (a *Agent) transcriptOffsetPath() string {
-	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", "kiro-transcript-offset.json")
+// transcriptOffsetPath returns the offset file for a given chat/session key.
+// Each Kiro chat (IDE session ID or CLI conversation ID) gets its own offset
+// file so concurrent chats can never collapse into one shared bucket and
+// silently trim each other's history.
+func (a *Agent) transcriptOffsetPath(key string) string {
+	dir := filepath.Join(protocol.RepoRoot(), ".entire", "tmp")
+	if key == "" {
+		// No per-chat key (very early CLI flow before a conversation_id is
+		// known). Use the legacy single-bucket file so we don't churn its
+		// contents from elsewhere.
+		return filepath.Join(dir, "kiro-transcript-offset.json")
+	}
+	return filepath.Join(dir, "kiro-transcript-offset-"+sanitizeForFilename(key)+".json")
+}
+
+// sanitizeForFilename strips characters that aren't safe in a filename across
+// macOS/Linux/Windows. Kiro IDE session IDs are UUIDs (always safe); CLI
+// conversation IDs are unverified, so we filter defensively.
+func sanitizeForFilename(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '-', r == '_':
+			return r
+		default:
+			return '_'
+		}
+	}, s)
 }
 
 func readTranscriptOffset(path string) transcriptOffset {
@@ -197,29 +341,34 @@ func writeTranscriptOffset(path string, offset transcriptOffset) error {
 }
 
 // trimTranscriptHistory trims already-checkpointed entries from a cumulative
-// kiro transcript using a stored offset. Returns the re-serialized trimmed
-// JSON and true if trimming was applied, or (nil, false) if the full
-// transcript should be used as-is.
-func (a *Agent) trimTranscriptHistory(raw []byte) ([]byte, bool) {
+// kiro transcript using a stored offset keyed by `chatKey`. Returns the
+// re-serialized trimmed JSON and true if trimming was applied, or (nil,
+// false) if the full transcript should be used as-is. Each chat must pass a
+// unique chatKey or it will share an offset bucket with other chats and
+// silently drop history.
+func (a *Agent) trimTranscriptHistory(raw []byte, chatKey string) ([]byte, bool) {
 	parsed, err := parseTranscript(raw)
 	if err != nil || len(parsed.History) == 0 {
 		return nil, false
 	}
 
-	offsetPath := a.transcriptOffsetPath()
+	offsetPath := a.transcriptOffsetPath(chatKey)
 	prev := readTranscriptOffset(offsetPath)
 	totalLen := len(parsed.History)
 
 	trimFrom := 0
-	if prev.ConversationID == parsed.ConversationID && prev.Position > 0 && prev.Position <= totalLen {
+	// Per-key offset files mean we don't need to compare keys here — file
+	// identity already binds the offset to one chat. The Key field is only
+	// stored for human-debuggability.
+	if prev.Position > 0 && prev.Position <= totalLen {
 		trimFrom = prev.Position
 	}
 
 	// Only update offset when there are new entries to capture.
 	if trimFrom < totalLen {
 		_ = writeTranscriptOffset(offsetPath, transcriptOffset{
-			ConversationID: parsed.ConversationID,
-			Position:       totalLen,
+			Key:      chatKey,
+			Position: totalLen,
 		})
 	}
 
@@ -238,36 +387,34 @@ func (a *Agent) trimTranscriptHistory(raw []byte) ([]byte, bool) {
 	return filtered, true
 }
 
-func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error) {
+func (a *Agent) ensureIDETranscript(cwd string, entireSessionID string, ideSessionID string) (string, error) {
 	sessionsDir, err := ideWorkspaceSessionsDir(cwd)
 	if err != nil {
 		return "", err
 	}
 
-	indexPath := filepath.Join(sessionsDir, "sessions.json")
-	indexData, err := os.ReadFile(indexPath)
-	if err != nil {
-		return "", fmt.Errorf("IDE sessions.json not found: %w", err)
+	// Prefer the explicit IDE session ID resolved by the hook so multi-chat
+	// workspaces always read the transcript that actually fired the hook,
+	// not whichever chat happens to be newest. Fall back to "latest by
+	// dateCreated" only when the resolver couldn't identify a chat.
+	resolvedID := ""
+	if ideSessionID != "" && filepath.IsLocal(ideSessionID+".json") {
+		if _, statErr := os.Stat(filepath.Join(sessionsDir, ideSessionID+".json")); statErr == nil {
+			resolvedID = ideSessionID
+		}
+	}
+	if resolvedID == "" {
+		latest, err := latestIDESessionID(cwd)
+		if err != nil {
+			return "", err
+		}
+		resolvedID = latest
+	}
+	if !filepath.IsLocal(resolvedID + ".json") {
+		return "", fmt.Errorf("invalid session ID: %q", resolvedID)
 	}
 
-	var sessions []ideSessionIndexEntry
-	if err := json.Unmarshal(indexData, &sessions); err != nil {
-		return "", fmt.Errorf("failed to parse IDE sessions.json: %w", err)
-	}
-	if len(sessions) == 0 {
-		return "", errors.New("no IDE sessions found")
-	}
-
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].DateCreated > sessions[j].DateCreated
-	})
-
-	ideSessionID := sessions[0].SessionID
-	if !filepath.IsLocal(ideSessionID + ".json") {
-		return "", fmt.Errorf("invalid session ID: %q", ideSessionID)
-	}
-
-	transcriptPath := filepath.Join(sessionsDir, ideSessionID+".json")
+	transcriptPath := filepath.Join(sessionsDir, resolvedID+".json")
 	transcriptData, err := os.ReadFile(transcriptPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read IDE transcript %s: %w", transcriptPath, err)
@@ -290,7 +437,9 @@ func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error
 		}
 	}
 	if !enriched {
-		if toolCalls := a.readAndClearToolCalls(); len(toolCalls) > 0 {
+		// Per-chat key matches what post-tool-use wrote so multi-chat
+		// workspaces don't cross-contaminate tool-call history.
+		if toolCalls := a.readAndClearToolCalls(resolvedID); len(toolCalls) > 0 {
 			if result := enrichIDETranscriptWithToolCalls(transcriptData, toolCalls); result != nil {
 				data = result
 			}
@@ -298,7 +447,11 @@ func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error
 	}
 
 	// Trim already-checkpointed entries from cumulative IDE transcript.
-	if filtered, ok := a.trimTranscriptHistory(data); ok {
+	// Key by the IDE session ID so different chats in the same workspace
+	// each track their own offset (IDE transcripts have no
+	// `conversation_id` field, so without an explicit key every chat would
+	// collapse into the same global bucket).
+	if filtered, ok := a.trimTranscriptHistory(data, resolvedID); ok {
 		data = filtered
 	}
 	data = injectTranscriptCLIVersion(data, currentCLIVersion())
@@ -307,7 +460,7 @@ func (a *Agent) ensureIDETranscript(cwd string, sessionID string) (string, error
 		return "", errors.New("IDE transcript has no history entries after trimming")
 	}
 
-	cachePath, err := a.cacheTranscriptPath(cwd, sessionID)
+	cachePath, err := a.cacheTranscriptPath(cwd, entireSessionID)
 	if err != nil {
 		return "", err
 	}
@@ -346,17 +499,30 @@ func enrichIDETranscriptWithToolCalls(ideData []byte, toolCalls []kiroToolCall) 
 	return result
 }
 
-func (a *Agent) captureTranscriptForStop(cwd string, sessionID string, conversationID string) string {
-	// Try IDE workspace sessions first — the stop hook is fired by the IDE,
-	// so IDE data is the most accurate source. CLI DB is a fallback for
-	// kiro-cli (non-IDE) sessions where no IDE workspace data exists.
-	if sessionRef, err := a.ensureIDETranscript(cwd, sessionID); err == nil && sessionRef != "" {
-		return sessionRef
+func (a *Agent) captureTranscriptForStop(cwd string, identity sessionIdentity) string {
+	// Try IDE workspace sessions first — the stop hook is fired by the
+	// IDE, so IDE data is the most accurate source. SKIP this when the
+	// resolver didn't identify an IDE chat: ensureIDETranscript would
+	// otherwise fall back to "latest IDE session" and silently checkpoint
+	// an unrelated chat for what's actually a CLI-only turn.
+	if identity.ideSessionID != "" {
+		if sessionRef, err := a.ensureIDETranscript(cwd, identity.entireSessionID, identity.ideSessionID); err == nil && sessionRef != "" {
+			return sessionRef
+		}
 	}
-	if sessionRef, err := a.ensureCachedTranscript(cwd, sessionID, conversationID); err == nil && sessionRef != "" {
-		return sessionRef
+	// CLI cached transcript fallback. Only attempt when the identity is
+	// either CLI-only (no ideSessionID) or has an explicit CLI
+	// conversation_id link from the payload. An IDE-bound stop without
+	// a proven conversation link must not fall through to
+	// ensureCachedTranscript, which would otherwise query SQLite by cwd
+	// and capture whatever unrelated CLI conversation happens to be
+	// latest in this repo under the IDE session's file.
+	if identity.ideSessionID == "" || identity.conversationID != "" {
+		if sessionRef, err := a.ensureCachedTranscript(cwd, identity.entireSessionID, identity.conversationID); err == nil && sessionRef != "" {
+			return sessionRef
+		}
 	}
-	return a.createPlaceholderTranscript(cwd, sessionID)
+	return a.createPlaceholderTranscript(cwd, identity.entireSessionID)
 }
 
 func (a *Agent) createPlaceholderTranscript(cwd string, sessionID string) string {
@@ -386,13 +552,19 @@ func (a *Agent) cacheTranscriptPath(cwd string, sessionID string) (string, error
 }
 
 func kiroDataDir() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	switch runtime.GOOS {
+	switch runtimeGOOS {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support"), nil
+	case osWindows:
+		localAppData := os.Getenv("LOCALAPPDATA")
+		if localAppData == "" {
+			localAppData = filepath.Join(home, "AppData", "Local")
+		}
+		return localAppData, nil
 	default:
 		return filepath.Join(home, ".local", "share"), nil
 	}
@@ -409,16 +581,97 @@ func kiroCLIDataDBPath() (string, error) {
 // kiroExtensionStorageDir returns the platform-specific base directory for
 // Kiro IDE extension data (workspace sessions, execution logs, etc.).
 func kiroExtensionStorageDir() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := userHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	switch runtime.GOOS {
+	switch runtimeGOOS {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support", "Kiro", "User", "globalStorage", "kiro.kiroagent"), nil
+	case osWindows:
+		appData := os.Getenv("APPDATA")
+		if appData == "" {
+			appData = filepath.Join(home, "AppData", "Roaming")
+		}
+		return filepath.Join(appData, "Kiro", "User", "globalStorage", "kiro.kiroagent"), nil
 	default:
 		return filepath.Join(home, ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent"), nil
 	}
+}
+
+func latestIDESessionID(cwd string) (string, error) {
+	sessionsDir, err := ideWorkspaceSessionsDir(cwd)
+	if err != nil {
+		return "", err
+	}
+
+	indexPath := filepath.Join(sessionsDir, "sessions.json")
+	indexData, err := os.ReadFile(indexPath)
+	if err != nil {
+		return "", fmt.Errorf("IDE sessions.json not found: %w", err)
+	}
+
+	var sessions []ideSessionIndexEntry
+	if err := json.Unmarshal(indexData, &sessions); err != nil {
+		return "", fmt.Errorf("failed to parse IDE sessions.json: %w", err)
+	}
+	if len(sessions) == 0 {
+		return "", errors.New("no IDE sessions found")
+	}
+
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].DateCreated > sessions[j].DateCreated
+	})
+
+	if sessions[0].SessionID == "" {
+		return "", errors.New("latest IDE session is missing sessionId")
+	}
+	return sessions[0].SessionID, nil
+}
+
+// mostRecentlyActiveIDESessionID returns the IDE session whose `<id>.json`
+// file was modified most recently in the workspace-sessions directory. This
+// is the closest signal we have to "which Kiro chat tab fired the hook"
+// when Kiro doesn't pipe a session identifier on stdin: the IDE always
+// writes the user's prompt or the assistant's response to the active chat's
+// transcript file before invoking the hook.
+//
+// Sorting by file mtime (rather than the index-entry `dateCreated` used by
+// latestIDESessionID) avoids a class of multi-chat bugs where a newly
+// opened tab is "newest by creation date" but the hook actually fired from
+// an older tab the user is still working in.
+func mostRecentlyActiveIDESessionID(cwd string) (string, error) {
+	sessionsDir, err := ideWorkspaceSessionsDir(cwd)
+	if err != nil {
+		return "", err
+	}
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		return "", fmt.Errorf("read IDE sessions dir: %w", err)
+	}
+	var bestName string
+	var bestMtime time.Time
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if name == "sessions.json" || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		if bestName == "" || info.ModTime().After(bestMtime) {
+			bestName = name
+			bestMtime = info.ModTime()
+		}
+	}
+	if bestName == "" {
+		return "", errors.New("no IDE session transcripts found")
+	}
+	return strings.TrimSuffix(bestName, ".json"), nil
 }
 
 func ideWorkspaceSessionsDir(cwd string) (string, error) {
@@ -426,9 +679,25 @@ func ideWorkspaceSessionsDir(cwd string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Kiro IDE on Windows encodes the cwd in its native Windows form before
+	// base64: backslash separators and a lowercased drive letter. Go's
+	// os.Getwd() and the entire CLI's ENTIRE_REPO_ROOT may use uppercase
+	// drives or forward slashes, so we must normalize before encoding or
+	// the workspace-sessions lookup misses Kiro's directory.
+	if runtimeGOOS == osWindows {
+		cwd = normalizeWindowsCWDForKiro(cwd)
+	}
 	// Kiro IDE uses standard base64 with '=' padding replaced by '_'.
 	encoded := strings.ReplaceAll(base64.StdEncoding.EncodeToString([]byte(cwd)), "=", "_")
 	return filepath.Join(baseDir, "workspace-sessions", encoded), nil
+}
+
+func normalizeWindowsCWDForKiro(p string) string {
+	p = strings.ReplaceAll(p, "/", `\`)
+	if len(p) >= 2 && p[1] == ':' && p[0] >= 'A' && p[0] <= 'Z' {
+		return string(p[0]+('a'-'A')) + p[1:]
+	}
+	return p
 }
 
 func escapeSQLString(s string) string {

@@ -140,6 +140,18 @@ cd e2e && go test -tags=e2e -v -count=1 -run TestLifecycle_SinglePromptManualCom
 **Agent not discovered by Entire**
 - Verify the binary is on your `PATH`: `which entire-agent-kiro`
 - Check detection: `entire-agent-kiro detect` (requires `ENTIRE_REPO_ROOT` to be set)
+- Confirm external-plugin discovery is enabled — Entire only scans `PATH` for `entire-agent-*` binaries when `external_agents: true` is set in the repo's `.entire/settings.json`
+
+**`entire enable` doesn't install hooks (backup install path)**
+
+If `entire enable` (or `entire agent add kiro`) fails to discover the agent and install hooks, you can install them directly by invoking the agent binary against your repo:
+
+```bash
+cd /path/to/your/project
+ENTIRE_REPO_ROOT=$PWD entire-agent-kiro install-hooks --force
+```
+
+Add `--local-dev` for the local-dev hook command form. This writes `.kiro/agents/entire.json`, `.kiro/hooks/*.kiro.hook`, and the `kiroAgent.trustedCommands` entry in `.vscode/settings.json` exactly the same way `entire enable` would. Hook firing still requires the `entire` CLI to discover the agent at runtime, so make sure `external_agents: true` is set in `.entire/settings.json` before triggering hooks from Kiro.
 
 **Hooks not firing**
 - Verify `.kiro/agents/entire.json` exists in your project

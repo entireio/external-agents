@@ -1,6 +1,7 @@
 package kiro
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -14,20 +15,17 @@ import (
 )
 
 const (
-	hooksFileName       = "entire.json"
-	hooksDir            = "agents"
-	ideHooksDir         = "hooks"
-	ideHookFileSuffix   = ".kiro.hook"
-	ideHookVersion      = "1"
-	vscodeSettingsDir   = ".vscode"
-	vscodeSettingsFile  = "settings.json"
-	trustedCommandsKey  = "kiroAgent.trustedCommands"
-	prodTrustedCommand  = "sh -c 'entire hooks *"
-	localDevCommandBase = "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
-	localDevTrustedCmd  = "sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
-	prodHookCommandBase = "entire hooks kiro "
-	sessionIDFile       = "kiro-active-session"
-	toolCallsFile       = "kiro-tool-calls.jsonl"
+	hooksFileName      = "entire.json"
+	hooksDir           = "agents"
+	ideHooksDir        = "hooks"
+	ideHookFileSuffix  = ".kiro.hook"
+	ideHookVersion     = "1"
+	vscodeSettingsDir  = ".vscode"
+	vscodeSettingsFile = "settings.json"
+	trustedCommandsKey = "kiroAgent.trustedCommands"
+	sessionIDFile      = "kiro-active-session"
+	activeTurnFile     = "kiro-active-turn"
+	toolCallsFile      = "kiro-tool-calls.jsonl"
 )
 
 type ideHookDef struct {
@@ -60,9 +58,24 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		}, nil
 	case HookNameUserPromptSubmit:
-		sessionID := a.readCachedSessionID()
-		if sessionID == "" {
-			sessionID = a.generateAndCacheSessionID()
+		cwd := raw.CWD
+		if cwd == "" {
+			cwd = protocol.RepoRoot()
+		}
+		identity := a.resolveHookSessionIdentity(cwd, raw)
+		if identity.entireSessionID == "" {
+			identity.entireSessionID = a.generateAndCacheSessionID()
+		} else {
+			a.commitSessionIdentity(identity)
+		}
+		// Bind this turn to the resolved IDE chat so post-tool-use and
+		// stop hooks read/write the same chat even if the user switches
+		// tabs mid-turn (re-resolving by mtime alone could rebind).
+		// Only write when this is actually an IDE prompt — a CLI
+		// prompt with empty ideSessionID would otherwise DELETE the
+		// cache and strand any in-flight IDE turn's binding.
+		if identity.ideSessionID != "" {
+			a.writeActiveTurnIDESessionID(identity.ideSessionID)
 		}
 		prompt := raw.Prompt
 		if prompt == "" {
@@ -70,7 +83,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}
 		return &protocol.EventJSON{
 			Type:      2,
-			SessionID: sessionID,
+			SessionID: identity.entireSessionID,
 			Prompt:    prompt,
 			Timestamp: time.Now().UTC().Format(time.RFC3339),
 		}, nil
@@ -78,7 +91,11 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		return nil, nil
 	case HookNamePostToolUse:
 		if raw.ToolName != "" {
-			a.appendToolCall(raw.ToolName, raw.ToolInput)
+			cwd := raw.CWD
+			if cwd == "" {
+				cwd = protocol.RepoRoot()
+			}
+			a.appendToolCall(raw.ToolName, raw.ToolInput, a.resolvePostToolUseChatKey(cwd, raw))
 		}
 		return nil, nil
 	case HookNameStop:
@@ -86,20 +103,28 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		if cwd == "" {
 			cwd = protocol.RepoRoot()
 		}
-		sessionID := a.readCachedSessionID()
-		conversationID, _ := a.querySessionID(cwd)
-		if sessionID == "" {
-			if conversationID != "" {
-				sessionID = conversationID
-			} else {
-				sessionID = fallbackStopSessionID()
+		identity := a.resolveStopIdentity(cwd, raw)
+		if identity.entireSessionID == "" {
+			identity.entireSessionID = fallbackStopSessionID()
+		}
+		a.commitSessionIdentity(identity)
+		sessionRef := a.captureTranscriptForStop(cwd, identity)
+		a.clearToolCalls(identity.ideSessionID)
+		// Only clear the IDE turn binding when this stop owns it. CLI
+		// stops (no ideSessionID) must leave kiro-active-turn alone so
+		// a concurrent in-flight IDE turn isn't stranded; and an IDE
+		// stop must only clear the cache when it still names THIS
+		// stop's chat — otherwise overlapping IDE turns
+		// (A prompt -> B prompt -> A stop) would let A's stop delete
+		// B's binding.
+		if identity.ideSessionID != "" {
+			if cached := a.readActiveTurnIDESessionID(); cached == identity.ideSessionID {
+				a.clearActiveTurnIDESessionID()
 			}
 		}
-		sessionRef := a.captureTranscriptForStop(cwd, sessionID, conversationID)
-		a.clearCachedSessionID()
 		return &protocol.EventJSON{
 			Type:       3,
-			SessionID:  sessionID,
+			SessionID:  identity.entireSessionID,
 			SessionRef: sessionRef,
 			Timestamp:  time.Now().UTC().Format(time.RFC3339),
 		}, nil
@@ -315,11 +340,7 @@ func installTrustedCommands(repoRoot string, localDev bool) error {
 		return err
 	}
 	want := trustedCommand(localDev)
-	for _, command := range commands {
-		if command == want {
-			return nil
-		}
-	}
+	commands = removeKnownTrustedCommands(commands)
 	commands = append(commands, want)
 	raw, err := json.Marshal(commands)
 	if err != nil {
@@ -347,7 +368,7 @@ func uninstallTrustedCommands(repoRoot string) error {
 	}
 	filtered := commands[:0]
 	for _, command := range commands {
-		if command != prodTrustedCommand && command != localDevTrustedCmd {
+		if !isKnownTrustedCommand(command) {
 			filtered = append(filtered, command)
 		}
 	}
@@ -365,25 +386,69 @@ func uninstallTrustedCommands(repoRoot string) error {
 
 func hookCommandBase(localDev bool) string {
 	if localDev {
-		return localDevCommandBase
+		if runtimeGOOS == osWindows {
+			return "go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks kiro "
+		}
+		return "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
 	}
-	return prodHookCommandBase
+	return "entire hooks kiro "
 }
 
-// shellWrappedCommand wraps a hook command in "sh -c" with a /dev/null stdin
-// redirect. IDEs typically run hook commands directly without a shell, so a
-// bare "</dev/null" suffix is passed as a literal argument instead of being
-// interpreted as a redirect. Wrapping in sh ensures the redirect works.
+// shellWrappedCommand wraps a hook command so the IDE-spawned process always
+// has a closed stdin. IDEs run hook commands directly without a shell, so a
+// bare redirect token is passed as a literal arg instead of being interpreted.
+// On POSIX we wrap in `sh -c '<cmd> </dev/null'`; on Windows we wrap in
+// `cmd /c "<cmd> <NUL"` so the parent CLI process does not block reading from
+// an inherited Kiro IDE stdin pipe that never gets closed.
 // The command content is built from compile-time constants (not user input).
 func shellWrappedCommand(cmd string) string {
+	if runtimeGOOS == osWindows {
+		return `cmd /c "` + cmd + ` <NUL"`
+	}
 	return "sh -c '" + cmd + " </dev/null'"
 }
 
 func trustedCommand(localDev bool) string {
 	if localDev {
-		return localDevTrustedCmd
+		if runtimeGOOS == osWindows {
+			return `cmd /c "go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks *`
+		}
+		return "sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
 	}
-	return prodTrustedCommand
+	if runtimeGOOS == osWindows {
+		return `cmd /c "entire hooks *`
+	}
+	return "sh -c 'entire hooks *"
+}
+
+func knownTrustedCommands() []string {
+	return []string{
+		"sh -c 'entire hooks *",
+		"sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *",
+		`cmd /c "entire hooks *`,
+		`cmd /c "go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks *`,
+		"entire hooks *",
+		"go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks *",
+	}
+}
+
+func isKnownTrustedCommand(command string) bool {
+	for _, known := range knownTrustedCommands() {
+		if command == known {
+			return true
+		}
+	}
+	return false
+}
+
+func removeKnownTrustedCommands(commands []string) []string {
+	filtered := commands[:0]
+	for _, command := range commands {
+		if !isKnownTrustedCommand(command) {
+			filtered = append(filtered, command)
+		}
+	}
+	return filtered
 }
 
 func readSettings(path string) (map[string]json.RawMessage, error) {
@@ -428,11 +493,14 @@ func writeSettings(path string, settings map[string]json.RawMessage) error {
 }
 
 func marshalJSON(v any) ([]byte, error) {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
-	return append(data, '\n'), nil
+	return buf.Bytes(), nil
 }
 
 func (a *Agent) generateAndCacheSessionID() string {
@@ -452,18 +520,34 @@ func (a *Agent) readCachedSessionID() string {
 	return strings.TrimSpace(string(data))
 }
 
-func (a *Agent) clearCachedSessionID() {
-	_ = os.Remove(a.sessionIDCachePath())
-	_ = os.Remove(a.toolCallsPath())
+func (a *Agent) cacheSessionID(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	cachePath := a.sessionIDCachePath()
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o700); err == nil {
+		_ = os.WriteFile(cachePath, []byte(sessionID), 0o600)
+	}
 }
 
-func (a *Agent) appendToolCall(name string, input json.RawMessage) {
+// clearToolCalls removes the per-chat tool-calls jsonl file (if any).
+// Called defensively at end-of-turn in case enrichment skipped the
+// readAndClearToolCalls path. chatKey="" targets the legacy global file
+// used by Kiro CLI sessions that have no IDE chat ID.
+func (a *Agent) clearToolCalls(chatKey string) {
+	_ = os.Remove(a.toolCallsPath(chatKey))
+}
+
+// appendToolCall records one post-tool-use entry to the jsonl file for the
+// given chat. Per-chat keying prevents one Kiro chat's tool calls from
+// being captured by another chat's stop hook in multi-chat workspaces.
+func (a *Agent) appendToolCall(name string, input json.RawMessage, chatKey string) {
 	call := kiroToolCall{Name: name, Args: input}
 	line, err := json.Marshal(call)
 	if err != nil {
 		return
 	}
-	path := a.toolCallsPath()
+	path := a.toolCallsPath(chatKey)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return
 	}
@@ -475,8 +559,10 @@ func (a *Agent) appendToolCall(name string, input json.RawMessage) {
 	_, _ = f.Write(append(line, '\n'))
 }
 
-func (a *Agent) readAndClearToolCalls() []kiroToolCall {
-	path := a.toolCallsPath()
+// readAndClearToolCalls drains the per-chat tool-calls jsonl into memory
+// and removes the file. chatKey="" reads the legacy global file (CLI flow).
+func (a *Agent) readAndClearToolCalls(chatKey string) []kiroToolCall {
+	path := a.toolCallsPath(chatKey)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -496,12 +582,248 @@ func (a *Agent) readAndClearToolCalls() []kiroToolCall {
 	return calls
 }
 
-func (a *Agent) toolCallsPath() string {
-	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", toolCallsFile)
+// toolCallsPath returns the per-chat tool-calls file. chatKey="" returns
+// the legacy global file shared by all Kiro CLI sessions on this repo
+// (CLI is single-conversation per-cwd, so global is fine there).
+func (a *Agent) toolCallsPath(chatKey string) string {
+	dir := filepath.Join(protocol.RepoRoot(), ".entire", "tmp")
+	if chatKey == "" {
+		return filepath.Join(dir, toolCallsFile)
+	}
+	return filepath.Join(dir, "kiro-tool-calls-"+sanitizeForFilename(chatKey)+".jsonl")
 }
 
 func (a *Agent) sessionIDCachePath() string {
 	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", sessionIDFile)
+}
+
+// activeTurnIDECachePath holds the IDE session ID for the in-flight turn
+// (set at user-prompt-submit, cleared at stop). It binds the whole turn —
+// post-tool-use writes and stop reads — to the chat that fired prompt-submit
+// so a tab switch mid-turn cannot rebind to a different chat.
+func (a *Agent) activeTurnIDECachePath() string {
+	return filepath.Join(protocol.RepoRoot(), ".entire", "tmp", activeTurnFile)
+}
+
+func (a *Agent) readActiveTurnIDESessionID() string {
+	data, err := os.ReadFile(a.activeTurnIDECachePath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func (a *Agent) writeActiveTurnIDESessionID(ideSessionID string) {
+	path := a.activeTurnIDECachePath()
+	if ideSessionID == "" {
+		_ = os.Remove(path)
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err == nil {
+		_ = os.WriteFile(path, []byte(ideSessionID), 0o600)
+	}
+}
+
+func (a *Agent) clearActiveTurnIDESessionID() {
+	_ = os.Remove(a.activeTurnIDECachePath())
+}
+
+// resolvePostToolUseChatKey decides which tool-calls jsonl file a
+// post-tool-use hook should append to. The key MUST match what the
+// corresponding stop hook will read with, or the tool calls get
+// stranded in a file the stop never consumes.
+//
+// Precedence:
+//  1. Explicit IDE session ID in payload — write to that IDE chat's file
+//     (matches resolveStopIdentity / resolveHookSessionIdentity).
+//  2. Explicit CLI conversation_id in payload — write to the global file
+//     (key=""), matching CLI stop's `clearToolCalls("")`. We do NOT fall
+//     back to the latest IDE chat here; that would silently route CLI
+//     tool calls into an IDE-scoped file that CLI stop never clears.
+//  3. Active-turn IDE cache — write to that IDE chat's file.
+//  4. Most-recently-active IDE chat by mtime — best-effort guess for a
+//     stray post-tool-use without prior prompt-submit.
+//  5. "" (global file) when no IDE chat exists at all (pure CLI flow).
+func (a *Agent) resolvePostToolUseChatKey(cwd string, raw hookInputRaw) string {
+	if ideID := rawIDESessionID(raw); ideID != "" {
+		return ideID
+	}
+	if convID := rawConversationID(raw); convID != "" {
+		// CLI flow — global tool-calls file (CLI is single-conversation
+		// per cwd, and stop will clear with key="").
+		return ""
+	}
+	if id := a.readActiveTurnIDESessionID(); id != "" {
+		return id
+	}
+	if cwd == "" {
+		return ""
+	}
+	id, err := mostRecentlyActiveIDESessionID(cwd)
+	if err != nil {
+		return ""
+	}
+	return id
+}
+
+// resolveStopIdentity is the stop-hook variant of resolveHookSessionIdentity
+// that prefers the IDE session ID bound to the current turn (set at
+// user-prompt-submit) over fresh mtime resolution. Without this, a tab
+// switch between user-prompt-submit and stop would let the turn finalize
+// against a different chat than the one that fired the prompt.
+func (a *Agent) resolveStopIdentity(cwd string, raw hookInputRaw) sessionIdentity {
+	if ideID := rawIDESessionID(raw); ideID != "" {
+		return sessionIdentity{
+			entireSessionID: ideID,
+			ideSessionID:    ideID,
+			conversationID:  rawConversationID(raw),
+		}
+	}
+	// Explicit CLI conversation_id in the payload must beat the IDE
+	// active-turn cache. The cache is repo-global, so a concurrent IDE
+	// turn could otherwise hijack a CLI stop and route it through the
+	// IDE transcript path.
+	if convID := rawConversationID(raw); convID != "" {
+		return sessionIdentity{
+			entireSessionID: convID,
+			conversationID:  convID,
+		}
+	}
+	if turnIDE := a.readActiveTurnIDESessionID(); turnIDE != "" {
+		// Intentionally leave conversationID empty. We have no proof
+		// that any CLI conversation in this repo belongs to this IDE
+		// turn, and if ensureIDETranscript later degrades the CLI
+		// fallback would otherwise capture an unrelated CLI transcript
+		// under the IDE session's file.
+		return sessionIdentity{
+			entireSessionID: turnIDE,
+			ideSessionID:    turnIDE,
+		}
+	}
+	return a.resolveHookSessionIdentity(cwd, raw)
+}
+
+// sessionIdentity is the resolved session state for a single hook invocation.
+//   - entireSessionID is the stable Entire-side ID emitted on EventJSON. For
+//     IDE-backed chats it equals ideSessionID, which keeps each Kiro chat
+//     mapped to a deterministic, lifetime-stable Entire session without
+//     needing per-chat state files.
+//   - ideSessionID is the Kiro IDE session UUID for the current chat, used
+//     for transcript file lookup and per-chat trim-offset bucketing. Empty
+//     when no IDE chat is in play (CLI-only sessions).
+//   - conversationID is the Kiro CLI conversation_id, used for SQLite
+//     transcript queries. Empty when no CLI session is in play.
+type sessionIdentity struct {
+	entireSessionID string
+	ideSessionID    string
+	conversationID  string
+}
+
+// resolveHookSessionIdentity decides the (entireSessionID, ideSessionID,
+// conversationID) tuple for the current hook event.
+//
+// Precedence:
+//  1. Explicit `session_id` / `sessionId` / `chatSessionId` / `conversation_id`
+//     in the raw hook payload — Kiro is telling us directly.
+//  2. Most-recently-active IDE chat detected via mtime of `<id>.json` files
+//     in the workspace-sessions directory. The IDE writes the user prompt /
+//     assistant response to the active chat's transcript file before firing
+//     the hook, so the freshest mtime points at the chat that fired. We use
+//     that IDE session UUID as both the Kiro and Entire session identifiers
+//     so each chat is keyed deterministically — no global cache that could
+//     overwrite another chat's state, and no rekey needed.
+//  3. Repo-global `kiro-active-session` cache (CLI flow), then CLI
+//     conversation_id, then empty (caller mints a UUID).
+func (a *Agent) resolveHookSessionIdentity(cwd string, raw hookInputRaw) sessionIdentity {
+	identity := sessionIdentity{}
+
+	// Explicit IDE session ID in the payload wins for IDE flows.
+	if ideID := rawIDESessionID(raw); ideID != "" {
+		identity.entireSessionID = ideID
+		identity.ideSessionID = ideID
+		identity.conversationID = rawConversationID(raw)
+		return identity
+	}
+
+	// Explicit CLI conversation_id in the payload tells us this is a CLI
+	// turn — short-circuit before IDE mtime discovery so a repo that
+	// happens to have IDE workspace data alongside CLI usage doesn't
+	// accidentally checkpoint an unrelated IDE chat. ideSessionID stays
+	// empty so captureTranscriptForStop skips IDE transcript capture.
+	if convID := rawConversationID(raw); convID != "" {
+		identity.entireSessionID = convID
+		identity.conversationID = convID
+		return identity
+	}
+
+	// No payload signals — fall back to disk discovery. CLI conversation
+	// queried from SQLite goes only into conversationID; mtime-detected
+	// IDE chat sets both entireSessionID and ideSessionID.
+	if cwd != "" {
+		if cid, err := a.querySessionID(cwd); err == nil {
+			identity.conversationID = cid
+		}
+	}
+
+	if cwd != "" {
+		if activeIDE, err := mostRecentlyActiveIDESessionID(cwd); err == nil && activeIDE != "" {
+			identity.entireSessionID = activeIDE
+			identity.ideSessionID = activeIDE
+			return identity
+		}
+	}
+
+	if cached := a.readCachedSessionID(); cached != "" {
+		identity.entireSessionID = cached
+		return identity
+	}
+
+	if identity.conversationID != "" {
+		identity.entireSessionID = identity.conversationID
+	}
+	return identity
+}
+
+// commitSessionIdentity persists the resolved identity to the legacy
+// repo-global cache so subsequent hooks in the CLI (non-IDE) flow can reuse
+// it. IDE-backed identities don't need persistence — they're re-derived
+// from the IDE workspace-sessions directory each time, which is the only
+// way to correctly handle multi-chat workspaces without per-tab signals.
+func (a *Agent) commitSessionIdentity(identity sessionIdentity) {
+	if identity.ideSessionID != "" {
+		// Per-chat IDE state is derived from disk; no cache write needed.
+		// Doing nothing here also avoids overwriting the CLI cache from an
+		// IDE turn (which would corrupt a concurrent Kiro CLI session).
+		return
+	}
+	a.cacheSessionID(identity.entireSessionID)
+}
+
+// rawIDESessionID returns the IDE session UUID supplied in the hook
+// payload, if any. CLI's `conversation_id` is intentionally NOT
+// considered here: mistaking it for an IDE session ID would cause the
+// stop hook to attempt IDE transcript capture against a non-existent
+// `<conversation_id>.json` and then silently fall back to the latest IDE
+// session, checkpointing an unrelated chat.
+func rawIDESessionID(raw hookInputRaw) string {
+	for _, value := range []string{
+		raw.SessionID,
+		raw.SessionIDAlt,
+		raw.ChatSessionID,
+	} {
+		if v := strings.TrimSpace(value); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// rawConversationID returns only the CLI `conversation_id` field. It does
+// NOT fall back to `chatSessionId`, which references a Kiro IDE
+// execution log and would point ensureCachedTranscript at a wrong
+// SQLite row.
+func rawConversationID(raw hookInputRaw) string {
+	return strings.TrimSpace(raw.ConversationID)
 }
 
 func fallbackStopSessionID() string {

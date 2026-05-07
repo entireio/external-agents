@@ -2,16 +2,18 @@ package kiro
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
+
+	_ "modernc.org/sqlite"
 )
 
 const testCLIAnalyzerTranscript = `{
@@ -140,6 +142,25 @@ func TestQuerySessionIDParsesSQLiteJSON(t *testing.T) {
 	}
 }
 
+func TestQuerySessionIDWorksWithoutSQLite3BinaryOnPath(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+
+	dbPath := expectedCLIKiroDBPath(home)
+	createSQLiteConversationDB(t, dbPath, repoRoot, `{"conversation_id":"native-session","history":[]}`)
+
+	sessionID, err := New().querySessionID(repoRoot)
+	if err != nil {
+		t.Fatalf("querySessionID() error = %v", err)
+	}
+	if sessionID != "native-session" {
+		t.Fatalf("sessionID = %q, want %q", sessionID, "native-session")
+	}
+}
+
 func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
@@ -184,6 +205,34 @@ func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 	}
 }
 
+func TestEnsureCachedTranscriptWorksWithoutSQLite3BinaryOnPath(t *testing.T) {
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+
+	dbPath := expectedCLIKiroDBPath(home)
+	createSQLiteConversationDB(t, dbPath, repoRoot, string(buildTranscript("native-session", 2)))
+
+	cachePath, err := New().ensureCachedTranscript(repoRoot, "stable-session", "")
+	if err != nil {
+		t.Fatalf("ensureCachedTranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+	var result kiroTranscript
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("parse cached transcript: %v", err)
+	}
+	if result.ConversationID != "native-session" || len(result.History) != 2 {
+		t.Fatalf("cached transcript conv=%q history=%d, want native-session/2", result.ConversationID, len(result.History))
+	}
+}
+
 func TestEnsureIDETranscriptCopiesLatestWorkspaceSession(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
@@ -210,7 +259,7 @@ func TestEnsureIDETranscriptCopiesLatestWorkspaceSession(t *testing.T) {
 		t.Fatalf("write latest transcript: %v", err)
 	}
 
-	cachePath, err := New().ensureIDETranscript(cwd, "stable-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "stable-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -233,6 +282,174 @@ func TestEnsureIDETranscriptCopiesLatestWorkspaceSession(t *testing.T) {
 	}
 }
 
+func TestEnsureIDETranscriptPrefersResolvedIDESessionOverLatest(t *testing.T) {
+	// Regression: in workspaces with multiple IDE chats, ensureIDETranscript
+	// previously ignored its sessionID parameter and always read the newest
+	// `<id>.json` by dateCreated. That meant a stop event from an older chat
+	// tab would checkpoint the wrong chat's transcript and persist the wrong
+	// trim offset for future turns. Fix: when an ideSessionID is provided and
+	// the matching file exists, use it directly.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	t.Setenv("ENTIRE_CLI_VERSION", "4.5.6")
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	// "latest" is newer by dateCreated, but the resolver tells us the active
+	// chat is "older" (e.g. the user is back in an older tab).
+	index := `[
+  {"sessionId":"older","title":"Old","dateCreated":"2026-01-01T00:00:00Z","workspaceDirectory":"` + cwd + `"},
+  {"sessionId":"latest","title":"New","dateCreated":"2026-02-01T00:00:00Z","workspaceDirectory":"` + cwd + `"}
+]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionsDir, "older.json"), []byte(`{"history":[{"message":{"role":"assistant","content":"older-chat"}}]}`), 0o600); err != nil {
+		t.Fatalf("write older transcript: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionsDir, "latest.json"), []byte(`{"history":[{"message":{"role":"assistant","content":"latest-chat"}}]}`), 0o600); err != nil {
+		t.Fatalf("write latest transcript: %v", err)
+	}
+
+	cachePath, err := New().ensureIDETranscript(cwd, "stable-session", "older")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached IDE transcript: %v", err)
+	}
+	if !strings.Contains(string(data), "older-chat") {
+		t.Fatalf("cached transcript should contain content from the resolved chat, got: %s", data)
+	}
+	if strings.Contains(string(data), "latest-chat") {
+		t.Fatalf("cached transcript should NOT contain content from the latest-by-dateCreated chat, got: %s", data)
+	}
+}
+
+func TestEnsureIDETranscriptFallsBackToLatestWhenIDESessionMissing(t *testing.T) {
+	// When the resolver doesn't know the IDE session (e.g. first turn in a
+	// fresh repo), ensureIDETranscript should still produce a transcript by
+	// falling back to the latest entry in sessions.json — same behavior as
+	// before the multi-chat fix.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	t.Setenv("ENTIRE_CLI_VERSION", "4.5.6")
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	index := `[{"sessionId":"latest","title":"New","dateCreated":"2026-02-01T00:00:00Z","workspaceDirectory":"` + cwd + `"}]`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "sessions.json"), []byte(index), 0o600); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionsDir, "latest.json"), []byte(`{"history":[{"message":{"role":"assistant","content":"latest-chat"}}]}`), 0o600); err != nil {
+		t.Fatalf("write latest transcript: %v", err)
+	}
+
+	cachePath, err := New().ensureIDETranscript(cwd, "stable-session", "")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript() error = %v", err)
+	}
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("read cached transcript: %v", err)
+	}
+	if !strings.Contains(string(data), "latest-chat") {
+		t.Fatalf("expected fallback to latest, got: %s", data)
+	}
+}
+
+func TestEnsureIDETranscriptOffsetsAreIsolatedPerChat(t *testing.T) {
+	// Regression: IDE transcripts have no `conversation_id`, so when the
+	// trim-offset file was keyed by ConversationID, every IDE chat
+	// collapsed into the same global offset bucket. After capturing chat A
+	// (advancing the bucket to position N), capturing chat B would think
+	// chat B's first N entries had already been seen and silently drop
+	// them. Per-IDE-session-key offset files must keep each chat's offset
+	// independent.
+	repoRoot := t.TempDir()
+	home := t.TempDir()
+	cwd := filepath.Join(repoRoot, "workspace")
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(cwd, 0o750); err != nil {
+		t.Fatalf("mkdir cwd: %v", err)
+	}
+
+	sessionsDir := createIDEWorkspaceSessionsDir(t, home, cwd)
+	if err := os.WriteFile(
+		filepath.Join(sessionsDir, "sessions.json"),
+		[]byte(`[
+  {"sessionId":"chat-A","title":"A","dateCreated":"2026-02-01T00:00:00Z"},
+  {"sessionId":"chat-B","title":"B","dateCreated":"2026-03-01T00:00:00Z"}
+]`),
+		0o600,
+	); err != nil {
+		t.Fatalf("write sessions.json: %v", err)
+	}
+
+	chatA := `{"history":[
+		{"message":{"role":"user","content":"A0"}},{"message":{"role":"assistant","content":"a0"}},
+		{"message":{"role":"user","content":"A1"}},{"message":{"role":"assistant","content":"a1"}}
+	]}`
+	chatB := `{"history":[
+		{"message":{"role":"user","content":"B0"}},{"message":{"role":"assistant","content":"b0"}},
+		{"message":{"role":"user","content":"B1"}},{"message":{"role":"assistant","content":"b1"}}
+	]}`
+	if err := os.WriteFile(filepath.Join(sessionsDir, "chat-A.json"), []byte(chatA), 0o600); err != nil {
+		t.Fatalf("write chat-A: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionsDir, "chat-B.json"), []byte(chatB), 0o600); err != nil {
+		t.Fatalf("write chat-B: %v", err)
+	}
+
+	// First capture chat A — should write the full transcript and advance
+	// chat A's per-key offset to its full length.
+	if _, err := New().ensureIDETranscript(cwd, "entire-A", "chat-A"); err != nil {
+		t.Fatalf("ensureIDETranscript(chat-A) error = %v", err)
+	}
+	offsetA := readTestTranscriptOffset(t, repoRoot, "chat-A")
+	if offsetA.Position == 0 {
+		t.Fatalf("chat-A offset should advance after first capture, got %+v", offsetA)
+	}
+	chatAFirstPos := offsetA.Position
+
+	// Then capture chat B — its history must NOT be trimmed by chat A's
+	// position. We expect the cached transcript to contain B's entries,
+	// not an empty slice.
+	cachePathB, err := New().ensureIDETranscript(cwd, "entire-B", "chat-B")
+	if err != nil {
+		t.Fatalf("ensureIDETranscript(chat-B) error = %v", err)
+	}
+	dataB, err := os.ReadFile(cachePathB)
+	if err != nil {
+		t.Fatalf("read chat-B cached transcript: %v", err)
+	}
+	parsedB, err := parseTranscript(dataB)
+	if err != nil {
+		t.Fatalf("parse chat-B cached transcript: %v", err)
+	}
+	if len(parsedB.History) == 0 {
+		t.Fatalf("chat-B history was silently trimmed away — per-chat offset isolation broken")
+	}
+
+	// Chat A's offset must remain untouched by chat B's capture.
+	if offsetA2 := readTestTranscriptOffset(t, repoRoot, "chat-A"); offsetA2.Position != chatAFirstPos {
+		t.Fatalf("chat-A offset mutated by chat-B capture: %d -> %d", chatAFirstPos, offsetA2.Position)
+	}
+}
+
 func TestEnsureIDETranscriptRejectsPathTraversal(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
@@ -250,7 +467,7 @@ func TestEnsureIDETranscriptRejectsPathTraversal(t *testing.T) {
 		t.Fatalf("write sessions.json: %v", err)
 	}
 
-	_, err := New().ensureIDETranscript(cwd, "stable-session")
+	_, err := New().ensureIDETranscript(cwd, "stable-session", "")
 	if err == nil {
 		t.Fatal("expected error for path-traversal session ID, got nil")
 	}
@@ -411,11 +628,34 @@ func createFakeKiroDB(t *testing.T, home string) string {
 	return db
 }
 
+func createSQLiteConversationDB(t *testing.T, dbPath string, key string, value string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
+		t.Fatalf("mkdir db dir: %v", err)
+	}
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite db: %v", err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	if _, err := db.Exec(`CREATE TABLE conversations_v2 (key TEXT, value TEXT, updated_at INTEGER)`); err != nil {
+		t.Fatalf("create conversations_v2: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO conversations_v2 (key, value, updated_at) VALUES (?, ?, 1)`, key, value); err != nil {
+		t.Fatalf("insert conversation row: %v", err)
+	}
+}
+
 func kiroExtensionTestDir(t *testing.T, home string) string {
 	t.Helper()
-	switch runtime.GOOS {
+	switch runtimeGOOS {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support", "Kiro", "User", "globalStorage", "kiro.kiroagent")
+	case "windows":
+		return filepath.Join(home, "AppData", "Roaming", "Kiro", "User", "globalStorage", "kiro.kiroagent")
 	default:
 		return filepath.Join(home, ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent")
 	}
@@ -432,11 +672,119 @@ func createIDEWorkspaceSessionsDir(t *testing.T, home string, cwd string) string
 }
 
 func expectedCLIKiroDBPath(home string) string {
-	switch runtime.GOOS {
+	switch runtimeGOOS {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support", "kiro-cli", "data.sqlite3")
+	case "windows":
+		return filepath.Join(home, "AppData", "Local", "kiro-cli", "data.sqlite3")
 	default:
 		return filepath.Join(home, ".local", "share", "kiro-cli", "data.sqlite3")
+	}
+}
+
+func TestKiroCLIDataDBPathWindowsUsesLocalAppData(t *testing.T) {
+	withRuntimeGOOS(t, "windows")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "LocalAppData"))
+
+	path, err := kiroCLIDataDBPath()
+	if err != nil {
+		t.Fatalf("kiroCLIDataDBPath() error = %v", err)
+	}
+	want := filepath.Join(home, "LocalAppData", "kiro-cli", "data.sqlite3")
+	if path != want {
+		t.Fatalf("path = %q, want %q", path, want)
+	}
+}
+
+func TestKiroExtensionStorageDirWindowsUsesAppData(t *testing.T) {
+	withRuntimeGOOS(t, "windows")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", filepath.Join(home, "RoamingAppData"))
+
+	dir, err := kiroExtensionStorageDir()
+	if err != nil {
+		t.Fatalf("kiroExtensionStorageDir() error = %v", err)
+	}
+	want := filepath.Join(home, "RoamingAppData", "Kiro", "User", "globalStorage", "kiro.kiroagent")
+	if dir != want {
+		t.Fatalf("dir = %q, want %q", dir, want)
+	}
+}
+
+func TestIDEWorkspaceSessionsDirWindowsNormalizesForwardSlashCwd(t *testing.T) {
+	// The entire CLI may pass cwd to the agent with forward-slash separators
+	// (Unix-style for portability), but Kiro IDE encodes paths with native
+	// Windows backslashes. The agent must normalize before base64-encoding
+	// or the workspace-sessions lookup misses the directory Kiro wrote.
+	withRuntimeGOOS(t, "windows")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", filepath.Join(home, "RoamingAppData"))
+
+	forwardSlashCWD := "C:/Users/alisha/testrepo"
+	dir, err := ideWorkspaceSessionsDir(forwardSlashCWD)
+	if err != nil {
+		t.Fatalf("ideWorkspaceSessionsDir() error = %v", err)
+	}
+
+	// Expected: base64 of `c:\Users\alisha\testrepo` (lowercase drive, backslashes)
+	wantEncoded := strings.ReplaceAll(
+		base64.StdEncoding.EncodeToString([]byte(`c:\Users\alisha\testrepo`)),
+		"=", "_",
+	)
+	wantDir := filepath.Join(
+		home, "RoamingAppData", "Kiro", "User", "globalStorage", "kiro.kiroagent",
+		"workspace-sessions", wantEncoded,
+	)
+	if dir != wantDir {
+		t.Fatalf("workspace-sessions dir = %q, want %q (backslashes + lowercase drive)", dir, wantDir)
+	}
+}
+
+func TestIDEWorkspaceSessionsDirWindowsLowercasesDriveLetter(t *testing.T) {
+	// Kiro IDE on Windows normalizes drive letters to lowercase before
+	// base64-encoding the cwd into the workspace-sessions directory name.
+	// Go's os.Getwd() can return either case, so the agent must lowercase
+	// the drive letter to find the directory Kiro actually wrote.
+	withRuntimeGOOS(t, "windows")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("APPDATA", filepath.Join(home, "RoamingAppData"))
+
+	upperCWD := `C:\Users\alisha\testrepo`
+	dir, err := ideWorkspaceSessionsDir(upperCWD)
+	if err != nil {
+		t.Fatalf("ideWorkspaceSessionsDir() error = %v", err)
+	}
+
+	// Expected: base64 of `c:\Users\alisha\testrepo` with `=` padding -> `_`
+	wantEncoded := strings.ReplaceAll(
+		base64.StdEncoding.EncodeToString([]byte(`c:\Users\alisha\testrepo`)),
+		"=", "_",
+	)
+	wantDir := filepath.Join(
+		home, "RoamingAppData", "Kiro", "User", "globalStorage", "kiro.kiroagent",
+		"workspace-sessions", wantEncoded,
+	)
+	if dir != wantDir {
+		t.Fatalf("workspace-sessions dir = %q, want %q (lowercase drive letter)", dir, wantDir)
+	}
+
+	// Lowercase input should resolve to the same directory.
+	lowerCWD := `c:\Users\alisha\testrepo`
+	dirLower, err := ideWorkspaceSessionsDir(lowerCWD)
+	if err != nil {
+		t.Fatalf("ideWorkspaceSessionsDir(lowercase) error = %v", err)
+	}
+	if dirLower != dir {
+		t.Fatalf("lowercase cwd resolved to different dir: %q vs %q", dirLower, dir)
 	}
 }
 
@@ -626,22 +974,29 @@ func buildTranscript(convID string, numPrompts int) []byte {
 	return data
 }
 
-func seedTranscriptOffset(t *testing.T, repoRoot string, convID string, position int) {
+func seedTranscriptOffset(t *testing.T, repoRoot string, key string, position int) {
 	t.Helper()
-	offsetPath := filepath.Join(repoRoot, ".entire", "tmp", "kiro-transcript-offset.json")
+	offsetPath := perKeyOffsetPath(repoRoot, key)
 	if err := os.MkdirAll(filepath.Dir(offsetPath), 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	data, _ := json.Marshal(transcriptOffset{ConversationID: convID, Position: position})
+	data, _ := json.Marshal(transcriptOffset{Key: key, Position: position})
 	if err := os.WriteFile(offsetPath, data, 0o600); err != nil {
 		t.Fatalf("write offset: %v", err)
 	}
 }
 
-func readTestTranscriptOffset(t *testing.T, repoRoot string) transcriptOffset {
+func readTestTranscriptOffset(t *testing.T, repoRoot string, key string) transcriptOffset {
 	t.Helper()
-	offsetPath := filepath.Join(repoRoot, ".entire", "tmp", "kiro-transcript-offset.json")
-	return readTranscriptOffset(offsetPath)
+	return readTranscriptOffset(perKeyOffsetPath(repoRoot, key))
+}
+
+func perKeyOffsetPath(repoRoot string, key string) string {
+	dir := filepath.Join(repoRoot, ".entire", "tmp")
+	if key == "" {
+		return filepath.Join(dir, "kiro-transcript-offset.json")
+	}
+	return filepath.Join(dir, "kiro-transcript-offset-"+sanitizeForFilename(key)+".json")
 }
 
 func TestEnsureCachedTranscriptTrimsWithOffset(t *testing.T) {
@@ -687,7 +1042,7 @@ func TestEnsureCachedTranscriptTrimsWithOffset(t *testing.T) {
 		t.Fatalf("first prompt = %q, want %q", firstPrompt, "prompt 4")
 	}
 
-	offset := readTestTranscriptOffset(t, repoRoot)
+	offset := readTestTranscriptOffset(t, repoRoot, "conv-1")
 	if offset.Position != 8 {
 		t.Fatalf("offset position = %d, want 8", offset.Position)
 	}
@@ -730,8 +1085,8 @@ func TestEnsureCachedTranscriptFirstCapture(t *testing.T) {
 		t.Fatalf("history length = %d, want 4 (full transcript)", len(result.History))
 	}
 
-	offset := readTestTranscriptOffset(t, repoRoot)
-	if offset.ConversationID != "conv-1" || offset.Position != 4 {
+	offset := readTestTranscriptOffset(t, repoRoot, "conv-1")
+	if offset.Key != "conv-1" || offset.Position != 4 {
 		t.Fatalf("offset = %+v, want {conv-1, 4}", offset)
 	}
 }
@@ -771,14 +1126,21 @@ func TestEnsureCachedTranscriptConversationIDChange(t *testing.T) {
 		t.Fatalf("parse cached transcript: %v", err)
 	}
 
-	// Full transcript (no trimming) since conversation_id changed.
+	// Full transcript (no trimming) since the new conversation gets its own
+	// per-key offset file independent of the old-conv bucket.
 	if len(result.History) != 3 {
 		t.Fatalf("history length = %d, want 3 (full, new conversation)", len(result.History))
 	}
 
-	offset := readTestTranscriptOffset(t, repoRoot)
-	if offset.ConversationID != "new-conv" || offset.Position != 3 {
-		t.Fatalf("offset = %+v, want {new-conv, 3}", offset)
+	newOffset := readTestTranscriptOffset(t, repoRoot, "new-conv")
+	if newOffset.Key != "new-conv" || newOffset.Position != 3 {
+		t.Fatalf("new-conv offset = %+v, want {new-conv, 3}", newOffset)
+	}
+	// And the old-conv bucket is left untouched (so resuming that
+	// conversation later would still trim correctly).
+	oldOffset := readTestTranscriptOffset(t, repoRoot, "old-conv")
+	if oldOffset.Position != 5 {
+		t.Fatalf("old-conv offset = %+v, want {old-conv, 5} preserved", oldOffset)
 	}
 }
 
@@ -822,7 +1184,7 @@ func TestEnsureCachedTranscriptOffsetExceedsLength(t *testing.T) {
 		t.Fatalf("history length = %d, want 3 (full, offset exceeded)", len(result.History))
 	}
 
-	offset := readTestTranscriptOffset(t, repoRoot)
+	offset := readTestTranscriptOffset(t, repoRoot, "conv-1")
 	if offset.Position != 3 {
 		t.Fatalf("offset position = %d, want 3 (reset)", offset.Position)
 	}
@@ -870,7 +1232,7 @@ func TestEnsureCachedTranscriptNoNewEntriesReturnsFull(t *testing.T) {
 	}
 
 	// Offset should NOT advance (still 4).
-	offset := readTestTranscriptOffset(t, repoRoot)
+	offset := readTestTranscriptOffset(t, repoRoot, "conv-1")
 	if offset.Position != 4 {
 		t.Fatalf("offset position = %d, want 4 (should not advance)", offset.Position)
 	}
@@ -927,7 +1289,7 @@ func TestEnsureIDETranscriptWithModifiedBase64Encoding(t *testing.T) {
 		t.Fatalf("write IDE transcript: %v", err)
 	}
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1086,17 +1448,20 @@ func TestEnsureIDETranscriptMergesToolCalls(t *testing.T) {
 		t.Fatalf("write IDE transcript: %v", err)
 	}
 
-	// Seed tool calls JSONL (simulating post-tool-use hooks that fired)
+	// Seed tool calls JSONL keyed by the IDE session ID (post-tool-use
+	// hooks now write per-chat files so multi-chat workspaces don't
+	// cross-contaminate).
 	toolCallsDir := filepath.Join(repoRoot, ".entire", "tmp")
 	if err := os.MkdirAll(toolCallsDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	toolCallLine := `{"name":"fs_write","args":{"path":"/repo/hello.py","command":"create","file_text":"print('hello')"}}` + "\n"
-	if err := os.WriteFile(filepath.Join(toolCallsDir, toolCallsFile), []byte(toolCallLine), 0o600); err != nil {
+	perChatToolCalls := filepath.Join(toolCallsDir, "kiro-tool-calls-"+sanitizeForFilename("ide-sess")+".jsonl")
+	if err := os.WriteFile(perChatToolCalls, []byte(toolCallLine), 0o600); err != nil {
 		t.Fatalf("write tool calls: %v", err)
 	}
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "ide-sess")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1125,7 +1490,7 @@ func TestEnsureIDETranscriptMergesToolCalls(t *testing.T) {
 	}
 
 	// Tool calls JSONL should be consumed (deleted)
-	if _, err := os.Stat(filepath.Join(toolCallsDir, toolCallsFile)); !os.IsNotExist(err) {
+	if _, err := os.Stat(perChatToolCalls); !os.IsNotExist(err) {
 		t.Fatal("tool calls JSONL should be deleted after consumption")
 	}
 }
@@ -1151,7 +1516,7 @@ func TestEnsureIDETranscriptWithoutToolCalls(t *testing.T) {
 	}
 
 	// No tool calls file — should still work, caching IDE format as-is
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1452,7 +1817,7 @@ func TestEnsureIDETranscriptWithExecutionLogs(t *testing.T) {
 		},
 	})
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1495,17 +1860,20 @@ func TestEnsureIDETranscriptFallsBackToToolCallsWhenNoExecLogs(t *testing.T) {
 		t.Fatalf("write IDE transcript: %v", err)
 	}
 
-	// No execution logs dir — seed JSONL tool calls as fallback
+	// No execution logs dir — seed JSONL tool calls (per-chat keyed) as
+	// fallback. The reader uses the same key the post-tool-use writer
+	// would have used (the IDE session ID).
 	toolCallsDir := filepath.Join(repoRoot, ".entire", "tmp")
 	if err := os.MkdirAll(toolCallsDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	toolCallLine := `{"name":"fs_write","args":{"path":"hello.py"}}` + "\n"
-	if err := os.WriteFile(filepath.Join(toolCallsDir, toolCallsFile), []byte(toolCallLine), 0o600); err != nil {
+	perChatToolCalls := filepath.Join(toolCallsDir, "kiro-tool-calls-"+sanitizeForFilename("ide-sess")+".jsonl")
+	if err := os.WriteFile(perChatToolCalls, []byte(toolCallLine), 0o600); err != nil {
 		t.Fatalf("write tool calls: %v", err)
 	}
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "ide-sess")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1548,10 +1916,11 @@ func TestEnsureIDETranscriptTrimsWithOffset(t *testing.T) {
 	}
 
 	// Seed offset at position 2 — first 2 pairs already checkpointed.
-	// IDE transcripts have empty conversation_id after conversion.
-	seedTranscriptOffset(t, repoRoot, "", 2)
+	// IDE transcripts are now keyed by the IDE session ID so each chat
+	// gets its own offset bucket.
+	seedTranscriptOffset(t, repoRoot, "ide-sess", 2)
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1578,7 +1947,7 @@ func TestEnsureIDETranscriptTrimsWithOffset(t *testing.T) {
 	}
 
 	// Offset should be updated to 4 (total length).
-	offset := readTestTranscriptOffset(t, repoRoot)
+	offset := readTestTranscriptOffset(t, repoRoot, "ide-sess")
 	if offset.Position != 4 {
 		t.Fatalf("offset position = %d, want 4", offset.Position)
 	}
@@ -1609,7 +1978,7 @@ func TestEnsureIDETranscriptFirstCapture(t *testing.T) {
 	}
 
 	// No offset file — first capture should return full transcript and create offset.
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() error = %v", err)
 	}
@@ -1628,8 +1997,8 @@ func TestEnsureIDETranscriptFirstCapture(t *testing.T) {
 		t.Fatalf("history length = %d, want 2 (full transcript)", len(result.History))
 	}
 
-	// Offset file should be created with position 2.
-	offset := readTestTranscriptOffset(t, repoRoot)
+	// Offset file should be created with position 2 keyed by IDE session ID.
+	offset := readTestTranscriptOffset(t, repoRoot, "ide-sess")
 	if offset.Position != 2 {
 		t.Fatalf("offset position = %d, want 2", offset.Position)
 	}
@@ -1663,7 +2032,7 @@ func TestEnsureIDETranscriptNoNewEntriesSucceeds(t *testing.T) {
 	// full transcript is kept (same behavior as ensureCachedTranscript).
 	seedTranscriptOffset(t, repoRoot, "", 1)
 
-	cachePath, err := New().ensureIDETranscript(cwd, "test-session")
+	cachePath, err := New().ensureIDETranscript(cwd, "test-session", "")
 	if err != nil {
 		t.Fatalf("ensureIDETranscript() should succeed with full transcript when no new entries, got error: %v", err)
 	}

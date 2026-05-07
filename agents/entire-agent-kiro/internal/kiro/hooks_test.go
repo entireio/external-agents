@@ -8,6 +8,15 @@ import (
 	"testing"
 )
 
+func withRuntimeGOOS(t *testing.T, goos string) {
+	t.Helper()
+	previous := runtimeGOOS
+	runtimeGOOS = goos
+	t.Cleanup(func() {
+		runtimeGOOS = previous
+	})
+}
+
 func TestInstallHooksWritesCLIAndIDEHooksAndTrustedCommands(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
@@ -106,6 +115,76 @@ func TestInstallHooksLocalDevUsesLocalCommands(t *testing.T) {
 	}
 }
 
+func TestInstallHooksWritesWindowsCommandsAndTrustedCommands(t *testing.T) {
+	withRuntimeGOOS(t, "windows")
+
+	repoRoot := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+
+	if _, err := New().InstallHooks(false, false); err != nil {
+		t.Fatalf("InstallHooks() error = %v", err)
+	}
+
+	idePath := filepath.Join(repoRoot, ".kiro", "hooks", "entire-stop.kiro.hook")
+	ideData, err := os.ReadFile(idePath)
+	if err != nil {
+		t.Fatalf("read ide hook: %v", err)
+	}
+	if strings.Contains(string(ideData), "sh -c") {
+		t.Fatalf("windows ide hook should not use sh wrapper: %s", ideData)
+	}
+	if !strings.Contains(string(ideData), `"command": "cmd /c \"entire hooks kiro stop <NUL\""`) {
+		t.Fatalf("windows ide hook should wrap with cmd /c and redirect stdin from NUL: %s", ideData)
+	}
+
+	settingsPath := filepath.Join(repoRoot, ".vscode", "settings.json")
+	settingsData, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	if !strings.Contains(string(settingsData), `"cmd /c \"entire hooks *"`) {
+		t.Fatalf("windows settings should trust cmd /c wrapper glob: %s", settingsData)
+	}
+}
+
+func TestInstallHooksLocalDevWindowsUsesPercentEnvVar(t *testing.T) {
+	withRuntimeGOOS(t, "windows")
+
+	repoRoot := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+
+	if _, err := New().InstallHooks(true, false); err != nil {
+		t.Fatalf("InstallHooks() error = %v", err)
+	}
+
+	cliPath := filepath.Join(repoRoot, ".kiro", "agents", "entire.json")
+	cliData, err := os.ReadFile(cliPath)
+	if err != nil {
+		t.Fatalf("read cli hooks: %v", err)
+	}
+	if !strings.Contains(string(cliData), `go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks kiro stop`) {
+		t.Fatalf("windows cli hooks = %s", cliData)
+	}
+
+	idePath := filepath.Join(repoRoot, ".kiro", "hooks", "entire-stop.kiro.hook")
+	ideData, err := os.ReadFile(idePath)
+	if err != nil {
+		t.Fatalf("read ide hook: %v", err)
+	}
+	if !strings.Contains(string(ideData), `"command": "cmd /c \"go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks kiro stop <NUL\""`) {
+		t.Fatalf("windows local-dev ide hook should wrap with cmd /c and redirect stdin: %s", ideData)
+	}
+
+	settingsPath := filepath.Join(repoRoot, ".vscode", "settings.json")
+	settingsData, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings: %v", err)
+	}
+	if !strings.Contains(string(settingsData), `cmd /c \"go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks *`) {
+		t.Fatalf("windows settings = %s", settingsData)
+	}
+}
+
 func TestUninstallHooksRemovesEntireArtifactsAndPreservesOtherSettings(t *testing.T) {
 	repoRoot := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
@@ -165,6 +244,43 @@ func TestUninstallHooksWithoutSettingsFileDoesNotCreateOne(t *testing.T) {
 	settingsPath := filepath.Join(repoRoot, ".vscode", "settings.json")
 	if _, err := os.Stat(settingsPath); !os.IsNotExist(err) {
 		t.Fatalf("settings.json should not be created, got err=%v", err)
+	}
+}
+
+func TestUninstallHooksRemovesWindowsTrustedCommands(t *testing.T) {
+	withRuntimeGOOS(t, "windows")
+
+	repoRoot := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
+
+	settingsDir := filepath.Join(repoRoot, ".vscode")
+	if err := os.MkdirAll(settingsDir, 0o750); err != nil {
+		t.Fatalf("mkdir settings dir: %v", err)
+	}
+	settingsPath := filepath.Join(settingsDir, "settings.json")
+	initial := []byte("{\n  \"kiroAgent.trustedCommands\": [\"cmd /c \\\"entire hooks *\", \"cmd /c \\\"go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks *\", \"entire hooks *\", \"go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks *\", \"custom-tool run\"]\n}\n")
+	if err := os.WriteFile(settingsPath, initial, 0o600); err != nil {
+		t.Fatalf("write initial settings: %v", err)
+	}
+
+	if err := New().UninstallHooks(); err != nil {
+		t.Fatalf("UninstallHooks() error = %v", err)
+	}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings after uninstall: %v", err)
+	}
+	var settings map[string]json.RawMessage
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("unmarshal settings after uninstall: %v", err)
+	}
+	var commands []string
+	if err := json.Unmarshal(settings["kiroAgent.trustedCommands"], &commands); err != nil {
+		t.Fatalf("unmarshal trusted commands: %v", err)
+	}
+	if len(commands) != 1 || commands[0] != "custom-tool run" {
+		t.Fatalf("trusted commands after uninstall = %#v, want [\"custom-tool run\"]", commands)
 	}
 }
 
