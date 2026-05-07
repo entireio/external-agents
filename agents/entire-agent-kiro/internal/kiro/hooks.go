@@ -386,7 +386,7 @@ func uninstallTrustedCommands(repoRoot string) error {
 
 func hookCommandBase(localDev bool) string {
 	if localDev {
-		if runtimeGOOS == "windows" {
+		if runtimeGOOS == osWindows {
 			return "go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks kiro "
 		}
 		return "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro "
@@ -402,7 +402,7 @@ func hookCommandBase(localDev bool) string {
 // an inherited Kiro IDE stdin pipe that never gets closed.
 // The command content is built from compile-time constants (not user input).
 func shellWrappedCommand(cmd string) string {
-	if runtimeGOOS == "windows" {
+	if runtimeGOOS == osWindows {
 		return `cmd /c "` + cmd + ` <NUL"`
 	}
 	return "sh -c '" + cmd + " </dev/null'"
@@ -410,12 +410,12 @@ func shellWrappedCommand(cmd string) string {
 
 func trustedCommand(localDev bool) string {
 	if localDev {
-		if runtimeGOOS == "windows" {
+		if runtimeGOOS == osWindows {
 			return `cmd /c "go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks *`
 		}
 		return "sh -c 'go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *"
 	}
-	if runtimeGOOS == "windows" {
+	if runtimeGOOS == osWindows {
 		return `cmd /c "entire hooks *`
 	}
 	return "sh -c 'entire hooks *"

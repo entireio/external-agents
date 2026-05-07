@@ -15,6 +15,9 @@ import (
 	"time"
 
 	"github.com/entireio/external-agents/agents/entire-agent-kiro/internal/protocol"
+	// modernc.org/sqlite registers the "sqlite" driver used by sql.Open
+	// in openSQLiteDB. The blank import is the standard way to opt into
+	// a database/sql driver; without it, sql.Open returns an error.
 	_ "modernc.org/sqlite"
 )
 
@@ -31,6 +34,11 @@ var runSQLiteCommand = func(args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("unsupported sqlite invocation with %d args", len(args))
 	}
 }
+
+// osWindows is the value of runtime.GOOS on Windows. Used in the many
+// platform branches across this package; declared as a constant so the
+// linter doesn't flag the repeated string literal.
+const osWindows = "windows"
 
 var runtimeGOOS = runtime.GOOS
 
@@ -551,7 +559,7 @@ func kiroDataDir() (string, error) {
 	switch runtimeGOOS {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support"), nil
-	case "windows":
+	case osWindows:
 		localAppData := os.Getenv("LOCALAPPDATA")
 		if localAppData == "" {
 			localAppData = filepath.Join(home, "AppData", "Local")
@@ -580,7 +588,7 @@ func kiroExtensionStorageDir() (string, error) {
 	switch runtimeGOOS {
 	case "darwin":
 		return filepath.Join(home, "Library", "Application Support", "Kiro", "User", "globalStorage", "kiro.kiroagent"), nil
-	case "windows":
+	case osWindows:
 		appData := os.Getenv("APPDATA")
 		if appData == "" {
 			appData = filepath.Join(home, "AppData", "Roaming")
@@ -676,7 +684,7 @@ func ideWorkspaceSessionsDir(cwd string) (string, error) {
 	// os.Getwd() and the entire CLI's ENTIRE_REPO_ROOT may use uppercase
 	// drives or forward slashes, so we must normalize before encoding or
 	// the workspace-sessions lookup misses Kiro's directory.
-	if runtimeGOOS == "windows" {
+	if runtimeGOOS == osWindows {
 		cwd = normalizeWindowsCWDForKiro(cwd)
 	}
 	// Kiro IDE uses standard base64 with '=' padding replaced by '_'.
