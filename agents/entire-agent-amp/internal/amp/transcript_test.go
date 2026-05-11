@@ -159,7 +159,7 @@ func TestCalculateTokens_PreparedJSON(t *testing.T) {
 }
 
 func TestPrepareTranscript(t *testing.T) {
-	path := writeTestTranscript(t)
+	path := writePreparedTranscript(t)
 	runner := &fakeCommandRunner{}
 	agent := &Agent{CommandRunner: runner}
 	if err := agent.PrepareTranscript(path); err != nil {
@@ -180,19 +180,23 @@ func TestPrepareTranscript(t *testing.T) {
 	}
 }
 
-func TestPrepareTranscript_MissingThreadID(t *testing.T) {
+func TestPrepareTranscript_UnpreparedFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "amp.jsonl")
 	if err := os.WriteFile(path, []byte("{\"type\":\"agent.start\",\"message\":\"hello\"}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := (&Agent{CommandRunner: &fakeCommandRunner{}}).PrepareTranscript(path)
+	runner := &fakeCommandRunner{}
+	err := (&Agent{CommandRunner: runner}).PrepareTranscript(path)
 	if err == nil {
 		t.Fatal("expected error")
+	}
+	if runner.threadID != "" {
+		t.Fatalf("runner unexpectedly invoked with threadID = %q", runner.threadID)
 	}
 }
 
 func TestPrepareTranscript_RunnerError(t *testing.T) {
-	path := writeTestTranscript(t)
+	path := writePreparedTranscript(t)
 	wantErr := errors.New("boom")
 	err := (&Agent{CommandRunner: &fakeCommandRunner{err: wantErr}}).PrepareTranscript(path)
 	if !errors.Is(err, wantErr) {

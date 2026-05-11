@@ -2,7 +2,7 @@
 
 ## Verdict: COMPATIBLE
 
-Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `agent.end`. Project plugins require launching Amp with `PLUGINS=all` in classic Amp clients. Amp threads are server-side, so the integration uses plugin hooks only to discover the active thread ID, then retrieves the authoritative transcript with `amp threads export <thread-id>` during `prepare-transcript`.
+Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `agent.end`. Project plugins require launching Amp with `PLUGINS=all` in classic Amp clients. Amp threads are server-side, so the integration uses plugin hooks to discover the active thread ID and then retrieves the authoritative transcript with `amp threads export <thread-id>` directly from the `session.start` and `agent.end` hooks.
 
 ## Static Checks
 | Check | Result | Notes |
@@ -37,20 +37,18 @@ Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `
 ## Session Management
 - Session ID source: Amp `thread.id`.
 - Session directory: `.entire/tmp/amp/`.
-- Bootstrap session file format: JSONL hook cache written by the external agent binary from plugin payloads.
-- Prepared session file format: exported Amp thread JSON, parsed as `AmpThread` from `internal/amp/types.go`.
+- Session file format: exported Amp thread JSON, parsed as `AmpThread` from `internal/amp/types.go`. The binary writes this file on `session.start` and refreshes it on `agent.end`.
 - Resume mechanism: `PLUGINS=all amp threads continue <thread-id>`.
 
 ## Transcript
-- Bootstrap location: `.entire/tmp/amp/<safe-thread-id>.json` before preparation. The file contains JSONL hook entries with at least `type`, `thread_id`, and optional prompt text.
-- Retrieval: `prepare-transcript --session-ref <path>` reads the bootstrap JSONL, extracts `thread_id`, runs `amp threads export <thread-id>`, and writes the exported JSON back to the same `session_ref` path.
-- Authoritative storage: after preparation, `session_ref` contains the exported Amp thread JSON byte-for-byte. This JSON is the session's native data and the input for all transcript operations.
+- Authoritative storage: `session_ref` always contains the exported Amp thread JSON byte-for-byte (the output of `amp threads export <thread-id>`). This JSON is the session's native data and the input for all transcript operations.
+- Retrieval: the binary runs `amp threads export <thread-id>` during the `session.start` and `agent.end` plugin hooks and writes the result to `session_ref`. `prepare-transcript --session-ref <path>` is available as a refresh — it parses the existing prepared transcript to recover `thread.id` and re-exports.
 - Authoritative parser: `internal/amp/types.go` models the exported transcript as `AmpThread`, `ThreadMessage`, `ThreadContentBlock`, `ThreadToolRun`, and `ThreadUsage`.
 - User prompt extraction: `AmpThread.Messages[].Content[]` text blocks on `role: "user"` messages.
 - Assistant summary extraction: last non-empty text block on `role: "assistant"` messages.
 - Modified file extraction: `ThreadToolRun.TrackFiles`, tool input path fields (`path`, `filePath`, `filepath`, `file`, `absolutePath`, `paths`, `files`), and common tool result `absolutePath` fields.
 - Token usage extraction: `ThreadMessage.Usage` on exported messages.
-- Unprepared behavior: transcript analyzer, compact transcript, token calculation, and read-session operations require exported `AmpThread` JSON and return an error if called on the bootstrap JSONL cache before `prepare-transcript`.
+- Unprepared behavior: transcript analyzer, compact transcript, token calculation, and read-session operations require exported `AmpThread` JSON and return an error if called on a `session_ref` that has not yet been populated by an export.
 
 ## Protocol Mapping
 | Subcommand | Native Concept | Implementation Notes | Feasibility |
@@ -66,7 +64,7 @@ Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `
 | `chunk-transcript` | raw bytes | Base64 chunking via protocol JSON encoding | Required |
 | `reassemble-transcript` | chunks | Reassemble raw bytes | Required |
 | `format-resume-command` | Amp thread continue | `PLUGINS=all amp threads continue <id>` | Required |
-| `parse-hook` | plugin event JSON | Map hook payloads to protocol events and append minimal bootstrap JSONL with `thread_id` | Hooks |
+| `parse-hook` | plugin event JSON | Map hook payloads to protocol events; export Amp thread on `session.start` and `agent.end` | Hooks |
 | `install-hooks` | project plugin | Write `.amp/plugins/entire.ts` | Hooks |
 | `uninstall-hooks` | project plugin | Remove `.amp/plugins/entire.ts` | Hooks |
 | `are-hooks-installed` | project plugin | Check plugin marker | Hooks |
@@ -74,7 +72,7 @@ Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `
 | `extract-modified-files` | exported Amp JSON | Parse `AmpThread` tool inputs/results and `trackFiles` | Transcript analyzer |
 | `extract-prompts` | exported Amp JSON | Parse user text blocks from `AmpThread.Messages` | Transcript analyzer |
 | `extract-summary` | exported Amp JSON | Parse last assistant text block from `AmpThread.Messages` | Transcript analyzer |
-| `prepare-transcript` | `amp threads export` | Read bootstrap `thread_id`, export server-side thread JSON, overwrite `session_ref` | Transcript preparer |
+| `prepare-transcript` | `amp threads export` | Re-export the Amp thread using the thread ID from the existing prepared transcript at `session_ref` | Transcript preparer |
 | `compact-transcript` | exported Amp JSON | Emit Entire compact JSONL from `AmpThread` | Compact transcript |
 | `calculate-tokens` | exported Amp JSON | Sum `ThreadMessage.Usage` token fields | Token calculator |
 
@@ -92,8 +90,7 @@ Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `
 
 ## Gaps & Limitations
 - Amp must be launched with `PLUGINS=all` for hooks to fire.
-- The bootstrap JSONL cache is intentionally not a transcript. It only carries enough state for `prepare-transcript` to retrieve the real server-side thread.
-- All transcript operations require the prepared `amp threads export` JSON. Calling them before preparation fails by design.
+- All transcript operations require the prepared `amp threads export` JSON at `session_ref`. The binary triggers this export from the `session.start` and `agent.end` plugin hooks; operations called before either of those hooks fires will return an error.
 - `session.start` cannot be trusted for thread identity because `thread.id` is optional there.
 
 ## E2E Test Prerequisites

@@ -1,7 +1,6 @@
 package amp
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -16,62 +15,7 @@ import (
 	"github.com/entireio/external-agents/agents/entire-agent-amp/internal/protocol"
 )
 
-const maxScannerLine = 4 << 20
-
 const prepareTranscriptTimeout = 30 * time.Second
-
-type ampTranscriptEntry struct {
-	Type     string `json:"type"`
-	ThreadID string `json:"thread_id"`
-	Message  string `json:"message,omitempty"`
-}
-
-func newJSONLScanner(data []byte) *bufio.Scanner {
-	s := bufio.NewScanner(bytes.NewReader(data))
-	s.Buffer(make([]byte, 0, 64*1024), maxScannerLine)
-	return s
-}
-
-func appendTranscriptEntry(path string, entry ampTranscriptEntry) error {
-	if path == "" {
-		return errors.New("transcript path is required")
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return err
-	}
-	line, err := json.Marshal(entry)
-	if err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	_, err = f.Write(append(line, '\n'))
-	return err
-}
-
-func readBootstrapEntries(data []byte) []ampTranscriptEntry {
-	var entries []ampTranscriptEntry
-	scanner := newJSONLScanner(data)
-	for scanner.Scan() {
-		var entry ampTranscriptEntry
-		if err := json.Unmarshal(scanner.Bytes(), &entry); err == nil && entry.Type != "" {
-			entries = append(entries, entry)
-		}
-	}
-	return entries
-}
-
-func bootstrapThreadID(data []byte) string {
-	for _, entry := range readBootstrapEntries(data) {
-		if entry.ThreadID != "" {
-			return entry.ThreadID
-		}
-	}
-	return ""
-}
 
 func parseAmpThread(data []byte) (*AmpThread, error) {
 	trimmed := bytes.TrimSpace(data)
@@ -146,12 +90,11 @@ func (a *Agent) PrepareTranscript(sessionRef string) error {
 	if err != nil {
 		return fmt.Errorf("read transcript for prepare: %w", err)
 	}
-	threadID := bootstrapThreadID(data)
-	if threadID == "" {
-		if thread, err := parseAmpThread(data); err == nil {
-			threadID = thread.ID
-		}
+	thread, err := parseAmpThread(data)
+	if err != nil {
+		return err
 	}
+	threadID := thread.ID
 	if threadID == "" {
 		return errors.New("cannot prepare transcript: missing amp thread_id")
 	}
@@ -280,6 +223,19 @@ func (a *Agent) CalculateTokens(data []byte, _ int) (protocol.TokenUsageResponse
 		usage.APICallCount++
 	}
 	return usage, nil
+}
+
+func latestThreadModel(thread *AmpThread) string {
+	if thread == nil {
+		return ""
+	}
+	for i := len(thread.Messages) - 1; i >= 0; i-- {
+		usage := thread.Messages[i].Usage
+		if usage != nil && strings.TrimSpace(usage.Model) != "" {
+			return strings.TrimSpace(usage.Model)
+		}
+	}
+	return ""
 }
 
 func modifiedFilesFromThread(thread *AmpThread) []string {

@@ -1,6 +1,8 @@
 package amp
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -49,47 +51,88 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 
 	switch hookName {
 	case "session.start":
+		_ = a.exportThread(sessionID, sessionRef)
 		return &protocol.EventJSON{
 			Type:       1,
 			SessionID:  sessionID,
 			SessionRef: sessionRef,
+			Model:      latestModelFromSessionRef(sessionRef),
 			Timestamp:  now,
 		}, nil
 
 	case "agent.start":
-		if err := appendTranscriptEntry(sessionRef, ampTranscriptEntry{
-			Type:     "agent.start",
-			ThreadID: sessionID,
-			Message:  payload.Message,
-		}); err != nil {
-			return nil, err
+		model := latestModelFromSessionRef(sessionRef)
+		if model == "" {
+			// Fallback: ensure we have a prepared transcript so we can populate the model.
+			error := a.exportThread(sessionID, sessionRef)
+			if error == nil {
+				model = latestModelFromSessionRef(sessionRef)
+			}
 		}
 		return &protocol.EventJSON{
 			Type:       2,
 			SessionID:  sessionID,
 			SessionRef: sessionRef,
 			Prompt:     payload.Message,
+			Model:      model,
 			Timestamp:  now,
 		}, nil
 
 	case "agent.end":
-		if err := appendTranscriptEntry(sessionRef, ampTranscriptEntry{
-			Type:     "agent.end",
-			ThreadID: sessionID,
-			Message:  payload.Message,
-		}); err != nil {
-			return nil, err
+		error := a.exportThread(sessionID, sessionRef)
+		if error != nil {
+			return nil, fmt.Errorf("export thread on agent.end: %w", error)
 		}
 		return &protocol.EventJSON{
 			Type:       3,
 			SessionID:  sessionID,
 			SessionRef: sessionRef,
+			Model:      latestModelFromSessionRef(sessionRef),
 			Timestamp:  now,
 		}, nil
 
 	default:
 		return nil, nil
 	}
+}
+
+// exportThread runs `amp threads export` for the given thread and writes the
+// result to sessionRef. The parent directory is created if needed. Callers
+// generally ignore the returned error and fall back to reporting an empty
+// model so events are still emitted.
+func (a *Agent) exportThread(threadID, sessionRef string) error {
+	if strings.TrimSpace(threadID) == "" || strings.TrimSpace(sessionRef) == "" {
+		return fmt.Errorf("thread id and session ref are required")
+	}
+	runner := a.CommandRunner
+	if runner == nil {
+		runner = &DefaultCommandRunner{}
+	}
+	if err := os.MkdirAll(filepath.Dir(sessionRef), 0o750); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), prepareTranscriptTimeout)
+	defer cancel()
+	_, err := runner.ExportThread(ctx, threadID, sessionRef)
+	return err
+}
+
+// latestModelFromSessionRef returns the most recent model string recorded in
+// the prepared transcript at sessionRef. It returns an empty string if the
+// file is missing or not yet a prepared AmpThread JSON.
+func latestModelFromSessionRef(sessionRef string) string {
+	if strings.TrimSpace(sessionRef) == "" {
+		return ""
+	}
+	data, err := os.ReadFile(sessionRef)
+	if err != nil || len(bytes.TrimSpace(data)) == 0 {
+		return ""
+	}
+	thread, err := parseAmpThread(data)
+	if err != nil {
+		return ""
+	}
+	return latestThreadModel(thread)
 }
 
 func (a *Agent) InstallHooks(_ bool, force bool) (int, error) {
