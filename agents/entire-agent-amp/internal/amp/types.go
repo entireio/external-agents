@@ -119,9 +119,6 @@ type ThreadActivatedSkill struct {
 	Name string `json:"name"`
 }
 
-// ThreadMessageID is documented by Amp's plugin API as number|string. Exported
-// transcripts observed so far use numbers, but accepting both keeps the parser
-// aligned with the public ThreadMessage contract.
 type ThreadMessageID string
 
 func (id *ThreadMessageID) UnmarshalJSON(data []byte) error {
