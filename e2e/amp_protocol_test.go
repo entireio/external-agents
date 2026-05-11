@@ -69,7 +69,7 @@ func TestLifecycle_AmpPrepareTranscriptProtocol(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(modified, &modifiedResp))
 	assert.Equal(t, []string{"hello.txt"}, modifiedResp.Files)
-	assert.Equal(t, len(prepared), modifiedResp.CurrentPosition)
+	assert.Equal(t, 3, modifiedResp.CurrentPosition)
 
 	tokens := runAgent(t, binPath, env, prepared, "calculate-tokens", "--offset", "0")
 	assert.JSONEq(t, `{"input_tokens":100,"cache_creation_tokens":3,"cache_read_tokens":7,"output_tokens":25,"api_call_count":1}`, string(tokens))

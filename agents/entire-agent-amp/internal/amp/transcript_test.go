@@ -66,12 +66,22 @@ func TestExtractModifiedFiles_PreparedJSON(t *testing.T) {
 	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSON), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	files, _, err := agent.ExtractModifiedFiles(path, 0)
+	files, pos, err := agent.ExtractModifiedFiles(path, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 1 || files[0] != "hello.txt" {
 		t.Fatalf("files = %v", files)
+	}
+	if pos != 3 {
+		t.Fatalf("position = %d, want 3", pos)
+	}
+	files, pos, err = agent.ExtractModifiedFiles(path, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 || pos != 3 {
+		t.Fatalf("offset files = %v position = %d, want no files at position 3", files, pos)
 	}
 }
 
@@ -94,6 +104,13 @@ func TestExtractPrompts_PreparedJSON(t *testing.T) {
 	}
 	if len(prompts) != 1 || prompts[0] != "Create hello.txt" {
 		t.Fatalf("prompts = %v", prompts)
+	}
+	prompts, err = agent.ExtractPrompts(path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prompts) != 0 {
+		t.Fatalf("offset prompts = %v, want none", prompts)
 	}
 }
 
@@ -156,6 +173,25 @@ func TestCalculateTokens_PreparedJSON(t *testing.T) {
 	if usage.InputTokens != 100 || usage.OutputTokens != 25 || usage.CacheReadTokens != 7 || usage.CacheCreationTokens != 3 || usage.APICallCount != 1 {
 		t.Fatalf("usage = %+v", usage)
 	}
+	usage, err = agent.CalculateTokens([]byte(testPreparedTranscriptJSON), 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.APICallCount != 0 || usage.InputTokens != 0 || usage.OutputTokens != 0 || usage.CacheReadTokens != 0 || usage.CacheCreationTokens != 0 {
+		t.Fatalf("offset usage = %+v, want zero usage", usage)
+	}
+}
+
+func TestGetTranscriptPosition_PreparedJSON(t *testing.T) {
+	agent := New()
+	path := writePreparedTranscript(t)
+	pos, err := agent.GetTranscriptPosition(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pos != 3 {
+		t.Fatalf("position = %d, want 3", pos)
+	}
 }
 
 func TestPrepareTranscript(t *testing.T) {
@@ -181,6 +217,21 @@ func TestPrepareTranscript(t *testing.T) {
 }
 
 func TestPrepareTranscript_UnpreparedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "amp.jsonl")
+	if err := os.WriteFile(path, []byte(testTranscriptJSONL), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeCommandRunner{}
+	err := (&Agent{CommandRunner: runner}).PrepareTranscript(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runner.threadID != "T-123" {
+		t.Fatalf("threadID = %q, want T-123", runner.threadID)
+	}
+}
+
+func TestPrepareTranscript_UnpreparedFileMissingThreadID(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "amp.jsonl")
 	if err := os.WriteFile(path, []byte("{\"type\":\"agent.start\",\"message\":\"hello\"}\n"), 0o600); err != nil {
 		t.Fatal(err)

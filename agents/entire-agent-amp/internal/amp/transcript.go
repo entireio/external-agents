@@ -47,6 +47,33 @@ func readAmpThread(path string) (*AmpThread, []byte, error) {
 	return thread, data, nil
 }
 
+func threadIDFromTranscriptData(data []byte) (string, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return "", errors.New("empty amp transcript")
+	}
+
+	if thread, err := parseAmpThread(trimmed); err == nil {
+		return thread.ID, nil
+	}
+
+	for line := range bytes.SplitSeq(trimmed, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		var payload ampHookPayload
+		if err := json.Unmarshal(line, &payload); err != nil {
+			continue
+		}
+		if strings.TrimSpace(payload.ThreadID) != "" {
+			return strings.TrimSpace(payload.ThreadID), nil
+		}
+	}
+
+	return "", errors.New("cannot prepare transcript: missing amp thread_id")
+}
+
 func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {
 	sessionRef := input.SessionRef
 	if sessionRef == "" && input.SessionID != "" {
@@ -90,13 +117,9 @@ func (a *Agent) PrepareTranscript(sessionRef string) error {
 	if err != nil {
 		return fmt.Errorf("read transcript for prepare: %w", err)
 	}
-	thread, err := parseAmpThread(data)
+	threadID, err := threadIDFromTranscriptData(data)
 	if err != nil {
 		return err
-	}
-	threadID := thread.ID
-	if threadID == "" {
-		return errors.New("cannot prepare transcript: missing amp thread_id")
 	}
 	runner := a.CommandRunner
 	if runner == nil {
@@ -158,27 +181,28 @@ func (a *Agent) GetTranscriptPosition(path string) (int, error) {
 		}
 		return 0, err
 	}
-	if _, err := parseAmpThread(data); err != nil {
+	thread, err := parseAmpThread(data)
+	if err != nil {
 		return 0, err
 	}
-	return len(data), nil
+	return len(thread.Messages), nil
 }
 
-func (a *Agent) ExtractModifiedFiles(path string, _ int) ([]string, int, error) {
-	thread, data, err := readAmpThread(path)
+func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, error) {
+	thread, _, err := readAmpThread(path)
 	if err != nil {
 		return nil, 0, err
 	}
-	return modifiedFilesFromThread(thread), len(data), nil
+	return modifiedFilesFromMessages(threadMessagesFromOffset(thread, offset)), len(thread.Messages), nil
 }
 
-func (a *Agent) ExtractPrompts(sessionRef string, _ int) ([]string, error) {
+func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) {
 	thread, _, err := readAmpThread(sessionRef)
 	if err != nil {
 		return nil, err
 	}
 	var prompts []string
-	for _, msg := range thread.Messages {
+	for _, msg := range threadMessagesFromOffset(thread, offset) {
 		if msg.Role != ThreadMessageRoleUser {
 			continue
 		}
@@ -206,13 +230,13 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 	return "", false, nil
 }
 
-func (a *Agent) CalculateTokens(data []byte, _ int) (protocol.TokenUsageResponse, error) {
+func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageResponse, error) {
 	thread, err := parseAmpThread(data)
 	if err != nil {
 		return protocol.TokenUsageResponse{}, err
 	}
 	var usage protocol.TokenUsageResponse
-	for _, msg := range thread.Messages {
+	for _, msg := range threadMessagesFromOffset(thread, offset) {
 		if msg.Usage == nil {
 			continue
 		}
@@ -223,6 +247,19 @@ func (a *Agent) CalculateTokens(data []byte, _ int) (protocol.TokenUsageResponse
 		usage.APICallCount++
 	}
 	return usage, nil
+}
+
+func threadMessagesFromOffset(thread *AmpThread, offset int) []ThreadMessage {
+	if thread == nil || len(thread.Messages) == 0 {
+		return nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(thread.Messages) {
+		return nil
+	}
+	return thread.Messages[offset:]
 }
 
 func latestThreadModel(thread *AmpThread) string {
@@ -239,8 +276,15 @@ func latestThreadModel(thread *AmpThread) string {
 }
 
 func modifiedFilesFromThread(thread *AmpThread) []string {
+	if thread == nil {
+		return nil
+	}
+	return modifiedFilesFromMessages(thread.Messages)
+}
+
+func modifiedFilesFromMessages(messages []ThreadMessage) []string {
 	seen := map[string]bool{}
-	for _, msg := range thread.Messages {
+	for _, msg := range messages {
 		for _, file := range modifiedFilesFromMessage(msg) {
 			if file != "" {
 				seen[file] = true
