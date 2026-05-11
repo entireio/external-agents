@@ -41,14 +41,14 @@ func TestAmpEnvStripsBunVars(t *testing.T) {
 
 func TestIsBunEnvVar(t *testing.T) {
 	cases := map[string]bool{
-		"BUN_BE_BUN":           true,
-		"BUN_INSPECT":          true,
-		"BUN_DEBUG_FOO":        true,
-		"BUN_INSTALL":          false,
-		"BUN_INSTALL_CACHE":    false,
-		"PATH":                 false,
-		"PLUGINS":              false,
-		"BUN_INTERNAL_IPC_FD":  true,
+		"BUN_BE_BUN":          true,
+		"BUN_INSPECT":         true,
+		"BUN_DEBUG_FOO":       true,
+		"BUN_INSTALL":         false,
+		"BUN_INSTALL_CACHE":   false,
+		"PATH":                false,
+		"PLUGINS":             false,
+		"BUN_INTERNAL_IPC_FD": true,
 	}
 	for key, want := range cases {
 		if got := isBunEnvVar(key); got != want {

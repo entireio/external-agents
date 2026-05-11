@@ -2,6 +2,7 @@ package amp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,10 +21,10 @@ type DefaultCommandRunner struct{}
 
 func (r *DefaultCommandRunner) ExportThread(ctx context.Context, threadID string, outputPath string) (string, error) {
 	if strings.TrimSpace(threadID) == "" {
-		return "", fmt.Errorf("thread ID is required")
+		return "", errors.New("thread ID is required")
 	}
 	if strings.TrimSpace(outputPath) == "" {
-		return "", fmt.Errorf("output path is required")
+		return "", errors.New("output path is required")
 	}
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0o750); err != nil {
 		return "", fmt.Errorf("create output dir: %w", err)
@@ -33,7 +34,7 @@ func (r *DefaultCommandRunner) ExportThread(ctx context.Context, threadID string
 	cmd.Env = append(ampEnv(), "PLUGINS=all")
 	out, err := cmd.Output()
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			return "", fmt.Errorf("amp threads export %s: %w: %s", threadID, err, strings.TrimSpace(string(exitErr.Stderr)))
 		}
 		return "", fmt.Errorf("amp threads export %s: %w", threadID, err)

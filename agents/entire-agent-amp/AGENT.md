@@ -37,18 +37,18 @@ Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `
 ## Session Management
 - Session ID source: Amp `thread.id`.
 - Session directory: `.entire/tmp/amp/`.
-- Session file format: exported Amp thread JSON, parsed as `AmpThread` from `internal/amp/types.go`. The binary writes this file on `session.start` and refreshes it on `agent.end`.
+- Session file format: exported Amp thread JSON, parsed as `Thread` from `internal/amp/types.go`. The binary writes this file on `session.start` and refreshes it on `agent.end`.
 - Resume mechanism: `PLUGINS=all amp threads continue <thread-id>`.
 
 ## Transcript
 - Authoritative storage: `session_ref` always contains the exported Amp thread JSON byte-for-byte (the output of `amp threads export <thread-id>`). This JSON is the session's native data and the input for all transcript operations.
 - Retrieval: the binary runs `amp threads export <thread-id>` during the `session.start` and `agent.end` plugin hooks and writes the result to `session_ref`. `prepare-transcript --session-ref <path>` is available as a refresh — it parses the existing prepared transcript to recover `thread.id` and re-exports.
-- Authoritative parser: `internal/amp/types.go` models the exported transcript as `AmpThread`, `ThreadMessage`, `ThreadContentBlock`, `ThreadToolRun`, and `ThreadUsage`.
-- User prompt extraction: `AmpThread.Messages[].Content[]` text blocks on `role: "user"` messages.
+- Authoritative parser: `internal/amp/types.go` models the exported transcript as `Thread`, `ThreadMessage`, `ThreadContentBlock`, `ThreadToolRun`, and `ThreadUsage`.
+- User prompt extraction: `Thread.Messages[].Content[]` text blocks on `role: "user"` messages.
 - Assistant summary extraction: last non-empty text block on `role: "assistant"` messages.
 - Modified file extraction: `ThreadToolRun.TrackFiles`, tool input path fields (`path`, `filePath`, `filepath`, `file`, `absolutePath`, `paths`, `files`), and common tool result `absolutePath` fields.
 - Token usage extraction: `ThreadMessage.Usage` on exported messages.
-- Unprepared behavior: transcript analyzer, compact transcript, token calculation, and read-session operations require exported `AmpThread` JSON and return an error if called on a `session_ref` that has not yet been populated by an export.
+- Unprepared behavior: transcript analyzer, compact transcript, token calculation, and read-session operations require exported `Thread` JSON and return an error if called on a `session_ref` that has not yet been populated by an export.
 
 ## Protocol Mapping
 | Subcommand | Native Concept | Implementation Notes | Feasibility |
@@ -58,9 +58,9 @@ Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `
 | `get-session-id` | Amp thread ID | Read from hook input | Required |
 | `get-session-dir` | `.entire/tmp` | Standard Entire temp dir | Required |
 | `resolve-session-file` | `.entire/tmp/<id>.json` | Standard path resolution | Required |
-| `read-session` | exported Amp JSON | Validate and parse `AmpThread`; use `AmpThread.ID`, raw JSON `native_data`, and extracted modified files | Required |
+| `read-session` | exported Amp JSON | Validate and parse `Thread`; use `Thread.ID`, raw JSON `native_data`, and extracted modified files | Required |
 | `write-session` | exported Amp JSON | Write native data to session ref | Required |
-| `read-transcript` | exported Amp JSON | Return raw bytes after validating `AmpThread` JSON | Required |
+| `read-transcript` | exported Amp JSON | Return raw bytes after validating `Thread` JSON | Required |
 | `chunk-transcript` | raw bytes | Base64 chunking via protocol JSON encoding | Required |
 | `reassemble-transcript` | chunks | Reassemble raw bytes | Required |
 | `format-resume-command` | Amp thread continue | `PLUGINS=all amp threads continue <id>` | Required |
@@ -68,12 +68,12 @@ Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `
 | `install-hooks` | project plugin | Write `.amp/plugins/entire.ts` | Hooks |
 | `uninstall-hooks` | project plugin | Remove `.amp/plugins/entire.ts` | Hooks |
 | `are-hooks-installed` | project plugin | Check plugin marker | Hooks |
-| `get-transcript-position` | exported Amp JSON | Validate `AmpThread` and return byte length | Transcript analyzer |
-| `extract-modified-files` | exported Amp JSON | Parse `AmpThread` tool inputs/results and `trackFiles` | Transcript analyzer |
-| `extract-prompts` | exported Amp JSON | Parse user text blocks from `AmpThread.Messages` | Transcript analyzer |
-| `extract-summary` | exported Amp JSON | Parse last assistant text block from `AmpThread.Messages` | Transcript analyzer |
+| `get-transcript-position` | exported Amp JSON | Validate `Thread` and return byte length | Transcript analyzer |
+| `extract-modified-files` | exported Amp JSON | Parse `Thread` tool inputs/results and `trackFiles` | Transcript analyzer |
+| `extract-prompts` | exported Amp JSON | Parse user text blocks from `Thread.Messages` | Transcript analyzer |
+| `extract-summary` | exported Amp JSON | Parse last assistant text block from `Thread.Messages` | Transcript analyzer |
 | `prepare-transcript` | `amp threads export` | Re-export the Amp thread using the thread ID from the existing prepared transcript at `session_ref` | Transcript preparer |
-| `compact-transcript` | exported Amp JSON | Emit Entire compact JSONL from `AmpThread` | Compact transcript |
+| `compact-transcript` | exported Amp JSON | Emit Entire compact JSONL from `Thread` | Compact transcript |
 | `calculate-tokens` | exported Amp JSON | Sum `ThreadMessage.Usage` token fields | Token calculator |
 
 ## Selected Capabilities

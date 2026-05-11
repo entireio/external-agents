@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,8 +65,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		model := latestModelFromSessionRef(sessionRef)
 		if model == "" {
 			// Fallback: ensure we have a prepared transcript so we can populate the model.
-			error := a.exportThread(sessionID, sessionRef)
-			if error == nil {
+			if exportErr := a.exportThread(sessionID, sessionRef); exportErr == nil {
 				model = latestModelFromSessionRef(sessionRef)
 			}
 		}
@@ -79,9 +79,8 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}, nil
 
 	case "agent.end":
-		error := a.exportThread(sessionID, sessionRef)
-		if error != nil {
-			return nil, fmt.Errorf("export thread on agent.end: %w", error)
+		if err := a.exportThread(sessionID, sessionRef); err != nil {
+			return nil, fmt.Errorf("export thread on agent.end: %w", err)
 		}
 		return &protocol.EventJSON{
 			Type:       3,
@@ -102,7 +101,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 // model so events are still emitted.
 func (a *Agent) exportThread(threadID, sessionRef string) error {
 	if strings.TrimSpace(threadID) == "" || strings.TrimSpace(sessionRef) == "" {
-		return fmt.Errorf("thread id and session ref are required")
+		return errors.New("thread id and session ref are required")
 	}
 	runner := a.CommandRunner
 	if runner == nil {
@@ -119,7 +118,7 @@ func (a *Agent) exportThread(threadID, sessionRef string) error {
 
 // latestModelFromSessionRef returns the most recent model string recorded in
 // the prepared transcript at sessionRef. It returns an empty string if the
-// file is missing or not yet a prepared AmpThread JSON.
+// file is missing or not yet a prepared Thread JSON.
 func latestModelFromSessionRef(sessionRef string) string {
 	if strings.TrimSpace(sessionRef) == "" {
 		return ""

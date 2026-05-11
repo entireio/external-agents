@@ -17,7 +17,7 @@ import (
 
 const prepareTranscriptTimeout = 30 * time.Second
 
-func parseAmpThread(data []byte) (*AmpThread, error) {
+func parseAmpThread(data []byte) (*Thread, error) {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) == 0 {
 		return nil, errors.New("empty amp thread transcript")
@@ -25,7 +25,7 @@ func parseAmpThread(data []byte) (*AmpThread, error) {
 	if trimmed[0] != '{' {
 		return nil, errors.New("amp transcript is not prepared: run prepare-transcript first")
 	}
-	var thread AmpThread
+	var thread Thread
 	if err := json.Unmarshal(trimmed, &thread); err != nil {
 		return nil, fmt.Errorf("parse amp thread transcript: %w", err)
 	}
@@ -35,7 +35,7 @@ func parseAmpThread(data []byte) (*AmpThread, error) {
 	return &thread, nil
 }
 
-func readAmpThread(path string) (*AmpThread, []byte, error) {
+func readAmpThread(path string) (*Thread, []byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, err
@@ -249,7 +249,7 @@ func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageRes
 	return usage, nil
 }
 
-func threadMessagesFromOffset(thread *AmpThread, offset int) []ThreadMessage {
+func threadMessagesFromOffset(thread *Thread, offset int) []ThreadMessage {
 	if thread == nil || len(thread.Messages) == 0 {
 		return nil
 	}
@@ -262,7 +262,7 @@ func threadMessagesFromOffset(thread *AmpThread, offset int) []ThreadMessage {
 	return thread.Messages[offset:]
 }
 
-func latestThreadModel(thread *AmpThread) string {
+func latestThreadModel(thread *Thread) string {
 	if thread == nil {
 		return ""
 	}
@@ -275,7 +275,7 @@ func latestThreadModel(thread *AmpThread) string {
 	return ""
 }
 
-func modifiedFilesFromThread(thread *AmpThread) []string {
+func modifiedFilesFromThread(thread *Thread) []string {
 	if thread == nil {
 		return nil
 	}

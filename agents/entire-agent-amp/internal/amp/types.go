@@ -18,8 +18,8 @@ func (m ThreadUnixMillis) Time() time.Time {
 	return time.UnixMilli(int64(m)).UTC()
 }
 
-// AmpThread is the top-level Amp thread transcript document.
-type AmpThread struct {
+// Thread is the top-level Amp thread transcript document.
+type Thread struct {
 	Version         int                    `json:"v"`
 	ID              string                 `json:"id"`
 	Env             ThreadEnvironment      `json:"env"`

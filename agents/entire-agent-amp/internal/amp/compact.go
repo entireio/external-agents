@@ -112,6 +112,8 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 			if err := writeCompactTranscriptLine(&buf, line); err != nil {
 				return nil, err
 			}
+		case ThreadMessageRoleInfo:
+			// Informational messages have no compact transcript representation.
 		}
 	}
 	if buf.Len() == 0 {
@@ -150,6 +152,12 @@ func compactAssistantContent(blocks []ThreadContentBlock, messages []ThreadMessa
 				tool.Result = &result
 			}
 			out = append(out, tool)
+		case ThreadContentThinking,
+			ThreadContentImage,
+			ThreadContentToolResult,
+			ThreadContentServerToolUse,
+			ThreadContentToolSearchResult:
+			// Non-text/non-tool_use blocks are not represented in compact assistant content.
 		}
 	}
 	return out
