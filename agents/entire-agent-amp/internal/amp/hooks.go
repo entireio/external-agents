@@ -13,10 +13,9 @@ import (
 )
 
 const (
-	pluginDir         = ".amp/plugins"
-	pluginFile        = ".amp/plugins/entire.ts"
-	transcriptSubdir  = "amp"
-	seenSessionSubdir = "amp/seen"
+	pluginDir        = ".amp/plugins"
+	pluginFile       = ".amp/plugins/entire.ts"
+	transcriptSubdir = "amp"
 )
 
 type ampHookPayload struct {
@@ -50,7 +49,6 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 
 	switch hookName {
 	case "session.start":
-		markSessionSeen(sessionID)
 		return &protocol.EventJSON{
 			Type:       1,
 			SessionID:  sessionID,
@@ -59,9 +57,6 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}, nil
 
 	case "agent.start":
-		if !sessionSeen(sessionID) {
-			markSessionSeen(sessionID)
-		}
 		if err := appendTranscriptEntry(sessionRef, ampTranscriptEntry{
 			Type:     "agent.start",
 			ThreadID: sessionID,
@@ -133,15 +128,6 @@ func (a *Agent) UninstallHooks() error {
 		_ = os.Remove(ampDir)
 	}
 
-	// Clean up any seen session markers, but leave transcripts in place since they may be useful to the user and are small in size.
-	sessionsDir := protocol.DefaultSessionDir(root)
-	seenDir := filepath.Join(sessionsDir, seenSessionSubdir)
-	if entries, err := os.ReadDir(seenDir); err == nil {
-		for _, entry := range entries {
-			_ = os.Remove(filepath.Join(seenDir, entry.Name()))
-		}
-	}
-
 	return nil
 }
 
@@ -152,12 +138,34 @@ func (a *Agent) AreHooksInstalled() bool {
 }
 
 func generatePlugin() string {
-	return `import type { AgentEndEvent, AgentStartEvent, PluginAPI, ThreadMessage } from "@ampcode/plugin";
+	return `import type {
+  AgentEndEvent,
+  AgentStartEvent,
+  PluginAPI,
+  SessionStartEvent,
+  ThreadMessage,
+} from "@ampcode/plugin";
 import { execFile } from "node:child_process";
 
 // entire-agent-amp: project-local Entire integration for Amp.
 export default function (amp: PluginAPI) {
+  // In-memory session tracking.
+  let currentThreadId: string | null = null;
   const seenThreads = new Set<string>();
+
+  // trackThread records the given thread id and returns true when it is the
+  // first time we have seen it for the current session. When a different
+  // thread id is discovered we clear all tracking — the user has switched to
+  // a new thread, so prior dedupe state no longer applies.
+  function trackThread(threadId: string): boolean {
+    if (threadId !== currentThreadId) {
+      seenThreads.clear();
+      currentThreadId = threadId;
+    }
+    if (seenThreads.has(threadId)) return false;
+    seenThreads.add(threadId);
+    return true;
+  }
 
   function fireHook(hookName: string, data: Record<string, unknown>): Promise<void> {
     return new Promise((resolve) => {
@@ -200,9 +208,21 @@ export default function (amp: PluginAPI) {
     return Array.from(files).sort();
   }
 
+  amp.on("session.start", async (event: SessionStartEvent): Promise<void> => {
+    const threadId = event.thread?.id;
+    if (!threadId) return;
+    if (!trackThread(threadId)) return;
+    await fireHook("session.start", {
+      type: "session.start",
+      cwd: process.cwd(),
+      thread_id: threadId,
+    });
+  });
+
   amp.on("agent.start", async (event: AgentStartEvent): Promise<void> => {
-    if (!seenThreads.has(event.thread.id)) {
-      seenThreads.add(event.thread.id);
+    // Amp's session.start does not always include a thread id, so agent.start
+    // is the fallback point for firing the synthetic session.start hook.
+    if (trackThread(event.thread.id)) {
       await fireHook("session.start", {
         type: "session.start",
         cwd: process.cwd(),
@@ -237,22 +257,6 @@ export default function (amp: PluginAPI) {
 
 func transcriptPath(sessionID string) string {
 	return filepath.Join(protocol.DefaultSessionDir(protocol.RepoRoot()), transcriptSubdir, safeSessionID(sessionID)+".jsonl")
-}
-
-func seenPath(sessionID string) string {
-	return filepath.Join(protocol.DefaultSessionDir(protocol.RepoRoot()), seenSessionSubdir, safeSessionID(sessionID))
-}
-
-func sessionSeen(sessionID string) bool {
-	_, err := os.Stat(seenPath(sessionID))
-	return err == nil
-}
-
-func markSessionSeen(sessionID string) {
-	path := seenPath(sessionID)
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err == nil {
-		_ = os.WriteFile(path, []byte(sessionID), 0o600)
-	}
 }
 
 func safeSessionID(sessionID string) string {
