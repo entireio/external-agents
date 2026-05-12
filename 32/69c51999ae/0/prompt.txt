@@ -1,0 +1,1 @@
+@.claude/skills/entire-external-agent/researcher.md doesn't use verification script like this one does https://github.com/entireio/cli/blob/main/.claude/skills/agent-integration/researcher.md please have it use verification script since docs tend to be out of date

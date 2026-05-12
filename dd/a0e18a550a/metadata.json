@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "dda0e18a550a",
+  "strategy": "manual-commit",
+  "branch": "add-omp-agent-support",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "agents/entire-agent-omp/.gitignore"
+  ],
+  "sessions": [
+    {
+      "metadata": "/dd/a0e18a550a/0/metadata.json",
+      "transcript": "/dd/a0e18a550a/0/transcript.jsonl",
+      "content_hash": "/dd/a0e18a550a/0/transcript_hash.txt",
+      "prompt": "/dd/a0e18a550a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 35,
+    "cache_creation_tokens": 35997,
+    "cache_read_tokens": 5764075,
+    "output_tokens": 26163,
+    "api_call_count": 20
+  }
+}

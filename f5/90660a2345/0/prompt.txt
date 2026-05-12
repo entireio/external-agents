@@ -1,0 +1,1 @@
+Same as https://github.com/entireio/external-agents/pull/13, add support to Pi for compact transcripts

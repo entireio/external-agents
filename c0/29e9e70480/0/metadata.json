@@ -1,0 +1,221 @@
+{
+  "cli_version": "0.6.0",
+  "checkpoint_id": "c029e9e70480",
+  "session_id": "0c784fcd-1b8c-4806-9855-a9f59e41b6a4",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-06T20:42:22.783171Z",
+  "branch": "kiro-windows-bugs",
+  "checkpoints_count": 22,
+  "files_touched": [
+    "agents/entire-agent-kiro/AGENT.md",
+    "agents/entire-agent-kiro/go.mod",
+    "agents/entire-agent-kiro/internal/kiro/hooks.go",
+    "agents/entire-agent-kiro/internal/kiro/hooks_test.go",
+    "agents/entire-agent-kiro/internal/kiro/lifecycle_test.go",
+    "agents/entire-agent-kiro/internal/kiro/transcript.go",
+    "agents/entire-agent-kiro/internal/kiro/transcript_test.go",
+    "agents/entire-agent-kiro/internal/kiro/types.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "57985dc756c8",
+  "token_usage": {
+    "input_tokens": 172,
+    "cache_creation_tokens": 172460,
+    "cache_read_tokens": 3661293,
+    "output_tokens": 28087,
+    "api_call_count": 53
+  },
+  "session_metrics": {
+    "turn_count": 22
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-06T20:42:22.753936Z",
+    "agent_lines": 122,
+    "agent_removed": 7,
+    "human_added": 0,
+    "human_modified": 42,
+    "human_removed": 32,
+    "total_committed": 164,
+    "total_lines_changed": 203,
+    "agent_percentage": 63.54679802955665,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1329,
+      "user_lines_removed": 74,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "agents/entire-agent-kiro/AGENT.md": 6,
+        "agents/entire-agent-kiro/go.mod": 13,
+        "agents/entire-agent-kiro/go.sum": 21,
+        "agents/entire-agent-kiro/internal/kiro/hooks.go": 138,
+        "agents/entire-agent-kiro/internal/kiro/hooks_test.go": 107,
+        "agents/entire-agent-kiro/internal/kiro/lifecycle_test.go": 45,
+        "agents/entire-agent-kiro/internal/kiro/transcript.go": 149,
+        "agents/entire-agent-kiro/internal/kiro/transcript_test.go": 111,
+        "agents/entire-agent-kiro/internal/kiro/types.go": 10,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054-timeline.md": 104,
+        "docs/investigations/https-github-com-entireio-cli-issues-1054.md": 625
+      },
+      "user_removed_per_file": {
+        "agents/entire-agent-kiro/AGENT.md": 4,
+        "agents/entire-agent-kiro/internal/kiro/hooks.go": 33,
+        "agents/entire-agent-kiro/internal/kiro/lifecycle_test.go": 4,
+        "agents/entire-agent-kiro/internal/kiro/transcript.go": 24,
+        "agents/entire-agent-kiro/internal/kiro/transcript_test.go": 3,
+        "agents/entire-agent-kiro/internal/kiro/types.go": 6
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 13,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 14,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 15,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 16,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 17,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 18,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 19,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 20,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 21,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    },
+    {
+      "checkpoint_number": 22,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1329,
+      "agent_lines_removed": 74
+    }
+  ]
+}

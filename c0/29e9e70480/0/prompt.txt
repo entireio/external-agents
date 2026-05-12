@@ -1,0 +1,192 @@
+I'm on mac how to test these windows fixes. I have parallel. give test steps
+
+---
+
+give details steps for  3. Real test inside Parallels Windows VM
+
+---
+
+how to Open PowerShell as Administrator
+
+---
+
+PS C:\WINDOWS\system32> Copy-Item \\Mac\Home\tmp\win-bins\entire.exe              C:\Tools\
+Copy-Item : Cannot find path '\\Mac\Home\tmp\win-bins\entire.exe' because it does not exist.
+At line:1 char:1
++ Copy-Item \\Mac\Home\tmp\win-bins\entire.exe              C:\Tools\
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (\\Mac\Home\tmp\win-bins\entire.exe:String) [Copy-Item], ItemNotFoundExc
+   eption
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.CopyItemCommand
+
+---
+
+PS C:\WINDOWS\system32> Copy-Item \\Mac\Home\win-bins\entire.exe            C:\Tools\
+Copy-Item : Cannot find path '\\Mac\Home\win-bins\entire.exe' because it does not exist.
+At line:1 char:1
++ Copy-Item \\Mac\Home\win-bins\entire.exe            C:\Tools\
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : ObjectNotFound: (\\Mac\Home\win-bins\entire.exe:String) [Copy-Item], ItemNotFoundExcepti
+   on
+    + FullyQualifiedErrorId : PathNotFound,Microsoft.PowerShell.Commands.CopyItemCommand
+
+---
+
+okay I have it on the desktop
+
+---
+
+PS C:\WINDOWS\system32> where entire
+PS C:\WINDOWS\system32>
+
+---
+
+PS C:\WINDOWS\system32> dir C:\Tools\
+
+
+    Directory: C:\Tools
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----          5/4/2026   4:40 PM       10441216 entire-agent-kiro.exe
+-a----          5/4/2026   4:40 PM       58880512 entire.exe
+
+
+PS C:\WINDOWS\system32> [Environment]::GetEnvironmentVariable("Path","User")
+C:\Users\alisha\AppData\Local\Microsoft\WindowsApps;C:\Users\alisha\AppData\Local\Programs\Kiro\bin;C:\Users\alisha\AppData\Local\Kiro-Cli\;C:\Tools
+PS C:\WINDOWS\system32> $env:Path -split ';' | Select-String 'Tools'
+
+C:\Program Files\Parallels\Parallels Tools\Applications
+C:\Tools
+
+---
+
+PS C:\WINDOWS\system32> where.exe entire
+C:\Tools\entire.exe
+PS C:\WINDOWS\system32> where.exe entire-agent-kiro
+C:\Tools\entire-agent-kiro.exe
+PS C:\WINDOWS\system32> entire --version
+Entire CLI dev (unknown)
+Go version: go1.26.2
+OS/Arch: windows/amd64
+PS C:\WINDOWS\system32> where.exe sqlite3
+INFO: Could not find files for the given pattern(s).
+
+---
+
+need commands for creating test repo dir. idk how to use windows
+
+---
+
+how to run entire enable in windows
+
+---
+
+~/Projects/marvin (main) $ git st
+On branch main
+Your branch and 'origin/main' have diverged,
+and have 10 and 9 different commits each, respectively.
+  (use "git pull" if you want to integrate the remote branch with yours)
+
+nothing to commit, working tree clean
+~/Projects/marvin (main) $ git pull
+hint: You have divergent branches and need to specify how to reconcile them.
+hint: You can do so by running one of the following commands sometime before
+hint: your next pull:
+hint:
+hint:   git config pull.rebase false  # merge
+hint:   git config pull.rebase true   # rebase
+hint:   git config pull.ff only       # fast-forward only
+hint:
+hint: You can replace "git config" with "git config --global" to set a default
+hint: preference for all repositories. You can also pass --rebase, --no-rebase,
+hint: or --ff-only on the command line to override the configured default per
+hint: invocation.
+fatal: Need to specify how to reconcile divergent branches.
+
+---
+
+says git executable not found
+
+---
+
+ijstall failed
+
+---
+
+Do you agree to all the source agreements terms?
+[Y] Yes  [N] No: y
+Found Git [Git.Git] Version 2.54.0
+This application is licensed to you by its owner.
+Microsoft is not responsible for, nor does it grant any licenses to, third-party packages.
+Successfully verified installer hash
+Starting package install...
+Installer failed with exit code: 1
+PS C:\WINDOWS\system32\test-repo>
+
+---
+
+git install worked but says not in path
+
+---
+
+how to enable the kiro agent in windows
+
+---
+
+windows how to manually update entire settings.json
+
+---
+
+I cant figure out how to add the external agent. when I do entire agent list I don't see kiro
+
+---
+
+PS C:\testrepo> type .entire\settings.json
+{
+  "enabled": true,
+  "telemetry": true
+}
+
+---
+
+this just hangs }
+PS C:\testrepo> @'
+>>   {
+>>     "enabled": true,
+>>     "telemetry": true,
+>>     "external_agents": true
+>>   }
+>>   '@ | Out-File -Encoding ascii .entire\settings.json
+>>
+
+---
+
+PS C:\testrepo> type .entire\settings.json
+{ "enabled": true, "telemetry": true, "external_agents": true }
+PS C:\testrepo> entire agent list
+Agents:
+  ✓ claude-code
+    codex
+    copilot-cli
+    cursor
+    factoryai-droid
+    gemini
+    opencode
+
+---
+
+how to see all .folders in dir
+
+---
+
+windows how to see all .folders in dir
+
+---
+
+windows equivalent of pwd
+
+---
+
+how to go to my home folder
