@@ -1,0 +1,25 @@
+okay take a look at this repo that we're in and how someone would do set up..and then we need to make 
+
+1. a contributors guide
+2. a first time contributors guide
+We can use Documents/work/cli as an exampple for contributors guidelines and this PR for example of first time contributors guide https://github.com/entireio/cli/pull/1189
+
+---
+
+no emdashes please
+
+---
+
+this wording is really unclear and weird..is there a way to explain this without including the entire-agent-<name> part ..if someone new is finding this..that's just unnecessary technical jargon
+
+---
+
+we dont need to list out the currently supported agents
+
+---
+
+i think when we say for more ai coding agents..it's like what do you mean..like i think we need to be like..if Entire doesnt currently support your preferred AI coding agent..you can add it to this project type of thing..or you can create a tool for it..idk how to describe that
+
+---
+
+also upfront in both docs..do we mention the skill that allows you to create an external agent plugin pretty easily/gets u 80% way there
