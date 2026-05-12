@@ -18,8 +18,21 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 |-------|-----------|--------|
 | [Kiro](agents/entire-agent-kiro/) | `agents/entire-agent-kiro/` | Implemented — hooks + transcript analysis |
 | [Pi](agents/entire-agent-pi/) | `agents/entire-agent-pi/` | Implemented — hooks + transcript analysis + token calculation + compact transcripts |
+| [Amp](agents/entire-agent-amp/) | `agents/entire-agent-amp/` | Implemented — hooks + transcript analysis + token calculation + compact transcripts |
 
 See each agent's own README for setup and usage instructions.
+
+## Enabling External Agents
+
+External agent discovery is opt-in. Once an `entire-agent-<name>` binary is on your `PATH`, set `external_agents: true` in the repo's `.entire/settings.json` so Entire scans for it:
+
+```json
+{
+  "external_agents": true
+}
+```
+
+Without this flag, Entire ignores external agent binaries even when they're installed.
 
 ## Building a New External Agent
 
