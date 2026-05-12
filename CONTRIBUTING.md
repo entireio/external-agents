@@ -15,7 +15,7 @@ implementing the binary. It gets you most of the way to a working
 integration. See [Adding a New External Agent](#adding-a-new-external-agent)
 below for how to invoke it.
 
-Please read the [Entire CLI Code of Conduct](https://github.com/entireio/cli/blob/main/CODE_OF_CONDUCT.md)
+Please read the [Code of Conduct](https://github.com/entireio/cli/blob/main/CODE_OF_CONDUCT.md)
 before participating.
 
 > **New to Entire?** See the [First-Time Contributors guide](doc/first-time-contributors.md)
@@ -93,7 +93,7 @@ For security-related issues, see the Security section below.
 
 If you discover a security vulnerability, **do not report it through GitHub
 Issues**. Instead, follow the disclosure process described in the
-[Entire CLI SECURITY.md](https://github.com/entireio/cli/blob/main/SECURITY.md).
+[Security Policy](https://github.com/entireio/cli/blob/main/SECURITY.md).
 All security reports are kept confidential.
 
 ---
@@ -426,8 +426,8 @@ Join the Entire community:
 - [README](README.md): Setup, architecture, and the testing split
 - [AGENTS.md](AGENTS.md): Agent-builder skill entry point (Codex/Cursor/OpenCode)
 - [External agent protocol spec](https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md): The contract every agent binary implements
-- [Entire CLI Code of Conduct](https://github.com/entireio/cli/blob/main/CODE_OF_CONDUCT.md): Community guidelines
-- [Entire CLI Security Policy](https://github.com/entireio/cli/blob/main/SECURITY.md): Reporting security vulnerabilities
+- [Code of Conduct](https://github.com/entireio/cli/blob/main/CODE_OF_CONDUCT.md): Community guidelines
+- [Security Policy](https://github.com/entireio/cli/blob/main/SECURITY.md): Reporting security vulnerabilities
 
 ---
 
