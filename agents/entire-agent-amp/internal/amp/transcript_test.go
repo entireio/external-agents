@@ -85,6 +85,103 @@ func TestExtractModifiedFiles_PreparedJSON(t *testing.T) {
 	}
 }
 
+func TestExtractModifiedFiles_IgnoresReadOnlyToolPaths(t *testing.T) {
+	t.Setenv("ENTIRE_REPO_ROOT", t.TempDir())
+	transcript := `{"v":1,"id":"T-read","created":1778155200000,"messages":[{"role":"assistant","messageId":"a1","content":[{"type":"tool_use","id":"read1","name":"read_file","input":{"path":"inspected.go"}},{"type":"tool_result","toolUseID":"read1","run":{"status":"done","trackFiles":["file:///tmp/inspected.go"],"result":{"absolutePath":"inspected.go","output":"package main"}}}],"originalToolUseInput":{"read1":{"path":"inspected.go"},"read_file":{"path":"also-inspected.go"}}}]}`
+	path := filepath.Join(t.TempDir(), "amp.json")
+	if err := os.WriteFile(path, []byte(transcript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	files, pos, err := New().ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("files = %v, want no modified files", files)
+	}
+	if pos != 1 {
+		t.Fatalf("position = %d, want 1", pos)
+	}
+
+	session, err := New().ReadSession(&protocol.HookInputJSON{SessionRef: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(session.ModifiedFiles) != 0 {
+		t.Fatalf("session modified files = %v, want none", session.ModifiedFiles)
+	}
+}
+
+func TestExtractModifiedFiles_NormalizesFileURIs(t *testing.T) {
+	transcript := `{"v":1,"id":"T-write","created":1778155200000,"messages":[{"role":"assistant","messageId":"a1","content":[{"type":"tool_use","id":"edit1","name":"edit_file","input":{"path":"/tmp/space dir/changed.go"}}]},{"role":"user","messageId":2,"content":[{"type":"tool_result","toolUseID":"edit1","run":{"status":"done","trackFiles":["file:///tmp/space%20dir/changed.go"],"result":{"output":"ok"}}}]}]}`
+	path := filepath.Join(t.TempDir(), "amp.json")
+	if err := os.WriteFile(path, []byte(transcript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	files, _, err := New().ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"/tmp/space dir/changed.go"}
+	if len(files) != len(want) {
+		t.Fatalf("files = %v, want %v", files, want)
+	}
+	for i := range want {
+		if files[i] != want[i] {
+			t.Fatalf("files = %v, want %v", files, want)
+		}
+	}
+}
+
+func TestExtractModifiedFiles_OffsetResolvesPriorToolUse(t *testing.T) {
+	transcript := `{"v":1,"id":"T-write","created":1778155200000,"messages":[{"role":"assistant","messageId":"a1","content":[{"type":"tool_use","id":"edit1","name":"edit_file","input":{"path":"changed.go"}}]},{"role":"user","messageId":2,"content":[{"type":"tool_result","toolUseID":"edit1","run":{"status":"done","trackFiles":["also-changed.go"],"result":{"absolutePath":"result-changed.go","output":"ok"}}}]}]}`
+	path := filepath.Join(t.TempDir(), "amp.json")
+	if err := os.WriteFile(path, []byte(transcript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	files, pos, err := New().ExtractModifiedFiles(path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"also-changed.go", "result-changed.go"}
+	if len(files) != len(want) {
+		t.Fatalf("files = %v, want %v", files, want)
+	}
+	for i := range want {
+		if files[i] != want[i] {
+			t.Fatalf("files = %v, want %v", files, want)
+		}
+	}
+	if pos != 2 {
+		t.Fatalf("position = %d, want 2", pos)
+	}
+}
+
+func TestExtractModifiedFiles_IncludesMutatingToolInput(t *testing.T) {
+	transcript := `{"v":1,"id":"T-write","created":1778155200000,"messages":[{"role":"assistant","messageId":"a1","content":[{"type":"tool_use","id":"edit1","name":"edit_file","input":{"path":"changed.go"}}],"originalToolUseInput":{"edit1":{"path":"also-changed.go"}}}]}`
+	path := filepath.Join(t.TempDir(), "amp.json")
+	if err := os.WriteFile(path, []byte(transcript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	files, _, err := New().ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"also-changed.go", "changed.go"}
+	if len(files) != len(want) {
+		t.Fatalf("files = %v, want %v", files, want)
+	}
+	for i := range want {
+		if files[i] != want[i] {
+			t.Fatalf("files = %v, want %v", files, want)
+		}
+	}
+}
+
 func TestTranscriptAnalyzer_PlaceholderTranscript(t *testing.T) {
 	agent := New()
 	path := filepath.Join(t.TempDir(), "amp.json")

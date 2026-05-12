@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -217,7 +218,7 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 	if err != nil {
 		return nil, 0, err
 	}
-	return modifiedFilesFromMessages(threadMessagesFromOffset(thread, offset)), len(thread.Messages), nil
+	return modifiedFilesFromThreadFromOffset(thread, offset), len(thread.Messages), nil
 }
 
 func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) {
@@ -311,13 +312,21 @@ func modifiedFilesFromThread(thread *Thread) []string {
 	if thread == nil {
 		return nil
 	}
-	return modifiedFilesFromMessages(thread.Messages)
+	return modifiedFilesFromMessagesWithContext(thread.Messages, thread.Messages)
 }
 
-func modifiedFilesFromMessages(messages []ThreadMessage) []string {
+func modifiedFilesFromThreadFromOffset(thread *Thread, offset int) []string {
+	if thread == nil {
+		return nil
+	}
+	return modifiedFilesFromMessagesWithContext(threadMessagesFromOffset(thread, offset), thread.Messages)
+}
+
+func modifiedFilesFromMessagesWithContext(messages []ThreadMessage, contextMessages []ThreadMessage) []string {
 	seen := map[string]bool{}
+	toolNamesByID := toolNamesByIDFromMessages(contextMessages)
 	for _, msg := range messages {
-		for _, file := range modifiedFilesFromMessage(msg) {
+		for _, file := range modifiedFilesFromMessage(msg, toolNamesByID) {
 			if file != "" {
 				seen[file] = true
 			}
@@ -331,30 +340,82 @@ func modifiedFilesFromMessages(messages []ThreadMessage) []string {
 	return files
 }
 
-func modifiedFilesFromMessage(msg ThreadMessage) []string {
+func toolNamesByIDFromMessages(messages []ThreadMessage) map[string]string {
+	toolNamesByID := map[string]string{}
+	for _, msg := range messages {
+		for _, block := range msg.Content {
+			if strings.TrimSpace(block.ID) != "" && strings.TrimSpace(block.Name) != "" {
+				toolNamesByID[strings.TrimSpace(block.ID)] = strings.TrimSpace(block.Name)
+			}
+		}
+	}
+	return toolNamesByID
+}
+
+func modifiedFilesFromMessage(msg ThreadMessage, toolNamesByID map[string]string) []string {
 	var files []string
 	for _, block := range msg.Content {
-		files = append(files, filesFromContentBlock(block)...)
+		files = append(files, filesFromContentBlockForTool(block, toolNameForContentBlock(block, toolNamesByID))...)
 	}
-	for _, input := range msg.OriginalToolUseInput {
-		files = append(files, filesFromToolInput(input)...)
+	for idOrName, input := range msg.OriginalToolUseInput {
+		if isMutatingToolName(idOrName) || isMutatingToolName(toolNamesByID[strings.TrimSpace(idOrName)]) {
+			files = append(files, filesFromToolInput(input)...)
+		}
 	}
 	return files
 }
 
-func filesFromContentBlock(block ThreadContentBlock) []string {
+func filesFromContentBlockForTool(block ThreadContentBlock, toolName string) []string {
 	var files []string
-	files = append(files, filesFromToolInput(block.Input)...)
+	mutatingTool := isMutatingToolName(toolName)
+	if mutatingTool {
+		files = append(files, filesFromToolInput(block.Input)...)
+	}
 	if block.Run != nil {
-		files = append(files, block.Run.TrackFiles...)
+		if mutatingTool {
+			files = append(files, block.Run.TrackFiles...)
+		}
 		var result ThreadCommonToolResult
 		if len(block.Run.Result) > 0 && json.Unmarshal(block.Run.Result, &result) == nil {
-			if strings.TrimSpace(result.AbsolutePath) != "" {
+			if mutatingTool && strings.TrimSpace(result.AbsolutePath) != "" {
 				files = append(files, strings.TrimSpace(result.AbsolutePath))
 			}
 		}
 	}
 	return cleanFiles(files)
+}
+
+func toolNameForContentBlock(block ThreadContentBlock, toolNamesByID map[string]string) string {
+	if strings.TrimSpace(block.Name) != "" {
+		return strings.TrimSpace(block.Name)
+	}
+	if toolNamesByID == nil || strings.TrimSpace(block.ToolUseID) == "" {
+		return ""
+	}
+	return toolNamesByID[strings.TrimSpace(block.ToolUseID)]
+}
+
+func isMutatingToolName(name string) bool {
+	switch normalizeToolName(name) {
+	case "create", "create_file",
+		"delete", "delete_file",
+		"edit", "edit_file",
+		"move", "move_file",
+		"multi_edit",
+		"patch",
+		"rename", "rename_file",
+		"replace",
+		"str_replace_based_edit_tool",
+		"str_replace_editor",
+		"write", "write_file":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeToolName(name string) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(name)), "-", "_")
 }
 
 func filesFromToolInput(input ThreadToolInput) []string {
@@ -386,12 +447,26 @@ func stringValues(raw json.RawMessage) []string {
 func cleanFiles(files []string) []string {
 	out := files[:0]
 	for _, file := range files {
-		file = strings.TrimSpace(file)
+		file = cleanFile(file)
 		if file != "" {
 			out = append(out, file)
 		}
 	}
 	return out
+}
+
+func cleanFile(file string) string {
+	file = strings.TrimSpace(file)
+	if file == "" {
+		return ""
+	}
+	if u, err := url.Parse(file); err == nil && u.Scheme == "file" {
+		file = u.Path
+		if unescaped, err := url.PathUnescape(file); err == nil {
+			file = unescaped
+		}
+	}
+	return file
 }
 
 func threadMessageText(msg ThreadMessage) string {
