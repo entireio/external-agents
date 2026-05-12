@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "3fcbdcd6ed35",
+  "strategy": "manual-commit",
+  "branch": "claude/nervous-lovelace-2f4b1f",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "CONTRIBUTING.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3f/cbdcd6ed35/0/metadata.json",
+      "transcript": "/3f/cbdcd6ed35/0/transcript.jsonl",
+      "content_hash": "/3f/cbdcd6ed35/0/transcript_hash.txt",
+      "prompt": "/3f/cbdcd6ed35/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 11,
+    "cache_creation_tokens": 2185,
+    "cache_read_tokens": 653788,
+    "output_tokens": 1636,
+    "api_call_count": 6
+  }
+}
