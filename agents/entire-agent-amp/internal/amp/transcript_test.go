@@ -85,6 +85,46 @@ func TestExtractModifiedFiles_PreparedJSON(t *testing.T) {
 	}
 }
 
+func TestTranscriptAnalyzer_PlaceholderTranscript(t *testing.T) {
+	agent := New()
+	path := filepath.Join(t.TempDir(), "amp.json")
+	if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	pos, err := agent.GetTranscriptPosition(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pos != 0 {
+		t.Fatalf("position = %d, want 0", pos)
+	}
+
+	files, currentPosition, err := agent.ExtractModifiedFiles(path, 999)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 || currentPosition != 0 {
+		t.Fatalf("files = %v currentPosition = %d, want no files at position 0", files, currentPosition)
+	}
+
+	prompts, err := agent.ExtractPrompts(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prompts) != 0 {
+		t.Fatalf("prompts = %v, want none", prompts)
+	}
+
+	summary, hasSummary, err := agent.ExtractSummary(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasSummary || summary != "" {
+		t.Fatalf("summary = %q hasSummary = %v, want no summary", summary, hasSummary)
+	}
+}
+
 func TestExtractPrompts(t *testing.T) {
 	agent := New()
 	if _, err := agent.ExtractPrompts(writeTestTranscript(t), 0); err == nil {
@@ -164,6 +204,27 @@ func TestReadSession_PreparedJSON(t *testing.T) {
 	}
 }
 
+func TestReadSession_PlaceholderTranscript(t *testing.T) {
+	t.Setenv("ENTIRE_REPO_ROOT", t.TempDir())
+	path := filepath.Join(t.TempDir(), "test-roundtrip-session.json")
+	if err := os.WriteFile(path, []byte(`{"test":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	session, err := New().ReadSession(&protocol.HookInputJSON{
+		SessionID:  "test-roundtrip-session",
+		SessionRef: path,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.SessionID != "test-roundtrip-session" || session.AgentName != "amp" || string(session.NativeData) != `{"test":true}` {
+		t.Fatalf("session = %+v", session)
+	}
+	if session.ModifiedFiles == nil || session.NewFiles == nil || session.DeletedFiles == nil {
+		t.Fatalf("session file slices must be initialized: %+v", session)
+	}
+}
+
 func TestCalculateTokens_PreparedJSON(t *testing.T) {
 	agent := New()
 	usage, err := agent.CalculateTokens([]byte(testPreparedTranscriptJSON), 0)
@@ -179,6 +240,16 @@ func TestCalculateTokens_PreparedJSON(t *testing.T) {
 	}
 	if usage.APICallCount != 0 || usage.InputTokens != 0 || usage.OutputTokens != 0 || usage.CacheReadTokens != 0 || usage.CacheCreationTokens != 0 {
 		t.Fatalf("offset usage = %+v, want zero usage", usage)
+	}
+}
+
+func TestCalculateTokens_PlaceholderTranscript(t *testing.T) {
+	usage, err := New().CalculateTokens([]byte(`{}`), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage != (protocol.TokenUsageResponse{}) {
+		t.Fatalf("usage = %+v, want zero", usage)
 	}
 }
 
@@ -213,6 +284,20 @@ func TestPrepareTranscript(t *testing.T) {
 	}
 	if string(data) != testPreparedTranscriptJSON {
 		t.Fatalf("prepared data = %s", data)
+	}
+}
+
+func TestPrepareTranscript_PlaceholderTranscript(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "amp.json")
+	if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeCommandRunner{}
+	if err := (&Agent{CommandRunner: runner}).PrepareTranscript(path); err != nil {
+		t.Fatal(err)
+	}
+	if runner.threadID != "" {
+		t.Fatalf("runner unexpectedly invoked with threadID = %q", runner.threadID)
 	}
 }
 

@@ -35,6 +35,21 @@ func parseAmpThread(data []byte) (*Thread, error) {
 	return &thread, nil
 }
 
+func parseAmpThreadOrPlaceholder(data []byte) (*Thread, bool, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return &Thread{}, false, nil
+	}
+	if trimmed[0] != '{' {
+		return nil, false, errors.New("amp transcript is not prepared: run prepare-transcript first")
+	}
+	var thread Thread
+	if err := json.Unmarshal(trimmed, &thread); err != nil {
+		return nil, false, fmt.Errorf("parse amp thread transcript: %w", err)
+	}
+	return &thread, thread.ID != "", nil
+}
+
 func readAmpThread(path string) (*Thread, []byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -71,21 +86,53 @@ func threadIDFromTranscriptData(data []byte) (string, error) {
 		}
 	}
 
+	if trimmed[0] == '{' {
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(trimmed, &payload); err == nil && len(payload) == 0 {
+			return "", nil
+		}
+	}
+
 	return "", errors.New("cannot prepare transcript: missing amp thread_id")
 }
 
 func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {
-	sessionRef := input.SessionRef
-	if sessionRef == "" && input.SessionID != "" {
-		sessionRef = transcriptPath(input.SessionID)
+	var sessionID string
+	var sessionRef string
+	if input != nil {
+		sessionID = input.SessionID
+		sessionRef = input.SessionRef
+		if sessionRef == "" && sessionID != "" {
+			sessionRef = transcriptPath(sessionID)
+		}
 	}
 	if sessionRef == "" {
 		return protocol.AgentSessionJSON{}, errors.New("session_ref or session_id is required")
 	}
 
-	thread, data, err := readAmpThread(sessionRef)
+	data, err := os.ReadFile(sessionRef)
 	if err != nil {
 		return protocol.AgentSessionJSON{}, err
+	}
+	thread, prepared, err := parseAmpThreadOrPlaceholder(data)
+	if err != nil {
+		return protocol.AgentSessionJSON{}, err
+	}
+	if !prepared {
+		if sessionID == "" {
+			sessionID = strings.TrimSuffix(filepath.Base(sessionRef), filepath.Ext(sessionRef))
+		}
+		return protocol.AgentSessionJSON{
+			SessionID:     sessionID,
+			AgentName:     "amp",
+			RepoPath:      protocol.RepoRoot(),
+			SessionRef:    sessionRef,
+			StartTime:     time.Now().UTC().Format(time.RFC3339),
+			NativeData:    data,
+			ModifiedFiles: []string{},
+			NewFiles:      []string{},
+			DeletedFiles:  []string{},
+		}, nil
 	}
 
 	startTime := thread.Created.Time()
@@ -120,6 +167,9 @@ func (a *Agent) PrepareTranscript(sessionRef string) error {
 	threadID, err := threadIDFromTranscriptData(data)
 	if err != nil {
 		return err
+	}
+	if threadID == "" {
+		return nil
 	}
 	runner := a.CommandRunner
 	if runner == nil {
@@ -181,7 +231,7 @@ func (a *Agent) GetTranscriptPosition(path string) (int, error) {
 		}
 		return 0, err
 	}
-	thread, err := parseAmpThread(data)
+	thread, _, err := parseAmpThreadOrPlaceholder(data)
 	if err != nil {
 		return 0, err
 	}
@@ -189,7 +239,11 @@ func (a *Agent) GetTranscriptPosition(path string) (int, error) {
 }
 
 func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, error) {
-	thread, _, err := readAmpThread(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, 0, err
+	}
+	thread, _, err := parseAmpThreadOrPlaceholder(data)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -197,7 +251,11 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 }
 
 func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) {
-	thread, _, err := readAmpThread(sessionRef)
+	data, err := os.ReadFile(sessionRef)
+	if err != nil {
+		return nil, err
+	}
+	thread, _, err := parseAmpThreadOrPlaceholder(data)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +272,11 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 }
 
 func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
-	thread, _, err := readAmpThread(sessionRef)
+	data, err := os.ReadFile(sessionRef)
+	if err != nil {
+		return "", false, err
+	}
+	thread, _, err := parseAmpThreadOrPlaceholder(data)
 	if err != nil {
 		return "", false, err
 	}
@@ -231,7 +293,7 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 }
 
 func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageResponse, error) {
-	thread, err := parseAmpThread(data)
+	thread, _, err := parseAmpThreadOrPlaceholder(data)
 	if err != nil {
 		return protocol.TokenUsageResponse{}, err
 	}
