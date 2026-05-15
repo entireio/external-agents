@@ -75,6 +75,14 @@ type ExternalAgent interface {
 	IsExternalAgent() bool
 }
 
+// IDEOnly is an optional interface for agents that are IDE-based and have no
+// automatable CLI. When implemented and returning true, the lifecycle runner
+// skips all prompt-based and interactive-session test scenarios rather than
+// failing them.
+type IDEOnly interface {
+	IsIDEOnly() bool
+}
+
 // registry and gates are populated by init() functions in agent implementation
 // files (e.g. kiro.go). Go guarantees init() functions run sequentially, so
 // no synchronization is needed. Do not call Register/RegisterGate from tests.

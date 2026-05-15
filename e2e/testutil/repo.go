@@ -175,8 +175,12 @@ type errScenarioRestart struct {
 // RunPrompt runs an agent prompt, logs the command and output to ConsoleLog,
 // and returns the result. If the agent reports a transient API error, it
 // panics with errScenarioRestart to trigger a full scenario restart.
+// IDE-only agents (those implementing IDEOnly) are skipped automatically.
 func (s *RepoState) RunPrompt(t *testing.T, ctx context.Context, prompt string, opts ...agents.Option) (agents.Output, error) {
 	t.Helper()
+	if ide, ok := s.Agent.(agents.IDEOnly); ok && ide.IsIDEOnly() {
+		t.Skipf("skipping prompt-based test: %s is an IDE-only agent", s.Agent.Name())
+	}
 	out, err := s.Agent.RunPrompt(ctx, s.Dir, prompt, opts...)
 	s.logPromptResult(out)
 
@@ -212,8 +216,12 @@ func (s *RepoState) GitOutput(t *testing.T, args ...string) string {
 // StartSession starts an interactive session and registers it for pane
 // capture in artifacts. Returns nil if the agent does not support interactive
 // mode. The session is closed automatically during test cleanup.
+// IDE-only agents (those implementing IDEOnly) are skipped automatically.
 func (s *RepoState) StartSession(t *testing.T, ctx context.Context) agents.Session {
 	t.Helper()
+	if ide, ok := s.Agent.(agents.IDEOnly); ok && ide.IsIDEOnly() {
+		t.Skipf("skipping interactive-session test: %s is an IDE-only agent", s.Agent.Name())
+	}
 	session, err := s.Agent.StartSession(ctx, s.Dir)
 	if err != nil {
 		t.Fatalf("start session: %v", err)
