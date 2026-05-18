@@ -1,0 +1,1 @@
+Remove the pi integration from this repo since it has been ported to core here https://github.com/entireio/cli/pull/1170

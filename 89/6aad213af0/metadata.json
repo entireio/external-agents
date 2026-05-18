@@ -1,0 +1,45 @@
+{
+  "cli_version": "v0.6.2-nightly.202605160654.ddf1a331-dev-ddf1a331c",
+  "checkpoint_id": "896aad213af0",
+  "strategy": "manual-commit",
+  "branch": "remove-pi-integration",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "agents/entire-agent-pi/.gitignore",
+    "agents/entire-agent-pi/AGENT.md",
+    "agents/entire-agent-pi/README.md",
+    "agents/entire-agent-pi/cmd/entire-agent-pi/main.go",
+    "agents/entire-agent-pi/go.mod",
+    "agents/entire-agent-pi/internal/pi/agent.go",
+    "agents/entire-agent-pi/internal/pi/compact.go",
+    "agents/entire-agent-pi/internal/pi/compact_test.go",
+    "agents/entire-agent-pi/internal/pi/hooks.go",
+    "agents/entire-agent-pi/internal/pi/hooks_test.go",
+    "agents/entire-agent-pi/internal/pi/paths.go",
+    "agents/entire-agent-pi/internal/pi/transcript.go",
+    "agents/entire-agent-pi/internal/pi/transcript_test.go",
+    "agents/entire-agent-pi/internal/protocol/handlers_test.go",
+    "agents/entire-agent-pi/internal/protocol/protocol.go",
+    "agents/entire-agent-pi/internal/protocol/types.go",
+    "agents/entire-agent-pi/mise.toml",
+    "agents/entire-agent-pi/scripts/verify-pi.sh",
+    "doc/first-time-contributors.md",
+    "e2e/agents/pi.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/89/6aad213af0/0/metadata.json",
+      "transcript": "/89/6aad213af0/0/transcript.jsonl",
+      "content_hash": "/89/6aad213af0/0/transcript_hash.txt",
+      "prompt": "/89/6aad213af0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 131045,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1167360,
+    "output_tokens": 7543,
+    "api_call_count": 53
+  }
+}
