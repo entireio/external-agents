@@ -166,7 +166,7 @@ git switch -c fix/short-description
 Use a branch name that describes the change. Examples:
 
 - `fix/kiro-clearer-missing-config-error`
-- `test/pi-transcript-token-edge-case`
+- `test/amp-transcript-token-edge-case`
 - `docs/lifecycle-setup-troubleshooting`
 
 ## Make a Small Change
