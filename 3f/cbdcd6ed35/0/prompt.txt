@@ -1,0 +1,1 @@
+instead of saying Entire CLI code of conduct or Entire CLI security policy etc..we should just say Security Policy..Code of Conduct..please update all those references

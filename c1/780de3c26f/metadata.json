@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "c1780de3c26f",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "e2e/kiro_lifecycle_test.go",
+    "e2e/setup_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c1/780de3c26f/0/metadata.json",
+      "transcript": "/c1/780de3c26f/0/transcript.jsonl",
+      "content_hash": "/c1/780de3c26f/0/transcript_hash.txt",
+      "prompt": "/c1/780de3c26f/0/prompt.txt"
+    },
+    {
+      "metadata": "/c1/780de3c26f/1/metadata.json",
+      "transcript": "/c1/780de3c26f/1/transcript.jsonl",
+      "content_hash": "/c1/780de3c26f/1/transcript_hash.txt",
+      "prompt": "/c1/780de3c26f/1/prompt.txt"
+    },
+    {
+      "metadata": "/c1/780de3c26f/2/metadata.json",
+      "transcript": "/c1/780de3c26f/2/transcript.jsonl",
+      "content_hash": "/c1/780de3c26f/2/transcript_hash.txt",
+      "prompt": "/c1/780de3c26f/2/prompt.txt"
+    },
+    {
+      "metadata": "/c1/780de3c26f/3/metadata.json",
+      "transcript": "/c1/780de3c26f/3/transcript.jsonl",
+      "content_hash": "/c1/780de3c26f/3/transcript_hash.txt",
+      "prompt": "/c1/780de3c26f/3/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 123,
+    "cache_creation_tokens": 266909,
+    "cache_read_tokens": 6883265,
+    "output_tokens": 61499,
+    "api_call_count": 95
+  }
+}

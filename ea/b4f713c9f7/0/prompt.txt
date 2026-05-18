@@ -1,0 +1,13 @@
+can you update @README.md since amp agent was just added. also add blurb about external agents need to be enabled in entire settings.json
+
+---
+
+try agagin
+
+---
+
+commit push and pr
+
+---
+
+why this "approval path is temporarily unavailable"

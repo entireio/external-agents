@@ -1,0 +1,64 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "018c2b5cd218",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".claude/skills/entire-external-agent/SKILL.md",
+    ".claude/skills/entire-external-agent/implement.md",
+    ".claude/skills/entire-external-agent/implementer.md",
+    ".claude/skills/entire-external-agent/research.md",
+    ".claude/skills/entire-external-agent/researcher.md",
+    ".claude/skills/entire-external-agent/test-writer.md",
+    ".claude/skills/entire-external-agent/write-tests.md",
+    ".cursor/rules/entire-external-agent.mdc",
+    ".opencode/plugins/entire-external-agent.js",
+    "AGENTS.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/01/8c2b5cd218/0/metadata.json",
+      "transcript": "/01/8c2b5cd218/0/transcript.jsonl",
+      "content_hash": "/01/8c2b5cd218/0/transcript_hash.txt",
+      "prompt": ""
+    },
+    {
+      "metadata": "/01/8c2b5cd218/1/metadata.json",
+      "transcript": "/01/8c2b5cd218/1/transcript.jsonl",
+      "content_hash": "/01/8c2b5cd218/1/transcript_hash.txt",
+      "prompt": "/01/8c2b5cd218/1/prompt.txt"
+    },
+    {
+      "metadata": "/01/8c2b5cd218/2/metadata.json",
+      "transcript": "/01/8c2b5cd218/2/transcript.jsonl",
+      "content_hash": "/01/8c2b5cd218/2/transcript_hash.txt",
+      "prompt": "/01/8c2b5cd218/2/prompt.txt"
+    },
+    {
+      "metadata": "/01/8c2b5cd218/3/metadata.json",
+      "transcript": "/01/8c2b5cd218/3/transcript.jsonl",
+      "content_hash": "/01/8c2b5cd218/3/transcript_hash.txt",
+      "prompt": ""
+    },
+    {
+      "metadata": "/01/8c2b5cd218/4/metadata.json",
+      "transcript": "/01/8c2b5cd218/4/transcript.jsonl",
+      "content_hash": "/01/8c2b5cd218/4/transcript_hash.txt",
+      "prompt": "/01/8c2b5cd218/4/prompt.txt"
+    },
+    {
+      "metadata": "/01/8c2b5cd218/5/metadata.json",
+      "transcript": "/01/8c2b5cd218/5/transcript.jsonl",
+      "content_hash": "/01/8c2b5cd218/5/transcript_hash.txt",
+      "prompt": "/01/8c2b5cd218/5/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 62,
+    "cache_creation_tokens": 142080,
+    "cache_read_tokens": 1319506,
+    "output_tokens": 13829,
+    "api_call_count": 43
+  }
+}

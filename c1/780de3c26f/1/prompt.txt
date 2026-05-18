@@ -1,0 +1,1 @@
+allow running e2e by external agent

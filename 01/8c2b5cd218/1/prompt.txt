@@ -1,0 +1,1 @@
+update entire-external-agent to work as is or also to take in argument like research, write-tests or implement to run just one part of skill. update the description so user knows

@@ -1,0 +1,13 @@
+getting error on windows when running the hooks Invalid model ID. Please select a different model to continue. same on mac
+
+---
+
+[Image #8]
+
+---
+
+you removed the kiro debug logs right
+
+---
+
+strip it out

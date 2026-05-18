@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.6.0",
+  "checkpoint_id": "7507f0edbb5a",
+  "session_id": "4369d6d2-a8cb-49ec-9554-6158e4c7e173",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-06T22:29:17.270342Z",
+  "branch": "kiro-windows-bugs",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "agents/entire-agent-kiro/internal/kiro/lifecycle_test.go",
+    "agents/entire-agent-kiro/internal/kiro/hooks.go",
+    "agents/entire-agent-kiro/internal/kiro/transcript.go",
+    "agents/entire-agent-kiro/AGENT.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-7[1m]",
+  "turn_id": "967ad38d0364",
+  "checkpoint_transcript_start": 351,
+  "token_usage": {
+    "input_tokens": 27,
+    "cache_creation_tokens": 24127,
+    "cache_read_tokens": 9787914,
+    "output_tokens": 17447,
+    "api_call_count": 17
+  },
+  "session_metrics": {
+    "turn_count": 36
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-06T22:29:17.175679Z",
+    "agent_lines": 100,
+    "agent_removed": 24,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 100,
+    "total_lines_changed": 124,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

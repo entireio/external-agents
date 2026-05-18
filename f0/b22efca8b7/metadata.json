@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.5.6",
+  "checkpoint_id": "f0b22efca8b7",
+  "strategy": "manual-commit",
+  "branch": "add-omp-agent-support",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "agents/entire-agent-omp/.gitignore",
+    "agents/entire-agent-omp/AGENT.md",
+    "agents/entire-agent-omp/README.md",
+    "agents/entire-agent-omp/go.mod",
+    "agents/entire-agent-omp/internal/omp/agent.go",
+    "agents/entire-agent-omp/internal/omp/compact.go",
+    "agents/entire-agent-omp/internal/omp/compact_test.go",
+    "agents/entire-agent-omp/internal/omp/hooks.go",
+    "agents/entire-agent-omp/internal/omp/hooks_test.go",
+    "agents/entire-agent-omp/internal/omp/paths.go",
+    "agents/entire-agent-omp/internal/omp/transcript.go",
+    "agents/entire-agent-omp/internal/omp/transcript_test.go",
+    "agents/entire-agent-omp/internal/protocol/handlers_test.go",
+    "agents/entire-agent-omp/internal/protocol/protocol.go",
+    "agents/entire-agent-omp/internal/protocol/types.go",
+    "agents/entire-agent-omp/mise.toml",
+    "agents/entire-agent-omp/scripts/verify-omp.sh",
+    "e2e/agents/agent.go",
+    "e2e/agents/kiro.go",
+    "e2e/agents/omp.go",
+    "e2e/agents/pi.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f0/b22efca8b7/0/metadata.json",
+      "transcript": "/f0/b22efca8b7/0/transcript.jsonl",
+      "content_hash": "/f0/b22efca8b7/0/transcript_hash.txt",
+      "prompt": "/f0/b22efca8b7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 177,
+    "cache_creation_tokens": 269912,
+    "cache_read_tokens": 20713295,
+    "output_tokens": 80109,
+    "api_call_count": 149
+  }
+}
