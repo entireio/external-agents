@@ -13,14 +13,14 @@ Pi has a rich TypeScript extension system with lifecycle hooks, JSONL session st
 | Hook keywords | PASS | `extension` found in help (verified) |
 | Session keywords | PASS | `session`, `resume`, `continue` found (verified) |
 | Config directory | PASS | `~/.pi/agent` (verified) |
-| Documentation | PASS | https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md |
+| Documentation | PASS | https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md |
 
 ## Binary
 - Name: `pi`
 - Version: 0.63.1
 - Runtime: Node.js (`/usr/bin/env node` script)
-- Package: `@mariozechner/pi-coding-agent` on npm
-- Install: `npm install -g @mariozechner/pi-coding-agent` or Homebrew
+- Package: `@earendil-works/pi-coding-agent` on npm
+- Install: `npm install -g @earendil-works/pi-coding-agent` or Homebrew
 
 ## Hook Mechanism
 - Config format: TypeScript extension files (loaded via jiti, no compilation needed)

@@ -1,8 +1,11 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { execFile } from "node:child_process";
 
 export default function (pi: ExtensionAPI) {
-  function fireHook(hookName: string, data: Record<string, unknown>): Promise<void> {
+  function fireHook(
+    hookName: string,
+    data: Record<string, unknown>,
+  ): Promise<void> {
     return new Promise((resolve) => {
       try {
         const child = execFile(
@@ -28,7 +31,10 @@ export default function (pi: ExtensionAPI) {
     }
 
     const input = event.input as { command?: string };
-    if (typeof input.command !== "string" || input.command.includes("GIT_TERMINAL_PROMPT=")) {
+    if (
+      typeof input.command !== "string" ||
+      input.command.includes("GIT_TERMINAL_PROMPT=")
+    ) {
       return;
     }
 

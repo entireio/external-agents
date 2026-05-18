@@ -130,7 +130,7 @@ func (a *Agent) AreHooksInstalled() bool {
 }
 
 func generateExtension() string {
-	return `import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+	return `import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { execFile } from "node:child_process";
 
 export default function (pi: ExtensionAPI) {

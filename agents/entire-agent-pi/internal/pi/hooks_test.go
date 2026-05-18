@@ -133,7 +133,7 @@ func TestParseHook_UnknownHook(t *testing.T) {
 func TestGenerateExtension(t *testing.T) {
 	got := generateExtension()
 	requiredSnippets := []string{
-		`import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";`,
+		`import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";`,
 		`pi.on("tool_call", async (event) => {`,
 		`if (event.toolName !== "bash") {`,
 		`input.command = "export GIT_TERMINAL_PROMPT=0\n" + input.command;`,
