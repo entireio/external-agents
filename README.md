@@ -18,6 +18,8 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 |-------|-----------|--------|
 | [Kiro](agents/entire-agent-kiro/) | `agents/entire-agent-kiro/` | Implemented — hooks + transcript analysis |
 | [Amp](agents/entire-agent-amp/) | `agents/entire-agent-amp/` | Implemented — hooks + transcript analysis + token calculation + compact transcripts |
+| [LangGraph](agents/entire-agent-langgraph/) | `agents/entire-agent-langgraph/` | Implemented — Python callback bridge + transcript analysis |
+| [CrewAI](agents/entire-agent-crewai/) | `agents/entire-agent-crewai/` | Implemented — Python event listener bridge + transcript analysis |
 
 See each agent's own README for setup and usage instructions.
 
@@ -32,6 +34,30 @@ External agent discovery is opt-in. Once an `entire-agent-<name>` binary is on y
 ```
 
 Without this flag, Entire ignores external agent binaries even when they're installed.
+
+### LangGraph and CrewAI
+
+LangGraph and CrewAI support is provided by the Python package
+[`entire-adapter`](https://pypi.org/project/entire-adapter/). These entries
+bridge framework lifecycle callbacks into Entire rather than wrapping a
+standalone chat CLI.
+
+For LangGraph or LangChain projects:
+
+```bash
+pip install "entire-adapter[langgraph]"
+entire enable --agent langgraph --telemetry=false
+```
+
+For CrewAI projects:
+
+```bash
+pip install "entire-adapter[crewai]"
+entire enable --agent crewai --telemetry=false
+```
+
+After enabling, add the adapter to your framework code. LangGraph uses
+`EntireCallbackHandler`; CrewAI uses `EntireCrewAIListener`.
 
 ## Building a New External Agent
 
@@ -111,6 +137,8 @@ The lifecycle harness auto-discovers and builds all agents in `agents/` via `Tes
 agents/                          # Standalone external agent projects
   entire-agent-kiro/             # Kiro agent (Go binary)
   entire-agent-amp/              # Amp agent (Go binary)
+  entire-agent-langgraph/        # LangGraph callback bridge (Python wrapper)
+  entire-agent-crewai/           # CrewAI listener bridge (Python wrapper)
 e2e/                             # Lifecycle integration harness
 .github/workflows/               # CI, including protocol compliance via external-agents-tests
 .claude/skills/entire-external-agent/  # Skill files (research, test-writer, implementer)

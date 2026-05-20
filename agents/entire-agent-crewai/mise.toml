@@ -1,0 +1,34 @@
+[tasks.build]
+description = "Build the entire-agent-crewai wrapper"
+run = """
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install 'entire-adapter==0.2.1'
+cat > entire-agent-crewai <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="__AGENT_ROOT__"
+exec "$ROOT/.venv/bin/python" "$ROOT/protocol_wrapper.py" crewai "$@"
+EOF
+.venv/bin/python - <<'PY'
+from pathlib import Path
+path = Path("entire-agent-crewai")
+text = path.read_text(encoding="utf-8")
+text = text.replace("__AGENT_ROOT__", str(Path.cwd()))
+path.write_text(text, encoding="utf-8")
+PY
+chmod +x entire-agent-crewai
+"""
+
+[tasks.test]
+description = "Run protocol smoke tests"
+run = """
+mise run build
+./entire-agent-crewai info >/dev/null
+./entire-agent-crewai detect >/dev/null
+printf '%s' '{"session_id":"crewai-smoke","user_prompt":"Smoke test","raw_data":{"framework":"crewai","agent_label":"smoke"}}' | ./entire-agent-crewai parse-hook --hook turn-start >/dev/null
+"""
+
+[tasks.clean]
+description = "Remove generated wrapper and virtual environment"
+run = "rm -rf .venv entire-agent-crewai"

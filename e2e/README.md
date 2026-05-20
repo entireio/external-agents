@@ -62,7 +62,8 @@ cd e2e && go test -tags=e2e -v -count=1 -run TestLifecycle_SinglePromptManualCom
 2. In `init()`, conditionally register based on `E2E_AGENT` env var.
 3. Call `RegisterGate("<name>", N)` to set concurrency limit.
 4. If it's an external agent, implement `ExternalAgent` so `SetupRepo` can pre-enable external agents in Entire settings.
-5. Keep generic protocol validation out of this directory. Add any reusable black-box protocol coverage to `external-agents-tests` instead.
+5. Add `agents/entire-agent-<name>/mise.toml` with `build` and `test` tasks. Non-Go agents are discovered through this build contract.
+6. Keep generic protocol validation out of this directory. Add any reusable black-box protocol coverage to `external-agents-tests` instead.
 
 ## Debugging Failures
 

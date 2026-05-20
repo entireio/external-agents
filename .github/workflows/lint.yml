@@ -69,7 +69,19 @@ jobs:
         with:
           go-version: "stable"
 
+      - name: Check for Go module
+        id: go-module
+        shell: bash
+        run: |
+          if [[ -f "${{ matrix.dir }}/go.mod" ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping Go lint for non-Go agent ${{ matrix.dir }}"
+          fi
+
       - name: Run golangci-lint
+        if: steps.go-module.outputs.present == 'true'
         uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9.2.0
         with:
           version: "v2.11.3"
