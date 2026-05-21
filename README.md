@@ -18,6 +18,7 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 |-------|-----------|--------|
 | [Kiro](agents/entire-agent-kiro/) | `agents/entire-agent-kiro/` | Implemented — hooks + transcript analysis |
 | [Amp](agents/entire-agent-amp/) | `agents/entire-agent-amp/` | Implemented — hooks + transcript analysis + token calculation + compact transcripts |
+| [Qwen Code](agents/entire-agent-qwen/) | `agents/entire-agent-qwen/` | Implemented — hooks + transcript analysis + compact transcripts |
 
 See each agent's own README for setup and usage instructions.
 
@@ -32,6 +33,22 @@ External agent discovery is opt-in. Once an `entire-agent-<name>` binary is on y
 ```
 
 Without this flag, Entire ignores external agent binaries even when they're installed.
+
+### Qwen Code
+
+Qwen support targets the terminal `qwen` coding agent:
+
+```bash
+cd agents/entire-agent-qwen
+mise run build
+cp entire-agent-qwen /usr/local/bin/
+
+cd /path/to/your/repo
+entire enable --agent qwen --telemetry=false
+qwen -p "Create hello.txt with hello world" --yolo
+```
+
+The adapter installs Qwen command hooks in `.qwen/settings.json` and stores a stable Entire sidecar transcript in `.entire/tmp/qwen/`.
 
 ## Building a New External Agent
 
@@ -104,6 +121,7 @@ The lifecycle harness auto-discovers and builds all agents in `agents/` via `Tes
 | `E2E_ARTIFACT_DIR` | Override lifecycle artifact output directory |
 | `E2E_KEEP_REPOS` | Preserve temp repos for debugging |
 | `E2E_CONCURRENT_TEST_LIMIT` | Override the per-agent lifecycle concurrency limit |
+| `QWEN_E2E` | Set to `1` with `E2E_AGENT=qwen` to run live Qwen Code lifecycle tests |
 
 ## Repository Layout
 
@@ -111,6 +129,7 @@ The lifecycle harness auto-discovers and builds all agents in `agents/` via `Tes
 agents/                          # Standalone external agent projects
   entire-agent-kiro/             # Kiro agent (Go binary)
   entire-agent-amp/              # Amp agent (Go binary)
+  entire-agent-qwen/             # Qwen Code agent (Go binary)
 e2e/                             # Lifecycle integration harness
 .github/workflows/               # CI, including protocol compliance via external-agents-tests
 .claude/skills/entire-external-agent/  # Skill files (research, test-writer, implementer)
