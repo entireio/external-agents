@@ -22,8 +22,14 @@ func (a *Agent) Info() protocol.InfoResponse {
 		Description:     "Kilo Code coding agent integration for Entire",
 		IsPreview:       true,
 		ProtectedDirs:   []string{".kilo"},
-		ProtectedFiles:  []string{".kilo/plugin/entire.ts"},
-		HookNames:       []string{"session.created", "session.idle"},
+		ProtectedFiles:  []string{".kilo/plugins/entire.ts"},
+		HookNames: []string{
+			HookNameSessionStart,
+			HookNameTurnStart,
+			HookNameTurnEnd,
+			HookNameCompaction,
+			HookNameSessionEnd,
+		},
 		Capabilities: protocol.DeclaredCapabilities{
 			Hooks:              true,
 			TranscriptAnalyzer: true,

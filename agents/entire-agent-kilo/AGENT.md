@@ -2,7 +2,7 @@
 
 ## Verdict: COMPATIBLE
 
-Kilo Code is a fork of OpenCode with a `@kilocode/plugin` API that exposes session lifecycle events. Plugins are TypeScript/JavaScript modules loaded at startup from `.kilo/plugin/` (or `.kilocode/plugin/` / `.opencode/plugin/`) and run on Bun. The integration installs a project plugin that subscribes to the internal event bus, captures the active `sessionID` on `session.created`, and on `session.idle` retrieves the authoritative transcript via the local Kilo SDK client (`client.session.messages.list({ id })`) and writes it to `session_ref`.
+Kilo Code is a fork of OpenCode with a `@kilocode/plugin` API that exposes session lifecycle events on its internal event bus. Plugins are TypeScript/JavaScript modules loaded at startup from `.kilo/plugins/` and run on Bun. The integration installs a project plugin that subscribes to the bus and forwards five lifecycle hooks (`session-start`, `turn-start`, `turn-end`, `compaction`, `session-end`) to the Entire CLI. The plugin uses Kilo's native event bus directly — `session.idle` is deprecated upstream and `session.status` with `status.type === "idle"` is the reliable turn-end signal in both interactive and `kilo run` modes.
 
 ## Static Checks
 
@@ -24,25 +24,29 @@ Kilo Code is a fork of OpenCode with a `@kilocode/plugin` API that exposes sessi
 
 ## Hook Mechanism
 
-- Config file: `.kilo/plugin/entire.ts`
+- Config file: `.kilo/plugins/entire.ts`
 - Config format: TypeScript plugin running on Kilo's Bun runtime.
-- Hook registration: plugin default export receives `PluginAPI`, returns hooks map keyed by `event` (and optionally `chat.message`).
-- Hook names and protocol mapping:
+- Hook registration: plugin default export returns `{ event }` handler subscribed to the internal bus.
+- Native event → forwarded hook → protocol event mapping:
 
-| Native Event              | When It Fires                                              | Protocol Event Type |
-| ------------------------- | ---------------------------------------------------------- | ------------------- |
-| `session.created`         | new session created                                        | 1 = SessionStart    |
-| synthetic `turn.start`    | derived from `message.updated` with role=user              | 2 = TurnStart       |
-| `session.idle`            | session finished responding (model + tools done for turn)  | 3 = TurnEnd         |
+| Native Event                 | Forwarded Hook   | Protocol Event Type |
+| ---------------------------- | ---------------- | ------------------- |
+| `session.created`            | `session-start`  | 1 = SessionStart    |
+| `message.updated` (user)     | `turn-start`     | 2 = TurnStart       |
+| `message.part.updated` (text) | `turn-start`    | 2 = TurnStart       |
+| `session.status` (idle)      | `turn-end`       | 3 = TurnEnd         |
+| `session.compacted`          | `compaction`     | 4 = Compaction      |
+| `session.deleted`            | `session-end`    | 5 = SessionEnd      |
+| `server.instance.disposed`   | `session-end`    | 5 = SessionEnd      |
 
-`session.created` carries `properties.info.id` (the session ID). `session.idle` carries `properties.sessionID`. The plugin captures session ID from `session.created` first, then re-uses it on subsequent events for the same session.
+`session.created` carries `properties.info.id`. `session.status` and `session.compacted` carry `properties.sessionID`. The plugin captures session ID from `session.created` (or the first `message.updated`) and re-uses it on subsequent events.
 
 ## Session Management
 
 - Session ID source: Kilo `sessionID` from event bus payload.
 - Session directory: `.entire/tmp/kilo/`.
 - Session file format: JSON envelope `{ id, title, messages[], project, time }` produced by `client.session.messages.list({ id })` plus `client.session.get({ id })`. The binary writes this file on `session.created` (skeleton) and refreshes it on `session.idle`.
-- Resume mechanism: `kilo run --session <sessionID> "<prompt>"` (and `kilo run --continue` for last session).
+- Resume mechanism: `kilo run --session <sessionID>` (and `kilo run --continue` for last session).
 
 ## Transcript
 
@@ -70,10 +74,10 @@ Kilo Code is a fork of OpenCode with a `@kilocode/plugin` API that exposes sessi
 | `chunk-transcript`        | raw bytes                       | Base64 chunking via protocol JSON encoding                                                    | Required            |
 | `reassemble-transcript`   | chunks                          | Reassemble raw bytes                                                                          | Required            |
 | `format-resume-command`   | Kilo run session                | `kilo run --session <id> "<prompt>"`                                                          | Required            |
-| `parse-hook`              | plugin event JSON               | Map event payloads to protocol events; refresh session on `session.created` and `session.idle`| Hooks               |
-| `install-hooks`           | project plugin                  | Write `.kilo/plugin/entire.ts`                                                                | Hooks               |
-| `uninstall-hooks`         | project plugin                  | Remove `.kilo/plugin/entire.ts`                                                               | Hooks               |
-| `are-hooks-installed`     | project plugin                  | Check plugin file marker                                                                      | Hooks               |
+| `parse-hook`              | plugin event JSON               | Map per-hook payloads to protocol events; write session_ref on turn-end                       | Hooks               |
+| `install-hooks`           | project plugin                  | Write `.kilo/plugins/entire.ts` with `__ENTIRE_CMD__` substituted                              | Hooks               |
+| `uninstall-hooks`         | project plugin                  | Remove `.kilo/plugins/entire.ts`                                                              | Hooks               |
+| `are-hooks-installed`     | project plugin                  | Check plugin file marker (`Auto-generated by ...`)                                            | Hooks               |
 | `get-transcript-position` | Kilo session JSON               | Validate `Session` and return message count                                                   | Transcript analyzer |
 | `extract-modified-files`  | Kilo session JSON               | Parse `ToolPart` state inputs/outputs from `write`/`edit`/`patch`/`multiEdit`                 | Transcript analyzer |
 | `extract-prompts`         | Kilo session JSON               | Parse user `text` parts from `Session.Messages`                                               | Transcript analyzer |
@@ -98,9 +102,9 @@ Kilo Code is a fork of OpenCode with a `@kilocode/plugin` API that exposes sessi
 ## Gaps & Limitations
 
 - Kilo plugins do not load when `KILO_PURE=1` is set. The plugin must not assume that env is unset; if it is set, hooks never fire and `are-hooks-installed` still returns true (file exists).
-- All transcript operations require the fetched Kilo session JSON at `session_ref`. The plugin triggers this fetch from the `session.created` and `session.idle` events; operations called before either fires return an error.
-- `session.created` carries the session ID under `properties.info.id`; `session.idle` carries it under `properties.sessionID`. The parser must handle both shapes.
-- Sub-sessions (Kilo subagent threads) emit their own `session.idle`. The plugin filters to top-level sessions by checking `info.parentID == null`.
+- `prepare-transcript` is not currently a live refresh — Kilo's CLI does not expose a `kilo export <id>` equivalent. The plugin writes the authoritative session JSON to `session_ref` during the `session.status` (turn-end) event. Mid-turn refresh (e.g., commits during compaction) reads whatever was last written. A future Bun-based refresh subprocess can populate `session_ref` on demand.
+- `session.idle` is deprecated upstream and not reliably emitted in `kilo run` mode. The plugin subscribes to `session.status` and filters on `status.type === "idle"` for turn-end.
+- Sub-sessions (Kilo subagent threads) are filtered out at `session.created` time by checking `info.parentID`. Subagent activity inside the parent session is still captured because the parent session JSON includes all parts.
 
 ## E2E Test Prerequisites
 

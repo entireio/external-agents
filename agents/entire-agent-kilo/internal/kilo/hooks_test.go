@@ -26,8 +26,17 @@ func TestAgentInfo(t *testing.T) {
 	if !info.Capabilities.CompactTranscript {
 		t.Fatal("CompactTranscript capability should be true")
 	}
-	wantHooks := map[string]bool{"session.created": false, "session.idle": false}
+	wantHooks := map[string]bool{
+		HookNameSessionStart: false,
+		HookNameTurnStart:    false,
+		HookNameTurnEnd:      false,
+		HookNameCompaction:   false,
+		HookNameSessionEnd:   false,
+	}
 	for _, h := range info.HookNames {
+		if _, ok := wantHooks[h]; !ok {
+			t.Fatalf("unexpected hook %q in HookNames", h)
+		}
 		wantHooks[h] = true
 	}
 	for hook, found := range wantHooks {
@@ -47,25 +56,14 @@ func TestFormatResumeCommand(t *testing.T) {
 	}
 }
 
-func TestParseHookSessionCreated(t *testing.T) {
+func TestParseHookSessionStart(t *testing.T) {
 	repo := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repo)
 
-	payload := map[string]any{
-		"type":       "session.created",
-		"cwd":        repo,
-		"session_id": "S-1",
-		"session": map[string]any{
-			"id":    "S-1",
-			"title": "test",
-			"time":  map[string]any{"created": 1700000000000},
-		},
-		"messages": []any{},
-	}
-	body, _ := json.Marshal(payload)
+	body, _ := json.Marshal(sessionInfoRaw{SessionID: "S-1"})
 
 	a := New()
-	event, err := a.ParseHook("session.created", body)
+	event, err := a.ParseHook(HookNameSessionStart, body)
 	if err != nil {
 		t.Fatalf("ParseHook error: %v", err)
 	}
@@ -78,42 +76,122 @@ func TestParseHookSessionCreated(t *testing.T) {
 	if event.SessionID != "S-1" {
 		t.Fatalf("event session id = %q", event.SessionID)
 	}
-	// session_ref should exist on disk
+	if event.SessionRef == "" {
+		t.Fatal("session_ref should be populated for session-start")
+	}
+}
+
+func TestParseHookTurnStart(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repo)
+
+	body, _ := json.Marshal(turnStartRaw{
+		SessionID: "S-1",
+		Prompt:    "fix the bug",
+		Model:     "claude-sonnet-4",
+	})
+
+	a := New()
+	event, err := a.ParseHook(HookNameTurnStart, body)
+	if err != nil {
+		t.Fatalf("ParseHook error: %v", err)
+	}
+	if event == nil || event.Type != 2 {
+		t.Fatalf("event = %+v, want TurnStart (type 2)", event)
+	}
+	if event.Prompt != "fix the bug" {
+		t.Fatalf("prompt = %q", event.Prompt)
+	}
+	if event.Model != "claude-sonnet-4" {
+		t.Fatalf("model = %q", event.Model)
+	}
+}
+
+func TestParseHookTurnEndWritesSessionRef(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repo)
+
+	session := json.RawMessage(`{"id":"S-1","title":"test"}`)
+	messages := json.RawMessage(`[{"info":{"id":"m1","role":"user"},"parts":[{"type":"text","text":"hi"}]}]`)
+	body, _ := json.Marshal(turnEndRaw{
+		SessionID: "S-1",
+		Model:     "claude-sonnet-4",
+		Session:   session,
+		Messages:  messages,
+	})
+
+	a := New()
+	event, err := a.ParseHook(HookNameTurnEnd, body)
+	if err != nil {
+		t.Fatalf("ParseHook error: %v", err)
+	}
+	if event == nil || event.Type != 3 {
+		t.Fatalf("event = %+v, want TurnEnd (type 3)", event)
+	}
+	if event.Model != "claude-sonnet-4" {
+		t.Fatalf("model = %q", event.Model)
+	}
 	if _, err := os.Stat(event.SessionRef); err != nil {
 		t.Fatalf("session_ref not written: %v", err)
 	}
 }
 
-func TestParseHookFiltersSubSessions(t *testing.T) {
-	repo := t.TempDir()
-	t.Setenv("ENTIRE_REPO_ROOT", repo)
-
-	payload := map[string]any{
-		"type":       "session.idle",
-		"cwd":        repo,
-		"session_id": "S-child",
-		"parent_id":  "S-parent",
-	}
-	body, _ := json.Marshal(payload)
-
+func TestParseHookCompaction(t *testing.T) {
+	body, _ := json.Marshal(sessionInfoRaw{SessionID: "S-1"})
 	a := New()
-	event, err := a.ParseHook("session.idle", body)
+	event, err := a.ParseHook(HookNameCompaction, body)
 	if err != nil {
 		t.Fatalf("ParseHook error: %v", err)
 	}
-	if event != nil {
-		t.Fatalf("expected nil event for sub-session, got %+v", event)
+	if event == nil || event.Type != 4 {
+		t.Fatalf("event = %+v, want Compaction (type 4)", event)
+	}
+}
+
+func TestParseHookSessionEnd(t *testing.T) {
+	body, _ := json.Marshal(sessionInfoRaw{SessionID: "S-1"})
+	a := New()
+	event, err := a.ParseHook(HookNameSessionEnd, body)
+	if err != nil {
+		t.Fatalf("ParseHook error: %v", err)
+	}
+	if event == nil || event.Type != 5 {
+		t.Fatalf("event = %+v, want SessionEnd (type 5)", event)
 	}
 }
 
 func TestParseHookEmptyInput(t *testing.T) {
 	a := New()
-	event, err := a.ParseHook("session.created", nil)
+	event, err := a.ParseHook(HookNameSessionStart, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if event != nil {
 		t.Fatalf("expected nil event, got %+v", event)
+	}
+}
+
+func TestParseHookUnknown(t *testing.T) {
+	a := New()
+	body, _ := json.Marshal(sessionInfoRaw{SessionID: "S-1"})
+	event, err := a.ParseHook("does-not-exist", body)
+	if err != nil {
+		t.Fatalf("unexpected error for unknown hook: %v", err)
+	}
+	if event != nil {
+		t.Fatalf("expected nil event for unknown hook, got %+v", event)
+	}
+}
+
+func TestParseHookMissingSessionID(t *testing.T) {
+	a := New()
+	body, _ := json.Marshal(sessionInfoRaw{})
+	event, err := a.ParseHook(HookNameSessionStart, body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if event != nil {
+		t.Fatalf("expected nil event for missing session_id, got %+v", event)
 	}
 }
 
@@ -130,8 +208,8 @@ func TestInstallAndUninstallHooks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InstallHooks error: %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("InstallHooks count = %d, want 2", count)
+	if count != 1 {
+		t.Fatalf("InstallHooks count = %d, want 1", count)
 	}
 	if !a.AreHooksInstalled() {
 		t.Fatal("hooks should be installed after install")
@@ -145,17 +223,34 @@ func TestInstallAndUninstallHooks(t *testing.T) {
 	if !strings.Contains(string(data), "@kilocode/plugin") {
 		t.Fatal("plugin missing @kilocode/plugin import")
 	}
-	if !strings.Contains(string(data), "entire-agent-kilo") {
-		t.Fatal("plugin missing entire-agent-kilo marker")
+	if !strings.Contains(string(data), pluginMarker) {
+		t.Fatal("plugin missing marker")
+	}
+	// Default cmd substitution applied
+	if !strings.Contains(string(data), `ENTIRE_CMD = 'entire'`) {
+		t.Fatal("plugin missing default entire command substitution")
 	}
 
-	// Re-install without force should no-op
+	// Re-install idempotent (same content)
 	count, err = a.InstallHooks(false, false)
 	if err != nil {
 		t.Fatalf("re-install error: %v", err)
 	}
 	if count != 0 {
 		t.Fatalf("re-install count = %d, want 0", count)
+	}
+
+	// localDev rewrites the cmd prefix
+	count, err = a.InstallHooks(true, false)
+	if err != nil {
+		t.Fatalf("localDev install error: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("localDev install count = %d, want 1", count)
+	}
+	data, _ = os.ReadFile(pluginPath)
+	if !strings.Contains(string(data), `go run`) {
+		t.Fatal("localDev plugin missing go-run command substitution")
 	}
 
 	if err := a.UninstallHooks(); err != nil {

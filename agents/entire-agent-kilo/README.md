@@ -4,9 +4,10 @@ Standalone external agent binary that teaches the [Entire CLI](https://github.co
 
 ## What it does
 
-- Installs a project plugin at `.kilo/plugin/entire.ts` that subscribes to Kilo's `event` bus.
-- On `session.created` and `session.idle`, fetches the authoritative session JSON via the local Kilo SDK client (`@kilocode/sdk`) and forwards it to the Entire CLI hook handler.
-- Maps Kilo's MessageV2 transcript into Entire's `AgentSessionJSON` envelope for checkpointing, compact transcripts, modified-file extraction, and token counting.
+- Installs a project plugin at `.kilo/plugins/entire.ts` that subscribes to Kilo's `event` bus.
+- Forwards five lifecycle hooks to the Entire CLI: `session-start`, `turn-start`, `turn-end`, `compaction`, `session-end`.
+- Fetches the authoritative session JSON via the local Kilo SDK client (`@kilocode/sdk`) on turn-end and writes it to `session_ref` so Entire can checkpoint without polling.
+- Maps Kilo's MessageV2 transcript into Entire's `AgentSessionJSON` envelope for compact transcripts, modified-file extraction, and token counting.
 
 ## Capabilities
 
@@ -23,10 +24,13 @@ Standalone external agent binary that teaches the [Entire CLI](https://github.co
 
 ## Hook events
 
-| Native Event       | Protocol Event Type |
-| ------------------ | ------------------- |
-| `session.created`  | 1 = SessionStart    |
-| `session.idle`     | 3 = TurnEnd         |
+| Forwarded Hook  | Native Source                            | Protocol Event Type |
+| --------------- | ---------------------------------------- | ------------------- |
+| `session-start` | `session.created`                        | 1 = SessionStart    |
+| `turn-start`    | `message.updated` / `message.part.updated` (user) | 2 = TurnStart |
+| `turn-end`      | `session.status` (`status.type === "idle"`) | 3 = TurnEnd      |
+| `compaction`    | `session.compacted`                      | 4 = Compaction      |
+| `session-end`   | `session.deleted` / `server.instance.disposed` | 5 = SessionEnd |
 
 ## Build
 
