@@ -32,16 +32,19 @@ func parseKiloSession(data []byte) (*Session, error) {
 	return &session, nil
 }
 
+// sessionIDFromTranscriptData extracts the session id from a transcript blob.
+// Returns ("", nil) when the blob is empty or parses to a Session with no id —
+// callers treat that as a graceful no-op (nothing to refresh from).
 func sessionIDFromTranscriptData(data []byte) (string, error) {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) == 0 {
-		return "", errors.New("empty kilo session")
+		return "", nil
 	}
 	session, err := parseKiloSession(trimmed)
-	if err == nil && session.ID != "" {
-		return session.ID, nil
+	if err != nil {
+		return "", err
 	}
-	return "", errors.New("cannot prepare transcript: missing kilo session id")
+	return session.ID, nil
 }
 
 func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {
