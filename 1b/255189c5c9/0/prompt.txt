@@ -1,0 +1,21 @@
+<task-notification>
+<task-id>b2rorrirc</task-id>
+<summary>Monitor event: "amp direct prompt test output"</summary>
+<event>[Monitor timed out — re-arm if needed.]</event>
+</task-notification>
+
+---
+
+why did we make questions to amp? I thought we were doing goose
+
+---
+
+okay so we didnt make any changes to amp?
+
+---
+
+what are next steps that i need to do to implement this? how do i test this out locally
+
+---
+
+one thing i cant see is the responses from goose..i only see prompts i gave it
