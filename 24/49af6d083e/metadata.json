@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "2449af6d083e",
+  "strategy": "manual-commit",
+  "branch": "goose-agent",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "agents/entire-agent-goose/README.md",
+    "agents/entire-agent-goose/cmd/entire-agent-goose/main.go",
+    "agents/entire-agent-goose/go.mod",
+    "agents/entire-agent-goose/internal/goose/agent.go",
+    "agents/entire-agent-goose/internal/goose/hooks.go",
+    "agents/entire-agent-goose/internal/goose/paths.go",
+    "agents/entire-agent-goose/internal/goose/transcript.go",
+    "agents/entire-agent-goose/mise.toml",
+    "e2e/agents/goose.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/24/49af6d083e/0/metadata.json",
+      "transcript": "/24/49af6d083e/0/full.jsonl",
+      "content_hash": "/24/49af6d083e/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 940,
+    "cache_creation_tokens": 68486,
+    "cache_read_tokens": 3529185,
+    "output_tokens": 22546,
+    "api_call_count": 26
+  }
+}
