@@ -56,10 +56,19 @@ real captured payloads unless marked `(unverified)`.
 - `sessions` table carries `working_dir`, `created_at`/`updated_at` (UTC `YYYY-MM-DD HH:MM:SS`), `provider_name`, `model_config_json`, and token totals. Sessions for a repo are findable via `WHERE working_dir = ?`.
 
 ## Transcript
-- Location: no native file. Recommended approach **(verified)**: materialize via
+- Location: no native file. Implemented approach **(verified)**: materialize via
   `goose session export --session-id <id> --format json`, written to
-  `<session-dir>/<session-id>.export.json` by the `prepare-transcript` subcommand
-  (`transcript_preparer` capability). `session_ref` = that exported path.
+  `<goose-data>/sessions/<session-id>.json` (next to sessions.db) by
+  `prepare-transcript` (`transcript_preparer` capability) and refreshed
+  best-effort by `parse-hook` on session-start/stop/session-end.
+  `session_ref` = that exported path.
+- The session dir must NOT be a repo-local scratch dir like `.entire/tmp/...`:
+  Entire attributes sessions to the agent whose `get-session-dir` contains the
+  transcript path (first match wins), and `.entire/tmp/goose` nests inside
+  amp's/kiro's `.entire/tmp`, so installed `entire-agent-amp` would claim every
+  goose session and TurnEnd checkpoints would be skipped (found the hard way).
+- Transcript positions/offsets are **message indexes**, not bytes: each export
+  rewrites the whole JSON document, so byte offsets would not be stable.
 - Format: single JSON object with session metadata + `conversation` array of messages.
 - Export top-level fields **(verified)**: `id`, `working_dir`, `name`, `session_type`, `created_at`/`updated_at` (RFC 3339), `total_tokens`, `input_tokens`, `output_tokens`, `accumulated_total_tokens`, `accumulated_input_tokens`, `accumulated_output_tokens`, `accumulated_cost`, `conversation`, `message_count`, `provider_name`, `model_config` (has `model_name`).
 - Message schema (camelCase content, unlike snake_case hook payloads) **(verified)**:
@@ -90,8 +99,8 @@ real captured payloads unless marked `(unverified)`.
 | `info` | — | static metadata; `protected_dirs: [".agents"]` | Required |
 | `detect` | `goose` binary | `exec.LookPath("goose")` | Required |
 | `get-session-id` | hook `session_id` | from HookInput | Required |
-| `get-session-dir` | sessions dir | `$GOOSE_PATH_ROOT/data/sessions` else `${XDG_DATA_HOME:-~/.local/share}/goose/sessions` | Required |
-| `resolve-session-file` | export path | `<session-dir>/<session-id>.export.json` | Required |
+| `get-session-dir` | goose data dir | `$GOOSE_PATH_ROOT/data/sessions` else `${XDG_DATA_HOME:-~/.local/share}/goose/sessions` (must stay outside the repo — see Transcript section) | Required |
+| `resolve-session-file` | export path | `<session-dir>/<session-id>.json` | Required |
 | `read-session` | export JSON | session metadata from export/DB; `start_time` from `created_at` | Required |
 | `write-session` | — | persist AgentSession native_data alongside export (no goose import needed for checkpoint flow) | Required |
 | `read-transcript` | export file | raw bytes of `session_ref` | Required |
@@ -123,7 +132,7 @@ real captured payloads unless marked `(unverified)`.
 - Hook payloads have **no timestamp and no session file reference** — events are stamped at receipt; transcript path is derived from `session_id`.
 - Session-level hook events lack `working_dir` (tool events have it). Entire sets cwd to repo root, so this doesn't block.
 - **No Compaction hook** — goose's internal context compaction can't trigger event type 4; token deltas may jump after compaction.
-- Per-message token counts were NULL in verification; only session-level accumulated totals are reliable.
+- Per-message token counts were NULL in verification; only session-level accumulated totals are reliable. `calculate-tokens` therefore reports whole-session totals regardless of offset.
 - `prepare-transcript` shells out to `goose` (must be on PATH — already guaranteed by `detect`). Direct SQLite reads are a fallback but are exposed to schema migrations (schema v10 at time of research).
 - Hook payload contains full `tool_input` (file contents) — payloads can be large.
 

@@ -19,10 +19,12 @@ const (
 	HookNameSessionEnd       = "session-end"
 )
 
-type Agent struct{}
+type Agent struct {
+	CommandRunner CommandRunner
+}
 
 func New() *Agent {
-	return &Agent{}
+	return &Agent{CommandRunner: &DefaultCommandRunner{}}
 }
 
 func (a *Agent) Info() protocol.InfoResponse {
@@ -33,6 +35,7 @@ func (a *Agent) Info() protocol.InfoResponse {
 		Description:     "Goose - Block's open-source AI coding agent",
 		IsPreview:       true,
 		ProtectedDirs:   []string{".agents"},
+		ProtectedFiles:  []string{".agents/plugins/entire/hooks/hooks.json"},
 		HookNames: []string{
 			HookNameSessionStart,
 			HookNameUserPromptSubmit,
@@ -57,6 +60,9 @@ func (a *Agent) Detect() protocol.DetectResponse {
 // hook payload carries session_id (format YYYYMMDD_N), which Entire passes
 // through on the HookInput.
 func (a *Agent) GetSessionID(input *protocol.HookInputJSON) string {
+	if input == nil {
+		return ""
+	}
 	return input.SessionID
 }
 

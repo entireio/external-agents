@@ -48,8 +48,15 @@ func RewindList(t *testing.T, dir string) []RewindPoint {
 	t.Helper()
 	out := run(t, dir, "rewind", "--list")
 
+	// Newer entire versions print a deprecation notice for `rewind` ahead of
+	// the JSON; parse from the start of the array.
+	jsonOut := out
+	if idx := strings.Index(out, "["); idx > 0 {
+		jsonOut = out[idx:]
+	}
+
 	var points []RewindPoint
-	if err := json.Unmarshal([]byte(out), &points); err != nil {
+	if err := json.Unmarshal([]byte(jsonOut), &points); err != nil {
 		t.Fatalf("parse rewind list: %v\nraw output: %s", err, out)
 	}
 	return points
