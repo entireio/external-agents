@@ -1,0 +1,82 @@
+{
+  "cli_version": "0.7.3",
+  "checkpoint_id": "3fea30f8c0ed",
+  "session_id": "4fc30b8d-0d52-49cd-8b24-c78559edb2ff",
+  "strategy": "manual-commit",
+  "created_at": "2026-06-11T11:30:19.925503Z",
+  "branch": "goose-agent",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "agents/entire-agent-goose/internal/goose/runner.go",
+    "agents/entire-agent-goose/internal/goose/paths.go",
+    "agents/entire-agent-goose/internal/goose/hooks.go",
+    "agents/entire-agent-goose/internal/goose/transcript.go",
+    "agents/entire-agent-goose/internal/goose/agent.go",
+    "agents/entire-agent-goose/internal/goose/hooks_test.go",
+    "e2e/entire/entire.go",
+    "agents/entire-agent-goose/internal/goose/transcript_test.go",
+    "agents/entire-agent-goose/AGENT.md",
+    "e2e/lifecycle_test.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5",
+  "turn_id": "6518dc323d91",
+  "checkpoint_transcript_start": 361,
+  "transcript_lines_at_start": 361,
+  "token_usage": {
+    "input_tokens": 2831,
+    "cache_creation_tokens": 94436,
+    "cache_read_tokens": 12692976,
+    "output_tokens": 56282,
+    "api_call_count": 59
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01VSVfbmEE27eRjhctLmtDf9",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "entire-external-agent"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "6518dc323d91",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 36,
+        "end": 37,
+        "entry_ids": [
+          "250a4e66-b682-4742-a505-8f37848fcc32"
+        ],
+        "tool_use_id": "toolu_01VSVfbmEE27eRjhctLmtDf9"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01VSVfbmEE27eRjhctLmtDf9"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: entire-external-agent",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-06-11T11:30:19.908183Z",
+    "agent_lines": 1162,
+    "agent_removed": 78,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1162,
+    "total_lines_changed": 1240,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
