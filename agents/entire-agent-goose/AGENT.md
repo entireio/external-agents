@@ -123,6 +123,7 @@ real captured payloads unless marked `(unverified)`.
 | hooks | true | native hooks.json plugin system, verified end-to-end |
 | transcript_analyzer | true | export JSON has prompts, tool calls with file paths |
 | transcript_preparer | true | transcript must be materialized from sessions.db via `goose session export` |
+| compact_transcript | true | converts the export to Entire Transcript Format so assistant responses and tool calls render in `entire explain` / web UI |
 | token_calculator | true | accumulated input/output tokens in export |
 | text_generator | false | possible later via headless `goose run -t --no-session`, but output includes UI text; defer |
 | hook_response_writer | false | no clean native channel for display-only messages (Stop deny blocks the turn) |

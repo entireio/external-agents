@@ -40,6 +40,7 @@ type gooseMessage struct {
 type gooseContent struct {
 	Type     string `json:"type"`
 	Text     string `json:"text,omitempty"`
+	ID       string `json:"id,omitempty"`
 	ToolCall *struct {
 		Status string `json:"status"`
 		Value  struct {
@@ -47,6 +48,16 @@ type gooseContent struct {
 			Arguments json.RawMessage `json:"arguments"`
 		} `json:"value"`
 	} `json:"toolCall,omitempty"`
+	ToolResult *struct {
+		Status string `json:"status"`
+		Value  struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+			IsError bool `json:"isError"`
+		} `json:"value"`
+	} `json:"toolResult,omitempty"`
 }
 
 // parseGooseExport is tolerant: any valid JSON object parses, and callers

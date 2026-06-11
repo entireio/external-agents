@@ -47,6 +47,7 @@ func (a *Agent) Info() protocol.InfoResponse {
 			TranscriptAnalyzer: true,
 			TranscriptPreparer: true,
 			TokenCalculator:    true,
+			CompactTranscript:  true,
 		},
 	}
 }
