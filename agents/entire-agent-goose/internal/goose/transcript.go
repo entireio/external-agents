@@ -70,6 +70,18 @@ func parseGooseExport(data []byte) (*gooseExport, error) {
 	return &export, nil
 }
 
+// tryParseGooseExport returns nil when data is not a goose export. For the
+// transcript analyzers, unparseable content degrades to empty results rather
+// than an error: rewound or opaque round-tripped transcripts must not break
+// checkpointing.
+func tryParseGooseExport(data []byte) *gooseExport {
+	export, err := parseGooseExport(data)
+	if err != nil {
+		return nil
+	}
+	return export
+}
+
 // gooseSessionIDPattern matches goose's YYYYMMDD_N session IDs.
 var gooseSessionIDPattern = regexp.MustCompile(`^\d{8}_\d+$`)
 
@@ -91,8 +103,8 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 		return protocol.AgentSessionJSON{}, err
 	}
 
-	export, parseErr := parseGooseExport(data)
-	if parseErr != nil || export.ID == "" {
+	export := tryParseGooseExport(data)
+	if export == nil || export.ID == "" {
 		// Not a goose export (e.g. round-tripped opaque native data); return
 		// the session as stored without goose-specific enrichment.
 		if sessionID == "" {
@@ -194,8 +206,8 @@ func (a *Agent) GetTranscriptPosition(path string) (int, error) {
 		}
 		return 0, err
 	}
-	export, err := parseGooseExport(data)
-	if err != nil {
+	export := tryParseGooseExport(data)
+	if export == nil {
 		return 0, nil
 	}
 	return len(export.Conversation), nil
@@ -206,8 +218,8 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 	if err != nil {
 		return nil, 0, err
 	}
-	export, err := parseGooseExport(data)
-	if err != nil {
+	export := tryParseGooseExport(data)
+	if export == nil {
 		return []string{}, 0, nil
 	}
 	return modifiedFilesFromExport(export, offset), len(export.Conversation), nil
@@ -218,8 +230,8 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 	if err != nil {
 		return nil, err
 	}
-	export, err := parseGooseExport(data)
-	if err != nil {
+	export := tryParseGooseExport(data)
+	if export == nil {
 		return []string{}, nil
 	}
 	prompts := []string{}
@@ -243,8 +255,8 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	export, err := parseGooseExport(data)
-	if err != nil || export.ID == "" || export.Name == "" {
+	export := tryParseGooseExport(data)
+	if export == nil || export.ID == "" || export.Name == "" {
 		return "", false, nil
 	}
 	return export.Name, true, nil

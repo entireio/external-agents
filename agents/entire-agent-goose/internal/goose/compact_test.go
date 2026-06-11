@@ -52,8 +52,8 @@ func TestCompactTranscript(t *testing.T) {
 	var second struct {
 		Type    string `json:"type"`
 		Content []struct {
-			Type   string `json:"type"`
-			Name   string `json:"name"`
+			Type   string         `json:"type"`
+			Name   string         `json:"name"`
 			Input  map[string]any `json:"input"`
 			Result *struct {
 				Output string `json:"output"`
