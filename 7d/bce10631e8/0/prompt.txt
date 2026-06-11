@@ -1,0 +1,9 @@
+okay to add a new external agent plugin..what things do i need to know or have access to? do i need the repo to the external agent im trying to add
+
+---
+
+let's invoke the skill for this
+
+---
+
+goose ..I actually even have the source code for goose found here Documents/work/goose
