@@ -1,0 +1,83 @@
+before you made this change..i already had a goose entire conversation going and made a commit..doi need oto make a new one to see this change..or will i see it from the old conve
+
+---
+
+hmm i see still dont see the agent responses and i onlysee my inital prompt..i dont see anyother responses..i feel like if i run entire checkpoint explain id..i see should isee it entire checkpoint explain --generate.. i do see the summary but thats it
+
+---
+
+so if i run entire in dev mode..i will see it?
+
+---
+
+hm okay yeah it works the other thing is ..I want to be able to see the transcripts render properly in Documents/work/entire.io and properly attribute the agent
+
+---
+
+how do i run it to see?
+
+---
+
+[secrets] ERROR task failed
+goose-guest@goose-guests-MacBook-Air entire.io % mise run api-db-start && mise run api-db-migrate          
+[api-db-start] $ docker compose -f api/docker-compose.yml up -d --wait
+unknown shorthand flag: 'f' in -f
+
+Usage:  docker [OPTIONS] COMMAND [ARG...]
+
+Run 'docker --help' for more information
+[api-db-start] ERROR task failed
+goose-guest@goose-guests-MacBook-Air entire.io % mise run dev
+[install] $ pnpm install
+[api-db-start] $ docker compose -f api/docker-compose.yml up -d --wait
+[api-db-start] unknown shorthand flag: 'f' in -f
+[api-db-start] 
+[api-db-start] Usage:  docker [OPTIONS] COMMAND [ARG...]
+[api-db-start] 
+[api-db-start] Run 'docker --help' for more information
+Finished in 17.8ms
+[api-db-start] ERROR task failed
+
+---
+
+do i have to do the 1password part?
+
+---
+
+I cant run the project with out secrets?
+
+---
+
+so i can just run this command ! op signin
+
+---
+
+do you know if it creates an actual checkpoint
+
+---
+
+no i mean in the UI
+
+---
+
+im asking if it renders the checkpoints in entire.io with the changes we made
+
+---
+
+what about trails..did i need to add anything for trails in here Documents/work/entire.io
+
+---
+
+open a PR to add goose
+
+---
+
+failing ci check https://github.com/entirehq/entire.io/actions/runs/27358047157/job/80837609150?pr=2354
+
+---
+
+oh did you open a PR in the external-agents repo as well
+
+---
+
+linting failing https://github.com/entireio/external-agents/actions/runs/27358839969/job/80840430963?pr=39 https://github.com/entireio/external-agents/actions/runs/27358839969/job/80840452241?pr=39
