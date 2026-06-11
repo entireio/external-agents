@@ -5,6 +5,7 @@
   "branch": "goose-agent",
   "checkpoints_count": 0,
   "files_touched": [
+    "agents/entire-agent-goose/.gitignore",
     "agents/entire-agent-goose/README.md",
     "agents/entire-agent-goose/cmd/entire-agent-goose/main.go",
     "agents/entire-agent-goose/go.mod",
@@ -12,6 +13,8 @@
     "agents/entire-agent-goose/internal/goose/hooks.go",
     "agents/entire-agent-goose/internal/goose/paths.go",
     "agents/entire-agent-goose/internal/goose/transcript.go",
+    "agents/entire-agent-goose/internal/protocol/protocol.go",
+    "agents/entire-agent-goose/internal/protocol/types.go",
     "agents/entire-agent-goose/mise.toml",
     "e2e/agents/goose.go"
   ],
@@ -24,10 +27,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 940,
-    "cache_creation_tokens": 68486,
-    "cache_read_tokens": 3529185,
-    "output_tokens": 22546,
-    "api_call_count": 26
+    "input_tokens": 2,
+    "cache_creation_tokens": 1113,
+    "cache_read_tokens": 159984,
+    "output_tokens": 340,
+    "api_call_count": 1
   }
 }
