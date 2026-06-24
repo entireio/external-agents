@@ -1,0 +1,41 @@
+[tasks.build]
+description = "Build the entire-agent-langgraph wrapper"
+run = """
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install 'entire-adapter[langgraph]==0.2.1'
+cat > entire-agent-langgraph <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="__AGENT_ROOT__"
+PYTHON="$ROOT/.venv/bin/python"
+
+if [[ "${1:-}" == "__e2e_run_prompt" ]]; then
+  shift
+  exec "$PYTHON" "$ROOT/e2e_langgraph_fixture.py" "$@"
+fi
+
+exec "$PYTHON" "$ROOT/protocol_wrapper.py" langgraph "$@"
+EOF
+.venv/bin/python - <<'PY'
+from pathlib import Path
+path = Path("entire-agent-langgraph")
+text = path.read_text(encoding="utf-8")
+text = text.replace("__AGENT_ROOT__", str(Path.cwd()))
+path.write_text(text, encoding="utf-8")
+PY
+chmod +x entire-agent-langgraph
+"""
+
+[tasks.test]
+description = "Run protocol smoke tests"
+run = """
+mise run build
+./entire-agent-langgraph info >/dev/null
+./entire-agent-langgraph detect >/dev/null
+printf '%s' '{"session_id":"langgraph-smoke","user_prompt":"Smoke test","raw_data":{"framework":"langgraph","agent_label":"smoke"}}' | ./entire-agent-langgraph parse-hook --hook turn-start >/dev/null
+"""
+
+[tasks.clean]
+description = "Remove generated wrapper and virtual environment"
+run = "rm -rf .venv entire-agent-langgraph"
