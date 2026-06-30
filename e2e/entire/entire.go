@@ -20,7 +20,7 @@ func BinPath() string {
 	return "entire"
 }
 
-// RewindPoint represents a single entry from `entire rewind --list`.
+// RewindPoint represents a single entry from `entire checkpoint rewind --list`.
 type RewindPoint struct {
 	ID             string `json:"id"`
 	Message        string `json:"message"`
@@ -43,10 +43,10 @@ func Disable(t *testing.T, dir string) {
 	run(t, dir, "disable")
 }
 
-// RewindList runs `entire rewind --list` and parses the JSON output.
+// RewindList runs `entire checkpoint rewind --list` and parses the JSON output.
 func RewindList(t *testing.T, dir string) []RewindPoint {
 	t.Helper()
-	out := run(t, dir, "rewind", "--list")
+	out := run(t, dir, "checkpoint", "rewind", "--list")
 
 	// Newer entire versions print a deprecation notice for `rewind` ahead of
 	// the JSON; parse from the start of the array.
@@ -62,17 +62,17 @@ func RewindList(t *testing.T, dir string) []RewindPoint {
 	return points
 }
 
-// Rewind runs `entire rewind --to <id>`. Returns an error instead of
+// Rewind runs `entire checkpoint rewind --to <id>`. Returns an error instead of
 // failing the test, since callers may test failure cases.
 func Rewind(t *testing.T, dir, id string) error {
 	t.Helper()
-	return runErr(dir, "rewind", "--to", id)
+	return runErr(dir, "checkpoint", "rewind", "--to", id)
 }
 
-// RewindLogsOnly runs `entire rewind --to <id> --logs-only`.
+// RewindLogsOnly runs `entire checkpoint rewind --to <id> --logs-only`.
 func RewindLogsOnly(t *testing.T, dir, id string) error {
 	t.Helper()
-	return runErr(dir, "rewind", "--to", id, "--logs-only")
+	return runErr(dir, "checkpoint", "rewind", "--to", id, "--logs-only")
 }
 
 // run executes an `entire` subcommand in dir and fails the test on error.

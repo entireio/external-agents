@@ -55,6 +55,7 @@ cd e2e && go test -tags=e2e -v -count=1 -run TestLifecycle_SinglePromptManualCom
 | `E2E_ARTIFACT_DIR` | Override artifact output directory. |
 | `E2E_KEEP_REPOS` | Set to any value to preserve temp repos after tests. |
 | `E2E_CONCURRENT_TEST_LIMIT` | Override per-agent concurrency limit (default: 2 for kiro). |
+| `QWEN_E2E` | Set to `1` with `E2E_AGENT=qwen` to include live Qwen Code tests. |
 
 ## Adding a New Agent
 
