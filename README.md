@@ -19,6 +19,7 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 | [Kiro](agents/entire-agent-kiro/) | `agents/entire-agent-kiro/` | Implemented — hooks + transcript analysis |
 | [Amp](agents/entire-agent-amp/) | `agents/entire-agent-amp/` | Implemented — hooks + transcript analysis + token calculation + compact transcripts |
 | [Qwen Code](agents/entire-agent-qwen/) | `agents/entire-agent-qwen/` | Implemented — hooks + transcript analysis + compact transcripts |
+| [Grok Build](agents/entire-agent-grok/) | `agents/entire-agent-grok/` | Implemented — hooks + transcript analysis + compact transcripts |
 
 See each agent's own README for setup and usage instructions.
 
@@ -49,6 +50,22 @@ qwen -p "Create hello.txt with hello world" --yolo
 ```
 
 The adapter installs Qwen command hooks in `.qwen/settings.json`. The stable Entire sidecar transcript lives in a repo-scoped OS temp directory, with a small `.entire/tmp/<session>.json` marker for Entire session discovery. Qwen Code must execute actual tools for checkpoints; local model backends that only print XML-style tool tags as text will not fire Qwen `PostToolUse` hooks.
+
+### Grok Build
+
+Grok support targets the Grok Build CLI:
+
+```bash
+cd agents/entire-agent-grok
+mise run build
+cp entire-agent-grok ~/.local/bin/
+
+cd /path/to/your/repo
+entire enable --agent grok --telemetry=false
+grok "Create hello.txt with hello world"
+```
+
+The adapter installs Grok command hooks in `.grok/hooks/entire.json`. Project hooks require folder trust (`/hooks-trust` or `--trust`) before they execute.
 
 ## Building a New External Agent
 
