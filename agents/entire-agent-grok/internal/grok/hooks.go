@@ -26,11 +26,14 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	raw.HookEventName = grokEventName(hookName, raw.HookEventName, raw.HookEventNameCamel)
 	normalizeRawHook(&raw, hookName)
 
-	if err := a.appendSidecar(raw); err != nil {
+	repoPath := raw.CWD
+	if strings.TrimSpace(repoPath) == "" {
+		repoPath = protocol.RepoRoot()
+	}
+	sessionRef := a.resolveSessionRef(raw.SessionID, repoPath)
+	if err := a.writeSessionMarker(raw, sessionRef); err != nil {
 		return nil, err
 	}
-
-	sessionRef := a.sidecarPath(raw.SessionID)
 	metadata := hookMetadata(raw)
 
 	switch hookName {

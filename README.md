@@ -65,7 +65,7 @@ entire enable --agent grok --telemetry=false
 grok "Create hello.txt with hello world"
 ```
 
-The adapter installs Grok command hooks in `.grok/hooks/entire.json`. Project hooks require folder trust (`/hooks-trust` or `--trust`) before they execute.
+The adapter installs Grok command hooks in `.grok/hooks/entire.json` and reads native transcripts from `~/.grok/sessions/<encoded-cwd>/<session-id>/chat_history.jsonl`. Project hooks require folder trust (`/hooks-trust` or `--trust`) before they execute.
 
 ## Building a New External Agent
 

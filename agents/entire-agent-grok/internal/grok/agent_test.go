@@ -32,19 +32,35 @@ func TestDetectUsesGrokBinary(t *testing.T) {
 	}
 }
 
-func TestGetSessionDirUsesRepoScopedTempDir(t *testing.T) {
+func testGrokHome(t *testing.T) string {
+	home := filepath.Join(t.TempDir(), "grok-home")
+	t.Setenv("GROK_HOME", home)
+	return home
+}
+
+func writeNativeTranscript(t *testing.T, repo, sessionID, content string) string {
+	testGrokHome(t)
+	path := nativeTranscriptPath(repo, sessionID)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestGetSessionDirUsesNativeGrokSessions(t *testing.T) {
 	repo := t.TempDir()
+	testGrokHome(t)
 	agent := New()
 
 	sessionDir, err := agent.GetSessionDir(repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sessionDir, "entire-grok") {
-		t.Fatalf("expected grok temp namespace, got %q", sessionDir)
-	}
-	if strings.Contains(sessionDir, filepath.Join(repo, ".entire", "tmp")) {
-		t.Fatalf("session dir must not live under .entire/tmp because broad external agents can claim it: %q", sessionDir)
+	if !strings.Contains(sessionDir, filepath.Join("sessions", encodeRepoCWD(repo))) {
+		t.Fatalf("expected native grok session dir, got %q", sessionDir)
 	}
 }
 
@@ -234,8 +250,7 @@ func TestParseHookLifecycleEvents(t *testing.T) {
 			if event.SessionID != "grok-test-session" {
 				t.Fatalf("unexpected session id %q", event.SessionID)
 			}
-			if !strings.Contains(event.SessionRef, "entire-grok") ||
-				!strings.HasSuffix(event.SessionRef, "grok-test-session.jsonl") {
+			if !strings.HasSuffix(event.SessionRef, "grok-test-session/chat_history.jsonl") {
 				t.Fatalf("unexpected session ref %q", event.SessionRef)
 			}
 			if event.Metadata["native_transcript_path"] != "/tmp/grok-native.jsonl" {
@@ -264,7 +279,8 @@ func TestParseHookIgnoresEmptyUserPromptSubmit(t *testing.T) {
 		t.Fatalf("expected empty prompt submit to be ignored, got %#v", event)
 	}
 
-	prompts, err := agent.ExtractPrompts(agent.sidecarPath("grok-empty-prompt"), 0)
+	transcript := writeNativeTranscript(t, repo, "grok-empty-prompt", `{"type":"user","content":[{"type":"text","text":"<user_info>ignored</user_info>"}]}`+"\n")
+	prompts, err := agent.ExtractPrompts(transcript, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,18 +294,12 @@ func TestParseHookNormalizesGrokPayloadAliases(t *testing.T) {
 	t.Setenv("ENTIRE_REPO_ROOT", repo)
 	agent := New()
 
-	inputs := map[string]string{
-		HookNameUserPromptSubmit: `{"session_id":"alias-test","timestamp":"2026-05-20T12:00:00Z","user_prompt":"Create aliased files"}`,
-		HookNamePostToolUse:      `{"session_id":"alias-test","timestamp":"2026-05-20T12:00:01Z","tool_name":"WriteFile","tool_use_id":"tool-1","inputs":{"filepath":"src/alias.txt"},"response":{"ok":true}}`,
-		HookNameStop:             `{"session_id":"alias-test","timestamp":"2026-05-20T12:00:02Z","last_assistant_message":"Done"}`,
-	}
-	for _, hook := range []string{HookNameUserPromptSubmit, HookNamePostToolUse, HookNameStop} {
-		if _, err := agent.ParseHook(hook, []byte(inputs[hook])); err != nil {
-			t.Fatal(err)
-		}
-	}
+	sessionRef := writeNativeTranscript(t, repo, "alias-test", strings.Join([]string{
+		`{"type":"user","content":[{"type":"text","text":"<user_query>\nCreate aliased files\n</user_query>"}]}`,
+		`{"type":"assistant","content":"Done","tool_calls":[{"id":"tool-1","name":"Write","arguments":"{\"path\":\"src/alias.txt\"}"}]}`,
+		`{"type":"assistant","content":"Done"}`,
+	}, "\n")+"\n")
 
-	sessionRef := agent.sidecarPath("alias-test")
 	prompts, err := agent.ExtractPrompts(sessionRef, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -312,17 +322,12 @@ func TestExtractModifiedFilesNestedAndShellInputs(t *testing.T) {
 	t.Setenv("ENTIRE_REPO_ROOT", repo)
 	agent := New()
 
-	inputs := []string{
-		`{"session_id":"nested-test","timestamp":"2026-05-20T12:00:00Z","tool_name":"str_replace_editor","tool_use_id":"tool-1","tool_input":{"edits":[{"path":"src/nested.txt"}]}}`,
-		`{"session_id":"nested-test","timestamp":"2026-05-20T12:00:01Z","tool_name":"Bash","tool_use_id":"tool-2","tool_input":{"command":"printf hi > shell.txt && tee -a log.txt"}}`,
-	}
-	for _, input := range inputs {
-		if _, err := agent.ParseHook(HookNamePostToolUse, []byte(input)); err != nil {
-			t.Fatal(err)
-		}
-	}
+	sessionRef := writeNativeTranscript(t, repo, "nested-test", strings.Join([]string{
+		`{"type":"assistant","content":"","tool_calls":[{"id":"tool-1","name":"search_replace","arguments":"{\"path\":\"src/nested.txt\"}"}]}`,
+		`{"type":"assistant","content":"","tool_calls":[{"id":"tool-2","name":"Shell","arguments":"{\"command\":\"printf hi > shell.txt && tee -a log.txt\"}"}]}`,
+	}, "\n")+"\n")
 
-	files, _, err := agent.ExtractModifiedFiles(agent.sidecarPath("nested-test"), 0)
+	files, _, err := agent.ExtractModifiedFiles(sessionRef, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,18 +342,14 @@ func TestTranscriptAnalysisAndCompactTranscript(t *testing.T) {
 	t.Setenv("ENTIRE_REPO_ROOT", repo)
 	agent := New()
 
-	inputs := map[string]string{
-		HookNameUserPromptSubmit: `{"session_id":"grok-test","timestamp":"2026-05-20T12:00:00Z","prompt":"Create hello.txt"}`,
-		HookNamePostToolUse:      `{"session_id":"grok-test","timestamp":"2026-05-20T12:00:01Z","tool_name":"write_file","tool_use_id":"tool-1","tool_input":{"file_path":"hello.txt"},"tool_response":{"ok":true}}`,
-		HookNameStop:             `{"session_id":"grok-test","timestamp":"2026-05-20T12:00:02Z","last_assistant_message":"Created hello.txt"}`,
+	sessionRef := writeNativeTranscript(t, repo, "grok-test", strings.Join([]string{
+		`{"type":"user","content":[{"type":"text","text":"<user_query>\nCreate hello.txt\n</user_query>"}]}`,
+		`{"type":"assistant","content":"","tool_calls":[{"id":"tool-1","name":"Write","arguments":"{\"path\":\"hello.txt\"}"}]}`,
+		`{"type":"assistant","content":"Created hello.txt"}`,
+	}, "\n")+"\n")
+	if _, err := agent.ParseHook(HookNameSessionStart, []byte(`{"session_id":"grok-test","cwd":"`+repo+`"}`)); err != nil {
+		t.Fatal(err)
 	}
-	for _, hook := range []string{HookNameUserPromptSubmit, HookNamePostToolUse, HookNameStop} {
-		if _, err := agent.ParseHook(hook, []byte(inputs[hook])); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	sessionRef := agent.sidecarPath("grok-test")
 	markerPath := filepath.Join(repo, ".entire", "tmp", "grok-test.json")
 	if _, err := os.Stat(markerPath); err != nil {
 		t.Fatalf("expected session marker %s: %v", markerPath, err)
@@ -408,7 +409,7 @@ func TestSessionReadWriteAndChunking(t *testing.T) {
 	repo := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repo)
 	agent := New()
-	sessionRef := agent.sidecarPath("roundtrip")
+	sessionRef := writeNativeTranscript(t, repo, "roundtrip", `{"type":"assistant","content":"ok"}`+"\n")
 	nativeData := []byte(`{"v":1}` + "\n")
 
 	if err := agent.WriteSession(protocol.AgentSessionJSON{

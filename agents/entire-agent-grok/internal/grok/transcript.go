@@ -26,6 +26,7 @@ var fileModificationTools = map[string]struct{}{
 	"writeFile":          {},
 	"WriteFile":          {},
 	"Write":              {},
+	"search_replace":     {},
 	"Edit":               {},
 	"MultiEdit":          {},
 	"NotebookEdit":       {},
@@ -116,7 +117,14 @@ func (a *Agent) ReassembleTranscript(chunks [][]byte) ([]byte, error) {
 }
 
 func (a *Agent) GetTranscriptPosition(path string) (int, error) {
-	records, err := readSidecarRecords(path)
+	if isNativeTranscript(path) {
+		position, err := chatHistoryPosition(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return 0, nil
+		}
+		return position, err
+	}
+	records, err := readTranscriptEntries(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return 0, nil
 	}
@@ -127,7 +135,23 @@ func (a *Agent) GetTranscriptPosition(path string) (int, error) {
 }
 
 func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, error) {
-	records, err := readSidecarRecords(path)
+	if isNativeTranscript(path) {
+		messages, err := readChatHistoryMessages(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, 0, nil
+		}
+		if err != nil {
+			return nil, 0, err
+		}
+		if offset < 0 {
+			offset = 0
+		}
+		if offset > len(messages) {
+			offset = len(messages)
+		}
+		return modifiedFilesFromChatHistory(messages, offset), len(messages), nil
+	}
+	records, err := readTranscriptEntries(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, 0, nil
 	}
@@ -145,7 +169,17 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 }
 
 func (a *Agent) ExtractPrompts(path string, offset int) ([]string, error) {
-	records, err := readSidecarRecords(path)
+	if isNativeTranscript(path) {
+		messages, err := readChatHistoryMessages(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		return promptsFromChatHistory(messages, offset), nil
+	}
+	records, err := readTranscriptEntries(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -168,7 +202,18 @@ func (a *Agent) ExtractPrompts(path string, offset int) ([]string, error) {
 }
 
 func (a *Agent) ExtractSummary(path string) (string, bool, error) {
-	records, err := readSidecarRecords(path)
+	if isNativeTranscript(path) {
+		messages, err := readChatHistoryMessages(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		}
+		if err != nil {
+			return "", false, err
+		}
+		summary, ok := summaryFromChatHistory(messages)
+		return summary, ok, nil
+	}
+	records, err := readTranscriptEntries(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", false, nil
 	}
@@ -190,59 +235,6 @@ func (a *Agent) ExtractSummary(path string) (string, bool, error) {
 	return "", false, nil
 }
 
-func (a *Agent) appendSidecar(raw grokHookInputRaw) error {
-	path := a.sidecarPath(raw.SessionID)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	record := sidecarRecord{
-		V:                    1,
-		Agent:                AgentName,
-		Event:                raw.HookEventName,
-		SessionID:            raw.SessionID,
-		TS:                   raw.Timestamp,
-		CWD:                  raw.CWD,
-		NativeTranscriptPath: raw.TranscriptPath,
-		Prompt:               raw.Prompt,
-		Model:                raw.Model,
-		Reason:               raw.Reason,
-		Source:               raw.Source,
-		PermissionMode:       raw.PermissionMode,
-		StopHookActive:       raw.StopHookActive,
-		Trigger:              raw.Trigger,
-		NotificationType:     raw.NotificationType,
-		Message:              raw.Message,
-		AgentID:              raw.AgentID,
-		AgentType:            raw.AgentType,
-		AgentTranscriptPath:  raw.AgentTranscriptPath,
-		ToolName:             raw.ToolName,
-		ToolUseID:            raw.ToolUseID,
-		ToolInput:            copyRawMessage(raw.ToolInput),
-		ToolResponse:         copyRawMessage(raw.ToolResponse),
-		Error:                raw.Error,
-		ErrorType:            raw.ErrorType,
-		ErrorDetails:         raw.ErrorDetails,
-		IsInterrupt:          raw.IsInterrupt,
-		IsTimeout:            raw.IsTimeout,
-		LastAssistantMessage: raw.LastAssistantMessage,
-		CustomInstructions:   raw.CustomInstructions,
-		CompactSummary:       raw.CompactSummary,
-	}
-	data, err := json.Marshal(record)
-	if err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = f.Close() }()
-	if _, err := f.Write(append(data, '\n')); err != nil {
-		return err
-	}
-	return a.writeSessionMarker(raw, path)
-}
-
 func (a *Agent) sessionIDAndRef(input *protocol.HookInputJSON) (string, string) {
 	sessionID := stubSessionID
 	sessionRef := ""
@@ -253,7 +245,7 @@ func (a *Agent) sessionIDAndRef(input *protocol.HookInputJSON) (string, string) 
 		sessionRef = input.SessionRef
 	}
 	if strings.TrimSpace(sessionRef) == "" {
-		sessionRef = a.sidecarPath(sessionID)
+		sessionRef = a.resolveSessionRef(sessionID, protocol.RepoRoot())
 	}
 	if strings.TrimSpace(sessionID) == "" {
 		sessionID = strings.TrimSuffix(filepath.Base(sessionRef), filepath.Ext(sessionRef))
@@ -261,17 +253,12 @@ func (a *Agent) sessionIDAndRef(input *protocol.HookInputJSON) (string, string) 
 	return sessionID, sessionRef
 }
 
-func (a *Agent) sidecarPath(sessionID string) string {
-	sessionDir, _ := a.GetSessionDir(protocol.RepoRoot())
-	return a.ResolveSessionFile(sessionDir, sessionID)
-}
-
-func (a *Agent) writeSessionMarker(raw grokHookInputRaw, sidecarPath string) error {
+func (a *Agent) writeSessionMarker(raw grokHookInputRaw, sessionRef string) error {
 	marker := protocol.AgentSessionJSON{
 		SessionID:  raw.SessionID,
 		AgentName:  AgentName,
 		RepoPath:   protocol.RepoRoot(),
-		SessionRef: sidecarPath,
+		SessionRef: sessionRef,
 		StartTime:  raw.Timestamp,
 	}
 	data, err := json.Marshal(marker)

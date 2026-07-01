@@ -1,10 +1,7 @@
 package grok
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -26,7 +23,6 @@ func (a *Agent) Info() protocol.InfoResponse {
 		Name:            AgentName,
 		Type:            AgentType,
 		Description:     "Grok Build external agent integration for Entire",
-		IsPreview:       true,
 		ProtectedDirs:   []string{".grok"},
 		HookNames: []string{
 			HookNameSessionStart,
@@ -73,29 +69,19 @@ func (a *Agent) GetSessionDir(repoPath string) (string, error) {
 	if strings.TrimSpace(repoPath) == "" {
 		repoPath = protocol.RepoRoot()
 	}
-	if resolved, err := filepath.EvalSymlinks(repoPath); err == nil {
-		repoPath = resolved
-	}
-	sum := sha256.Sum256([]byte(repoPath))
-	key := hex.EncodeToString(sum[:])[:16]
-	return filepath.Join(os.TempDir(), "entire-grok", key), nil
+	return nativeSessionDir(repoPath), nil
 }
 
 func (a *Agent) ResolveSessionFile(sessionDir, sessionID string) string {
-	if strings.TrimSpace(sessionDir) == "" {
-		sessionDir, _ = a.GetSessionDir(protocol.RepoRoot())
-	}
 	if strings.TrimSpace(sessionID) == "" {
 		sessionID = stubSessionID
 	}
-	return filepath.Join(sessionDir, safeFilename(sessionID)+".jsonl")
+	return filepath.Join(sessionDir, sessionID, nativeTranscriptFile)
 }
 
 func (a *Agent) FormatResumeCommand(sessionID string) string {
-	if strings.TrimSpace(sessionID) == "" {
-		return "grok --continue"
-	}
-	return "grok --continue " + shellQuote(sessionID)
+	_ = sessionID
+	return "grok --continue"
 }
 
 func shellQuote(value string) string {

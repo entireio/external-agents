@@ -1,6 +1,6 @@
 # Grok Build External Agent
 
-Grok Build exposes command hooks in `.grok/hooks/*.json` and stores sessions under `~/.grok/sessions/<encoded-cwd>/<session-id>/`. This integration uses Grok hooks as the lifecycle source of truth and writes an Entire-owned sidecar transcript under a repo-scoped OS temp directory so Entire can read stable session data even if Grok's native transcript evolves.
+Grok Build exposes command hooks in `.grok/hooks/*.json` and stores sessions under `~/.grok/sessions/<encoded-cwd>/<session-id>/`. Entire hooks Grok lifecycle events and reads the native `chat_history.jsonl` transcript for checkpoints, prompts, file changes, and summaries.
 
 ## Prerequisites
 
@@ -9,19 +9,18 @@ Grok Build exposes command hooks in `.grok/hooks/*.json` and stores sessions und
 | Binary present | Optional | `grok` on `PATH`; protocol commands still run without it |
 | Help available | PASS | Grok Build documents `grok`, `--continue`, and headless prompts |
 | Hook system | PASS | Project hooks in `.grok/hooks/*.json` |
-| Config directory | PASS | Workspace `.grok/hooks/entire.json` |
+| Native sessions | PASS | `~/.grok/sessions/<encoded-cwd>/<session-id>/chat_history.jsonl` |
 
 ## Protocol Mapping
 
 | Subcommand | Source | Notes |
 |------------|--------|-------|
-| `info` | Static metadata | Name `grok`, type `Grok Build`, preview |
+| `info` | Static metadata | Name `grok`, type `Grok Build` |
 | `detect` | CLI availability | Checks `grok` on `PATH` |
 | `get-session-id` | Hook stdin | `session_id` or `sessionId` |
-| `get-session-dir` | Repo hash | `/tmp/entire-grok/<hash>` |
-| `resolve-session-file` | Session id | `<session-dir>/<id>.jsonl` sidecar |
-| `read-session` / `write-session` | Sidecar JSONL | Entire-owned transcript |
-| `read-transcript` | Sidecar path | Raw bytes |
+| `get-session-dir` | Native store | `~/.grok/sessions/<encoded-cwd>` |
+| `resolve-session-file` | Session id | `<session-dir>/<id>/chat_history.jsonl` |
+| `read-session` / `write-session` | Native transcript | Raw `chat_history.jsonl` bytes |
 | `parse-hook` | Grok hook JSON | Maps lifecycle to Entire events |
 | `install-hooks` | `.grok/hooks/entire.json` | Read-modify-write command hooks while preserving user hook entries |
 | `are-hooks-installed` | `.grok/hooks/entire.json` | Requires all Entire Grok hooks |

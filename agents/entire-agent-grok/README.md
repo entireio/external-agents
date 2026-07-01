@@ -7,8 +7,8 @@ External agent binary that teaches the Entire CLI how to work with Grok Build.
 | Capability | Status |
 |------------|--------|
 | hooks | Yes, command hooks in `.grok/hooks/entire.json` for Grok lifecycle, tool, compact, notification, permission, and subagent events |
-| transcript_analyzer | Yes, via Entire sidecar JSONL |
-| compact_transcript | Yes, emits Entire compact transcript JSONL |
+| transcript_analyzer | Yes, reads Grok native `chat_history.jsonl` under `~/.grok/sessions/` |
+| compact_transcript | Yes, compacts native Grok chat history for Entire storage |
 | transcript_preparer | No |
 | token_calculator | No |
 
@@ -49,7 +49,11 @@ git commit -m "grok checkpoint test"
 entire checkpoint list
 ```
 
-Entire stores Grok sidecar transcripts in a repo-scoped OS temp directory such as `/tmp/entire-grok/<repo-hash>/<session_id>.jsonl`. A small `.entire/tmp/<session_id>.json` marker is also written so Entire's shared session persistence tooling can discover the session.
+Entire resolves transcripts from Grok's native session store:
+
+`~/.grok/sessions/<encoded-repo-cwd>/<session-id>/chat_history.jsonl`
+
+A small `.entire/tmp/<session_id>.json` marker is also written so Entire's shared session persistence tooling can discover the session.
 
 ## Development
 

@@ -58,6 +58,9 @@ func (a *Agent) CompactTranscript(sessionRef string) (protocol.CompactTranscript
 }
 
 func compactTranscriptBytes(data []byte) ([]byte, error) {
+	if bytes.Contains(data, []byte(`"type":"user"`)) || bytes.Contains(data, []byte(`"type":"assistant"`)) {
+		return compactChatHistoryBytes(data)
+	}
 	records, err := parseSidecarRecords(data)
 	if err != nil {
 		return nil, err
