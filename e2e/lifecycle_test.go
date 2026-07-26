@@ -191,7 +191,8 @@ func TestLifecycle_SessionPersistence(t *testing.T) {
 
 		hasSession := false
 		for _, entry := range entries {
-			if filepath.Ext(entry.Name()) != ".json" {
+			extension := filepath.Ext(entry.Name())
+			if extension != ".json" && extension != ".jsonl" {
 				continue
 			}
 			info, err := entry.Info()
@@ -203,7 +204,7 @@ func TestLifecycle_SessionPersistence(t *testing.T) {
 				break
 			}
 		}
-		assert.True(t, hasSession, "expected a fresh .json session file in %s", sessionDir)
+		assert.True(t, hasSession, "expected a fresh session file in %s", sessionDir)
 	})
 }
 
