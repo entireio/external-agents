@@ -11,6 +11,12 @@ import (
 
 func TestParseHookLifecycle(t *testing.T) {
 	root := t.TempDir()
+	// Canonicalize so the expected snapshot path matches what the agent
+	// produces on platforms where TempDir() is a symlink (macOS: /var ->
+	// /private/var); the agent resolves symlinks via EvalSymlinks.
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
 	t.Setenv("ENTIRE_REPO_ROOT", root)
 	t.Setenv("HOME", root)
 	t.Setenv("PI_CODING_AGENT_DIR", "")

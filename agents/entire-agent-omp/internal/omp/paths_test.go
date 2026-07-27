@@ -116,11 +116,18 @@ func TestEncodeSessionDirName(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Canonicalize the temp base so the expectations hold on platforms where
+	// os.TempDir() is itself a symlink (e.g. /var -> /private/var on macOS).
+	tmp, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct{ path, want string }{
 		{home, "-"},
 		{insideHome, "-src-repo"},
-		{os.TempDir(), "-tmp"},
-		{filepath.Join(os.TempDir(), "omp", "repo"), "-tmp-omp-repo"},
+		{tmp, "-tmp"},
+		{filepath.Join(tmp, "omp", "repo"), "-tmp-omp-repo"},
 		{filepath.Join(string(filepath.Separator), "opt", "omp", "repo"), "--opt-omp-repo--"},
 	}
 	for _, test := range tests {
