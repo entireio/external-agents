@@ -71,6 +71,8 @@ Native filenames are `<timestamp>_<session-id>.jsonl`. Session ID lookup therefo
 
 Legacy files can begin directly with the session header. The adapter accepts both layouts. Conversation state is a tree: the active transcript starts at the last valid entry, follows `parentId` to the root, then reverses that chain. File order alone does not define the active branch.
 
+Transcript analysis and compaction also accept checkpoint-scoped slices that begin at a native entry and omit the title and session header. A slice that includes either header form must contain a valid session header.
+
 Message entries use roles `user`, `assistant`, and `toolResult`. Assistant content can contain `text`, `thinking`, and `toolCall` blocks. Tool calls carry `id`, `name`, and `arguments`; tool results refer back through `toolCallId`.
 
 At TurnEnd, the adapter copies the source to:
@@ -104,7 +106,7 @@ The adapter rejects a source unless it resolves to a regular direct-child `.json
 | `extract-modified-files` | Active-branch `write`, `edit`, and `apply_patch` tool paths after the physical-line offset |
 | `extract-prompts` | Active-branch user text after the physical-line offset |
 | `extract-summary` | Last non-empty active-branch assistant text |
-| `compact-transcript` | Base64-wrapped Entire v1 compact JSONL with user text, assistant text, tool calls/results, and available input/output usage |
+| `compact-transcript` | Full sessions or checkpoint-scoped slices to base64-wrapped Entire v1 compact JSONL with user text, assistant text, tool calls/results, and available input/output usage |
 
 ## Declared Capabilities
 

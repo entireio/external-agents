@@ -41,7 +41,7 @@ func writeOMPFixture(t *testing.T, data []byte) string {
 }
 
 func TestParseSessionTitleHeaderAndActiveLeaf(t *testing.T) {
-	session, err := parseSession(ompBranchFixture())
+	session, err := parseFullSession(ompBranchFixture())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestParseSessionWithoutTitleAndMalformedLaterLines(t *testing.T) {
 		"{broken\n" +
 		`{"type":"message","id":"assistant","parentId":"user","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}` + "\n" +
 		"not json\n")
-	session, err := parseSession(data)
+	session, err := parseFullSession(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestParseSessionCycleGuard(t *testing.T) {
 	data := []byte(ompHeader() +
 		`{"type":"custom","id":"a","parentId":"b"}` + "\n" +
 		`{"type":"custom","id":"b","parentId":"a"}` + "\n")
-	session, err := parseSession(data)
+	session, err := parseFullSession(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,18 +89,60 @@ func TestParseSessionCycleGuard(t *testing.T) {
 }
 
 func TestParseSessionRejectsMalformedHeaderAndOversizedLine(t *testing.T) {
-	if _, err := parseSession([]byte(`{"type":"title"}` + "\n" + `{"type":"message"}` + "\n")); err == nil {
+	if _, err := parseFullSession([]byte(`{"type":"title"}` + "\n" + `{"type":"message"}` + "\n")); err == nil {
 		t.Fatal("expected malformed header error")
 	}
 	prefix := `{"type":"custom","id":"large","parentId":null,"value":"`
 	suffix := `"}`
 	atLimit := ompHeader() + prefix + strings.Repeat("x", maxSessionLine-len(prefix)-len(suffix)) + suffix + "\n"
-	if _, err := parseSession([]byte(atLimit)); err != nil {
+	if _, err := parseFullSession([]byte(atLimit)); err != nil {
 		t.Fatalf("line at limit rejected: %v", err)
 	}
 	oversized := append([]byte(ompHeader()), bytes.Repeat([]byte("x"), maxSessionLine+1)...)
-	if _, err := parseSession(oversized); err == nil {
+	if _, err := parseFullSession(oversized); err == nil {
 		t.Fatal("expected scanner size error")
+	}
+}
+
+func TestParseSessionSliceWithoutHeader(t *testing.T) {
+	parts := strings.SplitN(string(ompBranchFixture()), "\n", 3)
+	if len(parts) < 3 {
+		t.Fatal("fixture missing session entries")
+	}
+
+	session, err := parseSessionSlice([]byte(parts[2]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Header != (sessionHeader{}) {
+		t.Fatalf("header = %+v, want empty", session.Header)
+	}
+	if session.Lines != 5 {
+		t.Fatalf("lines = %d, want 5", session.Lines)
+	}
+	var ids []string
+	for _, entry := range session.Active {
+		ids = append(ids, entry.Entry.ID)
+	}
+	if want := []string{"model", "user", "assistant", "tail"}; !reflect.DeepEqual(ids, want) {
+		t.Fatalf("active IDs = %v, want %v", ids, want)
+	}
+}
+
+func TestParseSessionSliceRejectsMalformedHeader(t *testing.T) {
+	tests := []struct {
+		name string
+		data string
+	}{
+		{"invalid session", `{"type":"session","version":0,"id":"session-header"}` + "\n"},
+		{"title without session", `{"type":"title"}` + "\n" + `{"type":"message","id":"user"}` + "\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := parseSessionSlice([]byte(test.data)); err == nil {
+				t.Fatal("expected malformed header error")
+			}
+		})
 	}
 }
 
