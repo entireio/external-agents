@@ -1,0 +1,5 @@
+please eval this PR -> https://github.com/entireio/external-agents/pull/43 . The source code is in this repo, please find any malicius code here and there the implementation, follow the other external agents that are already implemented to see if it follow the same pattern.
+
+---
+
+can you fix that real issue on their fork?

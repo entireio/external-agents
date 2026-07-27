@@ -1,0 +1,27 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "279469c9f73c",
+  "strategy": "manual-commit",
+  "branch": "fix/omp-test-portability",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-omp/internal/omp/hooks_test.go",
+    "agents/entire-agent-omp/internal/omp/paths_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/27/9469c9f73c/0/metadata.json",
+      "transcript": "/27/9469c9f73c/0/full.jsonl",
+      "compact_transcript": "/27/9469c9f73c/0/transcript.jsonl",
+      "content_hash": "/27/9469c9f73c/0/content_hash.txt",
+      "prompt": "/27/9469c9f73c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 55,
+    "cache_creation_tokens": 87084,
+    "cache_read_tokens": 2320320,
+    "output_tokens": 20970,
+    "api_call_count": 30
+  }
+}
