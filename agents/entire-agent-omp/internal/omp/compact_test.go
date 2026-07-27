@@ -128,6 +128,26 @@ func TestCompactStringUserAndMalformedBlocks(t *testing.T) {
 	}
 }
 
+func TestCompactToleratesMissingSessionHeader(t *testing.T) {
+	// Entire scopes checkpoint transcripts from a mid-session offset before
+	// calling compact-transcript, so the title/session header is dropped.
+	// Compaction must still succeed on the header-less slice, matching the
+	// tolerant behavior of the transcript_analyzer methods.
+	parts := strings.SplitN(string(ompCompactFixture()), "\n", 3)
+	if len(parts) < 3 {
+		t.Fatalf("fixture too short to strip header")
+	}
+	headerless := []byte(parts[2])
+
+	data, err := compactTranscriptBytes(headerless)
+	if err != nil {
+		t.Fatalf("compact header-less slice: %v", err)
+	}
+	if lines := decodeCompactLines(t, data); len(lines) != 3 {
+		t.Fatalf("lines = %d, want 3: %s", len(lines), data)
+	}
+}
+
 func TestCompactRejectsNoOutputAndInvalidNative(t *testing.T) {
 	noOutput := []byte(ompHeader() +
 		`{"type":"message","id":"thinking","parentId":null,"message":{"role":"assistant","content":[{"type":"thinking","thinking":"hidden"},{"type":"image","data":"x"}]}}` + "\n")

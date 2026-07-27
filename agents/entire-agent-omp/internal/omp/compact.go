@@ -59,7 +59,11 @@ func (a *Agent) CompactTranscript(sessionRef string) (protocol.CompactTranscript
 }
 
 func compactTranscriptBytes(data []byte) ([]byte, error) {
-	session, err := parseSession(data)
+	// Use the tolerant parser: Entire scopes checkpoint transcripts from a
+	// mid-session offset before calling compact-transcript, so the title/session
+	// header is often absent. The transcript_analyzer methods already parse
+	// loosely; compaction must too, or scoped slices fail to summarize.
+	session, err := parseSessionLoose(data)
 	if err != nil {
 		return nil, err
 	}
