@@ -1,0 +1,71 @@
+how can I build this agent extension to start testing it with entire locally?
+
+---
+
+I have been testing it at /Users/gtrrz-victor/test/omp 
+I can not generate summary at /Users/gtrrz-victor/test/omp/feat-2 by calling:
+gtrrz-victor@Victors-Laptop ~/t/o/feat-2 (master)> entire checkpoint explain 01KYHDQTH8BQVN22N1GTF97FBV --generate
+Using Claude Code for summary generation.
+Generating checkpoint summary... (transcript: 41.1 KB, provider: claude-code)
+✗ Failed to generate summary
+  detail   transcript has no content to summarize
+
+why ?
+
+---
+
+how can I create a PR over the forked PR?
+
+---
+
+lets do the stacked PR. I want to have into the PR description the bug we have just fixed, how can it be reproduced.
+
+---
+
+please, also comment the issues and the changes proposed -> https://github.com/entireio/external-agents/pull/43
+
+---
+
+Great, the main PR Kh05ifr4nD:feat/omp-agent has accepted the merge. Can we revalidate its content ?
+
+---
+
+how can I install the binary ?
+
+---
+
+go install does the same ?
+
+---
+
+I'm getting this error on my testing folder:
+ ✘ 400 {"type":"error","error":{"type":"invalid_request_error","message":"messages.1.content.0: Invalid `signatu…
+   raw-http-request=/Users/gtrrz-victor/.omp/logs/http-400-requests/1785229443064-rwa0dt9q1lig.json
+
+why ?
+
+---
+
+is there any way to fix it? delete last jsonl line? I accept loosing some info from transcript than right now, modifying the redact logic just to include omp ?
+
+---
+
+same error:
+
+ ⠴ Working… ⟦esc⟧
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ✘ 400 {"type":"error","error":{"type":"invalid_request_error","message":"messages.1.content.0: Invalid `signatu…
+   raw-http-request=/Users/gtrrz-victor/.omp/logs/http-400-requests/1785230153617-11utcy8zgzpzx.json
+ Dismissed when you send your next message.
+
+---
+
+y
+
+---
+
+please, create a PR
+
+---
+
+Great job! Write down the learning of reviewing this contribution because, I want you now to validate this other one -> https://github.com/entireio/external-agents/pull/38

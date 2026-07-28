@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.9.1-nightly.202607280659.14515cc2a.0.20260728092342-3ef7d420e23b",
+  "checkpoint_id": "97d3d4f29eef",
+  "session_id": "776701b6-44d3-4956-bd36-b0aa6bb1e2de",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-28T10:16:04.95575Z",
+  "branch": "fix/kilo-jsonl-transcript",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-8",
+  "turn_id": "69ac086bd088",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 355,
+    "cache_creation_tokens": 869003,
+    "cache_read_tokens": 46612081,
+    "output_tokens": 217043,
+    "api_call_count": 193
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}

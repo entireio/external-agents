@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.9.1-nightly.202607280659.14515cc2a.0.20260728092342-3ef7d420e23b",
+  "checkpoint_id": "97d3d4f29eef",
+  "strategy": "manual-commit",
+  "branch": "fix/kilo-jsonl-transcript",
+  "checkpoints_count": 1,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/97/d3d4f29eef/0/metadata.json",
+      "transcript": "/97/d3d4f29eef/0/full.jsonl",
+      "compact_transcript": "/97/d3d4f29eef/0/transcript.jsonl",
+      "content_hash": "/97/d3d4f29eef/0/content_hash.txt",
+      "prompt": "/97/d3d4f29eef/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 355,
+    "cache_creation_tokens": 869003,
+    "cache_read_tokens": 46612081,
+    "output_tokens": 217043,
+    "api_call_count": 193
+  }
+}
