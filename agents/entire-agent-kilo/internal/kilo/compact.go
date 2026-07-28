@@ -149,6 +149,8 @@ func compactAssistantContent(parts []MessagePart) []any {
 				tool.Result = result
 			}
 			out = append(out, tool)
+		case PartReasoning, PartFile, PartSubtask:
+			// Not relevant to transcript compaction — skip.
 		}
 	}
 	return out
