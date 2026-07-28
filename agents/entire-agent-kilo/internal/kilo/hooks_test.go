@@ -273,6 +273,15 @@ func TestGeneratedPluginStartsTurnFromTextPart(t *testing.T) {
 	}
 }
 
+func TestGeneratedPluginTurnEndIsSynchronous(t *testing.T) {
+	plugin := generatePlugin()
+	// Turn-end must not await an async fetch — kilo run exits on the idle
+	// event and would cancel it. The transcript comes from prepare-transcript.
+	if strings.Contains(plugin, "snapshotSession") {
+		t.Fatal("plugin still performs an async snapshot at turn-end")
+	}
+}
+
 func TestSafeSessionID(t *testing.T) {
 	cases := map[string]string{
 		"":                  "unknown",

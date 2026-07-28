@@ -315,7 +315,7 @@ func generatePlugin() string {
 // Requires Bun runtime (used by Kilo's plugin system for loading ESM plugins).
 import type { Plugin } from "@kilocode/plugin"
 
-export const EntirePlugin: Plugin = async ({ client, directory }) => {
+export const EntirePlugin: Plugin = async ({ directory }) => {
   const ENTIRE_CMD = '__ENTIRE_CMD__'
   const seenUserMessages = new Set<string>()
   let currentSessionID: string | null = null
@@ -368,18 +368,6 @@ export const EntirePlugin: Plugin = async ({ client, directory }) => {
     currentModel = null
     currentSessionID = sessionID
     return true
-  }
-
-  async function snapshotSession(sessionID: string): Promise<{ session: unknown; messages: unknown } | null> {
-    try {
-      const [session, messages] = await Promise.all([
-        client.session.get({ path: { id: sessionID } }),
-        client.session.messages({ path: { id: sessionID } }),
-      ])
-      return { session: session.data, messages: messages.data }
-    } catch {
-      return null
-    }
   }
 
   return {
@@ -442,12 +430,14 @@ export const EntirePlugin: Plugin = async ({ client, directory }) => {
             if (props?.status?.type !== "idle") break
             const sessionID = props?.sessionID ?? currentSessionID
             if (!sessionID) break
-            const snapshot = await snapshotSession(sessionID)
+            // Fire turn-end synchronously — kilo run exits on this same idle
+            // event, so an awaited async fetch here can be cancelled before the
+            // hook runs. Entire materializes the transcript on its side via
+            // prepare-transcript (kilo session show), which reads Kilo's
+            // persisted store and is authoritative regardless of process exit.
             callHookSync("turn-end", {
               session_id: sessionID,
               model: currentModel ?? "",
-              session: snapshot?.session ?? null,
-              messages: snapshot?.messages ?? [],
             })
             break
           }
