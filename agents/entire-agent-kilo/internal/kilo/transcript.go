@@ -1,7 +1,6 @@
 package kilo
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,9 +20,6 @@ const prepareTranscriptTimeout = 30 * time.Second
 // Returns ("", nil) when it is empty or carries no session id — callers treat
 // that as a graceful no-op (nothing to refresh from).
 func sessionIDFromTranscriptData(data []byte) (string, error) {
-	if len(bytes.TrimSpace(data)) == 0 {
-		return "", nil
-	}
 	messages, err := decodeTranscript(data)
 	if err != nil {
 		return "", err
@@ -63,11 +59,6 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 		sessionID = strings.TrimSuffix(filepath.Base(sessionRef), filepath.Ext(sessionRef))
 	}
 
-	modified := modifiedFilesFromMessages(messages)
-	if modified == nil {
-		modified = []string{}
-	}
-
 	return protocol.AgentSessionJSON{
 		SessionID:     sessionID,
 		AgentName:     "kilo",
@@ -75,7 +66,7 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 		SessionRef:    sessionRef,
 		StartTime:     startTimeFromMessages(messages).Format(time.RFC3339),
 		NativeData:    data,
-		ModifiedFiles: modified,
+		ModifiedFiles: modifiedFilesFromMessages(messages),
 		NewFiles:      []string{},
 		DeletedFiles:  []string{},
 	}, nil

@@ -112,7 +112,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		// where the plugin can't write to disk itself). Persist it to session_ref
 		// so downstream transcript operations see a populated file.
 		if len(raw.Session) > 0 || len(raw.Messages) > 0 {
-			if err := writeSessionPayload(sessionRef, raw.SessionID, raw.Session, raw.Messages); err != nil {
+			if err := writeSessionPayload(sessionRef, raw.Session, raw.Messages); err != nil {
 				return nil, fmt.Errorf("write session ref on turn-end: %w", err)
 			}
 		}
@@ -163,9 +163,11 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	}
 }
 
-// writeSessionPayload merges the optional session metadata and messages array
-// from a hook payload into a single Session JSON document at sessionRef.
-func writeSessionPayload(sessionRef, sessionID string, sessionRaw, messagesRaw json.RawMessage) error {
+// writeSessionPayload persists the messages from a turn-end hook payload. The
+// plugin sends messages in the "messages" field; older/blob payloads may carry
+// them inside "session" instead. Stored as one-message-per-line JSONL so
+// Entire's line-based transcript scoping lands on message boundaries.
+func writeSessionPayload(sessionRef string, sessionRaw, messagesRaw json.RawMessage) error {
 	if strings.TrimSpace(sessionRef) == "" {
 		return errors.New("session_ref is required")
 	}
@@ -173,26 +175,21 @@ func writeSessionPayload(sessionRef, sessionID string, sessionRaw, messagesRaw j
 		return err
 	}
 
-	var session Session
-	if len(sessionRaw) > 0 {
-		if err := json.Unmarshal(sessionRaw, &session); err != nil {
-			return fmt.Errorf("parse session payload: %w", err)
-		}
-	}
-	if session.ID == "" {
-		session.ID = sessionID
-	}
-	if len(messagesRaw) > 0 {
-		var messages []SessionMessage
+	var messages []SessionMessage
+	switch {
+	case len(messagesRaw) > 0:
 		if err := json.Unmarshal(messagesRaw, &messages); err != nil {
 			return fmt.Errorf("parse messages payload: %w", err)
 		}
-		session.Messages = messages
+	case len(sessionRaw) > 0:
+		parsed, err := parseKiloExport(sessionRaw)
+		if err != nil {
+			return err
+		}
+		messages = parsed
 	}
 
-	// Store as one-message-per-line JSONL so Entire's line-based transcript
-	// scoping lands on message boundaries. See session_jsonl.go.
-	encoded, err := encodeMessagesJSONL(session.Messages)
+	encoded, err := encodeMessagesJSONL(messages)
 	if err != nil {
 		return fmt.Errorf("encode session: %w", err)
 	}
@@ -284,20 +281,15 @@ func (a *Agent) fetchSession(sessionID, sessionRef string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), prepareTranscriptTimeout)
 	defer cancel()
 
-	// Export Kilo's native session blob to a scratch file, then re-store it as
-	// one-message-per-line JSONL so downstream scoping works (session_jsonl.go).
-	rawPath := sessionRef + ".raw"
-	defer os.Remove(rawPath)
-	if _, err := runner.ExportSession(ctx, sessionID, rawPath); err != nil {
-		return err
-	}
-	raw, err := os.ReadFile(rawPath)
+	// Export Kilo's native session blob and store it as one-message-per-line
+	// JSONL so downstream scoping works (session_jsonl.go).
+	raw, err := runner.ExportSession(ctx, sessionID)
 	if err != nil {
 		return err
 	}
-	messages, err := decodeTranscript(raw)
+	messages, err := parseKiloExport(raw)
 	if err != nil {
-		return fmt.Errorf("parse exported session: %w", err)
+		return err
 	}
 	encoded, err := encodeMessagesJSONL(messages)
 	if err != nil {

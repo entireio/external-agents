@@ -5,27 +5,6 @@ import (
 	"time"
 )
 
-type Session struct {
-	ID       string           `json:"id"`
-	Title    string           `json:"title,omitempty"`
-	ParentID string           `json:"parentID,omitempty"`
-	Project  *SessionProject  `json:"project,omitempty"`
-	Time     *SessionTime     `json:"time,omitempty"`
-	Messages []SessionMessage `json:"messages,omitempty"`
-}
-
-type SessionProject struct {
-	ID        string `json:"id,omitempty"`
-	Worktree  string `json:"worktree,omitempty"`
-	Directory string `json:"directory,omitempty"`
-}
-
-type SessionTime struct {
-	Created   UnixMillis `json:"created"`
-	Updated   UnixMillis `json:"updated"`
-	Completed UnixMillis `json:"completed,omitempty"`
-}
-
 type UnixMillis int64
 
 func (m UnixMillis) Time() time.Time {

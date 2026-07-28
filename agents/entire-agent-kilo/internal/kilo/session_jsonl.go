@@ -23,43 +23,23 @@ const maxTranscriptLine = 10 * 1024 * 1024
 // encodeMessagesJSONL serializes messages as one JSON object per line.
 func encodeMessagesJSONL(messages []SessionMessage) ([]byte, error) {
 	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf) // Encode writes directly into buf and appends '\n'.
 	for i := range messages {
-		encoded, err := json.Marshal(messages[i])
-		if err != nil {
-			return nil, fmt.Errorf("marshal message: %w", err)
+		if err := enc.Encode(&messages[i]); err != nil {
+			return nil, fmt.Errorf("encode message: %w", err)
 		}
-		buf.Write(encoded)
-		buf.WriteByte('\n')
 	}
 	return buf.Bytes(), nil
 }
 
-// decodeTranscript reads a transcript into its messages. It accepts both the
-// JSONL layout written by this adapter and a raw Kilo session blob (a single
-// JSON object with a "messages" array) so ingestion output and legacy files
-// still parse. Missing/unparseable lines are skipped, so header-less scoped
-// slices decode cleanly.
+// decodeTranscript reads the on-disk transcript, which is always one JSON
+// message per line (see encodeMessagesJSONL). Blank/unparseable lines are
+// skipped, so header-less scoped slices decode cleanly. Kilo's native session
+// export blob is handled separately by parseKiloExport at the ingestion
+// boundary — it never reaches disk.
 func decodeTranscript(data []byte) ([]SessionMessage, error) {
-	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) == 0 {
-		return nil, nil
-	}
-
-	// A raw Kilo session blob is a single JSON object with a "messages" array
-	// (compact or pretty-printed). A message line has "info"/"parts" and no
-	// "messages", so it falls through to the JSONL scanner below.
-	var blob struct {
-		Messages *[]SessionMessage `json:"messages"`
-		Info     *json.RawMessage  `json:"info"`
-	}
-	if json.Unmarshal(trimmed, &blob) == nil && blob.Messages != nil && blob.Info == nil {
-		return *blob.Messages, nil
-	}
-
-	// JSONL: one message per line. Blank/unparseable lines are skipped so
-	// header-less scoped slices decode cleanly.
 	messages := make([]SessionMessage, 0)
-	scanner := bufio.NewScanner(bytes.NewReader(trimmed))
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	scanner.Buffer(make([]byte, 64*1024), maxTranscriptLine)
 	for scanner.Scan() {
 		line := bytes.TrimSpace(scanner.Bytes())
@@ -79,6 +59,24 @@ func decodeTranscript(data []byte) ([]SessionMessage, error) {
 		return nil, fmt.Errorf("scan kilo transcript: %w", err)
 	}
 	return messages, nil
+}
+
+// parseKiloExport reads Kilo's native session export (a single JSON object with
+// a "messages" array) into its messages. Used only when ingesting a fresh
+// export from the plugin payload or `kilo session show`; the result is stored
+// as JSONL via encodeMessagesJSONL.
+func parseKiloExport(raw []byte) ([]SessionMessage, error) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return nil, nil
+	}
+	var export struct {
+		Messages []SessionMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(trimmed, &export); err != nil {
+		return nil, fmt.Errorf("parse kilo session export: %w", err)
+	}
+	return export.Messages, nil
 }
 
 // atomicWriteFile writes data to path via a temp file + rename so a crash

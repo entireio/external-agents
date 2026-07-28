@@ -12,33 +12,32 @@ import (
 
 func TestCompactTranscript(t *testing.T) {
 	dir := t.TempDir()
-	session := Session{
-		ID: "S-1",
-		Messages: []SessionMessage{
-			makeTextMessage("m1", MessageRoleUser, "do a thing"),
-			{
-				Info: MessageInfo{
-					ID:     "m2",
-					Role:   MessageRoleAssistant,
-					Tokens: &Tokens{Input: 10, Output: 5},
-				},
-				Parts: []MessagePart{
-					{Type: PartText, Text: "calling tool"},
-					{
-						Type:   PartTool,
-						Tool:   "write",
-						CallID: "c1",
-						State: &ToolState{
-							Status: "completed",
-							Input:  json.RawMessage(`{"filePath":"/x"}`),
-							Output: "ok",
-						},
+	data, err := encodeMessagesJSONL([]SessionMessage{
+		makeTextMessage("m1", MessageRoleUser, "do a thing"),
+		{
+			Info: MessageInfo{
+				ID:     "m2",
+				Role:   MessageRoleAssistant,
+				Tokens: &Tokens{Input: 10, Output: 5},
+			},
+			Parts: []MessagePart{
+				{Type: PartText, Text: "calling tool"},
+				{
+					Type:   PartTool,
+					Tool:   "write",
+					CallID: "c1",
+					State: &ToolState{
+						Status: "completed",
+						Input:  json.RawMessage(`{"filePath":"/x"}`),
+						Output: "ok",
 					},
 				},
 			},
 		},
+	})
+	if err != nil {
+		t.Fatalf("encode: %v", err)
 	}
-	data, _ := json.Marshal(session)
 	path := filepath.Join(dir, "s.json")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
@@ -80,7 +79,7 @@ func TestCompactTranscript(t *testing.T) {
 func TestCompactTranscriptEmpty(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s.json")
-	if err := os.WriteFile(path, []byte(`{"id":"S-1","messages":[]}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(""), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	a := New()

@@ -6,29 +6,21 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
 // CommandRunner runs `kilo` CLI commands for transcript refresh. The default
 // implementation shells out to the binary. Tests substitute their own runner.
 type CommandRunner interface {
-	// ExportSession fetches the Kilo session JSON for sessionID and writes it
-	// to outputPath. Returns the output path on success.
-	ExportSession(ctx context.Context, sessionID string, outputPath string) (string, error)
+	// ExportSession returns the Kilo session JSON for sessionID.
+	ExportSession(ctx context.Context, sessionID string) ([]byte, error)
 }
 
 type DefaultCommandRunner struct{}
 
-func (r *DefaultCommandRunner) ExportSession(ctx context.Context, sessionID string, outputPath string) (string, error) {
+func (r *DefaultCommandRunner) ExportSession(ctx context.Context, sessionID string) ([]byte, error) {
 	if strings.TrimSpace(sessionID) == "" {
-		return "", errors.New("session id is required")
-	}
-	if strings.TrimSpace(outputPath) == "" {
-		return "", errors.New("output path is required")
-	}
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0o750); err != nil {
-		return "", fmt.Errorf("create output dir: %w", err)
+		return nil, errors.New("session id is required")
 	}
 
 	cmd := exec.CommandContext(ctx, "kilo", "session", "show", "--format", "json", sessionID)
@@ -37,15 +29,11 @@ func (r *DefaultCommandRunner) ExportSession(ctx context.Context, sessionID stri
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return "", fmt.Errorf("kilo session show %s: %w: %s", sessionID, err, strings.TrimSpace(string(exitErr.Stderr)))
+			return nil, fmt.Errorf("kilo session show %s: %w: %s", sessionID, err, strings.TrimSpace(string(exitErr.Stderr)))
 		}
-		return "", fmt.Errorf("kilo session show %s: %w", sessionID, err)
+		return nil, fmt.Errorf("kilo session show %s: %w", sessionID, err)
 	}
-	if err := os.WriteFile(outputPath, out, 0o600); err != nil {
-		return "", fmt.Errorf("write exported session: %w", err)
-	}
-
-	return outputPath, nil
+	return out, nil
 }
 
 // kiloEnv returns the parent environment without Bun bootstrap variables.

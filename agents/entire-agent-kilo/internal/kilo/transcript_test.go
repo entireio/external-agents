@@ -10,10 +10,10 @@ import (
 	"github.com/entireio/external-agents/agents/entire-agent-kilo/internal/protocol"
 )
 
-func writeSession(t *testing.T, dir string, session Session) string {
+func writeSession(t *testing.T, dir string, messages []SessionMessage) string {
 	t.Helper()
 	path := filepath.Join(dir, "session.json")
-	data, err := encodeMessagesJSONL(session.Messages)
+	data, err := encodeMessagesJSONL(messages)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -49,16 +49,12 @@ func TestDecodeTranscriptEdgeCases(t *testing.T) {
 
 func TestExtractPromptsAndSummary(t *testing.T) {
 	dir := t.TempDir()
-	session := Session{
-		ID: "S-1",
-		Messages: []SessionMessage{
-			makeTextMessage("m1", MessageRoleUser, "hello"),
-			makeTextMessage("m2", MessageRoleAssistant, "hi there"),
-			makeTextMessage("m3", MessageRoleUser, "do a thing"),
-			makeTextMessage("m4", MessageRoleAssistant, "thing done"),
-		},
-	}
-	path := writeSession(t, dir, session)
+	path := writeSession(t, dir, []SessionMessage{
+		makeTextMessage("m1", MessageRoleUser, "hello"),
+		makeTextMessage("m2", MessageRoleAssistant, "hi there"),
+		makeTextMessage("m3", MessageRoleUser, "do a thing"),
+		makeTextMessage("m4", MessageRoleAssistant, "thing done"),
+	})
 
 	a := New()
 	prompts, err := a.ExtractPrompts(path, 0)
@@ -89,37 +85,33 @@ func TestExtractPromptsAndSummary(t *testing.T) {
 func TestExtractModifiedFiles(t *testing.T) {
 	dir := t.TempDir()
 	toolInput := json.RawMessage(`{"filePath":"/tmp/repo/foo.go"}`)
-	session := Session{
-		ID: "S-1",
-		Messages: []SessionMessage{
-			{
-				Info: MessageInfo{ID: "m1", Role: MessageRoleAssistant},
-				Parts: []MessagePart{
-					{
-						Type:   PartTool,
-						Tool:   "write",
-						CallID: "c1",
-						State: &ToolState{
-							Status: "completed",
-							Input:  toolInput,
-							Output: "wrote",
-						},
+	path := writeSession(t, dir, []SessionMessage{
+		{
+			Info: MessageInfo{ID: "m1", Role: MessageRoleAssistant},
+			Parts: []MessagePart{
+				{
+					Type:   PartTool,
+					Tool:   "write",
+					CallID: "c1",
+					State: &ToolState{
+						Status: "completed",
+						Input:  toolInput,
+						Output: "wrote",
 					},
-					{
-						Type:   PartTool,
-						Tool:   "read",
-						CallID: "c2",
-						State: &ToolState{
-							Status: "completed",
-							Input:  json.RawMessage(`{"filePath":"/tmp/repo/bar.go"}`),
-							Output: "read",
-						},
+				},
+				{
+					Type:   PartTool,
+					Tool:   "read",
+					CallID: "c2",
+					State: &ToolState{
+						Status: "completed",
+						Input:  json.RawMessage(`{"filePath":"/tmp/repo/bar.go"}`),
+						Output: "read",
 					},
 				},
 			},
 		},
-	}
-	path := writeSession(t, dir, session)
+	})
 
 	a := New()
 	files, pos, err := a.ExtractModifiedFiles(path, 0)
@@ -136,14 +128,10 @@ func TestExtractModifiedFiles(t *testing.T) {
 
 func TestGetTranscriptPosition(t *testing.T) {
 	dir := t.TempDir()
-	session := Session{
-		ID: "S-1",
-		Messages: []SessionMessage{
-			makeTextMessage("m1", MessageRoleUser, "a"),
-			makeTextMessage("m2", MessageRoleAssistant, "b"),
-		},
-	}
-	path := writeSession(t, dir, session)
+	path := writeSession(t, dir, []SessionMessage{
+		makeTextMessage("m1", MessageRoleUser, "a"),
+		makeTextMessage("m2", MessageRoleAssistant, "b"),
+	})
 
 	a := New()
 	pos, err := a.GetTranscriptPosition(path)
@@ -165,35 +153,35 @@ func TestGetTranscriptPosition(t *testing.T) {
 }
 
 func TestCalculateTokens(t *testing.T) {
-	session := Session{
-		ID: "S-1",
-		Messages: []SessionMessage{
-			{Info: MessageInfo{ID: "m1", Role: MessageRoleUser}},
-			{
-				Info: MessageInfo{
-					ID:   "m2",
-					Role: MessageRoleAssistant,
-					Tokens: &Tokens{
-						Input:  100,
-						Output: 50,
-						Cache:  &CacheTokens{Read: 10, Write: 5},
-					},
+	messages := []SessionMessage{
+		{Info: MessageInfo{ID: "m1", Role: MessageRoleUser}},
+		{
+			Info: MessageInfo{
+				ID:   "m2",
+				Role: MessageRoleAssistant,
+				Tokens: &Tokens{
+					Input:  100,
+					Output: 50,
+					Cache:  &CacheTokens{Read: 10, Write: 5},
 				},
 			},
-			{
-				Info: MessageInfo{
-					ID:   "m3",
-					Role: MessageRoleAssistant,
-					Tokens: &Tokens{
-						Input:  200,
-						Output: 75,
-						Cache:  &CacheTokens{Read: 20, Write: 0},
-					},
+		},
+		{
+			Info: MessageInfo{
+				ID:   "m3",
+				Role: MessageRoleAssistant,
+				Tokens: &Tokens{
+					Input:  200,
+					Output: 75,
+					Cache:  &CacheTokens{Read: 20, Write: 0},
 				},
 			},
 		},
 	}
-	data, _ := json.Marshal(session)
+	data, err := encodeMessagesJSONL(messages)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
 
 	a := New()
 	usage, err := a.CalculateTokens(data, 0)
@@ -236,16 +224,10 @@ func TestReadSession(t *testing.T) {
 	repo := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repo)
 	dir := t.TempDir()
-	session := Session{
-		ID:    "S-1",
-		Title: "test",
-		Time:  &SessionTime{Created: 1700000000000},
-		Messages: []SessionMessage{
-			makeTextMessage("m1", MessageRoleUser, "hello"),
-			makeTextMessage("m2", MessageRoleAssistant, "world"),
-		},
-	}
-	path := writeSession(t, dir, session)
+	path := writeSession(t, dir, []SessionMessage{
+		makeTextMessage("m1", MessageRoleUser, "hello"),
+		makeTextMessage("m2", MessageRoleAssistant, "world"),
+	})
 
 	a := New()
 	got, err := a.ReadSession(&protocol.HookInputJSON{SessionID: "S-1", SessionRef: path})
