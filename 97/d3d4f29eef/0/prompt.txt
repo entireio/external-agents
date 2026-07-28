@@ -69,3 +69,7 @@ please, create a PR
 ---
 
 Great job! Write down the learning of reviewing this contribution because, I want you now to validate this other one -> https://github.com/entireio/external-agents/pull/38
+
+---
+
+lets do everything on top of a stacked PR, I want this external agent to be included asap into our project. So, let's fix all our findings there
