@@ -18,6 +18,8 @@ and token usage from Devin CLI sessions.
   captured by the first condensation after the session ends)
 - **Token calculation** — per-step `metrics` (prompt/completion/cached
   tokens; fresh input = prompt − cached)
+- **Compact transcripts** — converts ATIF steps (messages, tool calls, and
+  observation results) into Entire Transcript Format for `transcript.jsonl`
 
 See [AGENT.md](AGENT.md) for the live-verified behavior notes.
 
