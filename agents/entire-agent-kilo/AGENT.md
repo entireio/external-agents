@@ -20,7 +20,7 @@ Kilo Code is a fork of OpenCode with a `@kilocode/plugin` API that exposes sessi
 
 - Name: `kilo`
 - Install: `npm install -g kilo` or per upstream docs.
-- Plugin loading: auto from `.kilo/plugin/`; disabled when `KILO_PURE=1` is set.
+- Plugin loading: auto from `.kilo/plugins/`; disabled when `KILO_PURE=1` is set.
 
 ## Hook Mechanism
 

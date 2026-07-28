@@ -64,17 +64,17 @@ func (a *Agent) CompactTranscript(sessionRef string) (protocol.CompactTranscript
 }
 
 func compactTranscriptBytes(data []byte) ([]byte, error) {
-	session, err := parseKiloSession(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return nil, err
 	}
-	if len(session.Messages) == 0 {
+	if len(messages) == 0 {
 		return nil, errors.New("compact transcript produced no output")
 	}
 
 	cliVersion := compactCLIVersion()
 	var buf bytes.Buffer
-	for _, msg := range session.Messages {
+	for _, msg := range messages {
 		switch msg.Info.Role {
 		case MessageRoleUser:
 			content := compactUserContent(msg.Parts)
@@ -149,6 +149,10 @@ func compactAssistantContent(parts []MessagePart) []any {
 				tool.Result = result
 			}
 			out = append(out, tool)
+		case PartReasoning, PartFile, PartSubtask:
+			// Reasoning (thinking), file attachments, and subtask markers are not
+			// represented in the compact transcript. Dropping reasoning also means
+			// no provider thinking signature is ever emitted.
 		}
 	}
 	return out

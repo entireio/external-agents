@@ -17,34 +17,18 @@ import (
 
 const prepareTranscriptTimeout = 30 * time.Second
 
-func parseKiloSession(data []byte) (*Session, error) {
-	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) == 0 {
-		return &Session{}, nil
-	}
-	if trimmed[0] != '{' {
-		return nil, errors.New("kilo session is not prepared: run prepare-transcript first")
-	}
-	var session Session
-	if err := json.Unmarshal(trimmed, &session); err != nil {
-		return nil, fmt.Errorf("parse kilo session: %w", err)
-	}
-	return &session, nil
-}
-
-// sessionIDFromTranscriptData extracts the session id from a transcript blob.
-// Returns ("", nil) when the blob is empty or parses to a Session with no id —
-// callers treat that as a graceful no-op (nothing to refresh from).
+// sessionIDFromTranscriptData extracts the session id from a stored transcript.
+// Returns ("", nil) when it is empty or carries no session id — callers treat
+// that as a graceful no-op (nothing to refresh from).
 func sessionIDFromTranscriptData(data []byte) (string, error) {
-	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) == 0 {
+	if len(bytes.TrimSpace(data)) == 0 {
 		return "", nil
 	}
-	session, err := parseKiloSession(trimmed)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return "", err
 	}
-	return session.ID, nil
+	return sessionIDFromMessages(messages), nil
 }
 
 func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {
@@ -65,49 +49,56 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 	if err != nil {
 		return protocol.AgentSessionJSON{}, err
 	}
-	session, err := parseKiloSession(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return protocol.AgentSessionJSON{}, err
 	}
-	if session.ID == "" {
-		if sessionID == "" {
-			sessionID = strings.TrimSuffix(filepath.Base(sessionRef), filepath.Ext(sessionRef))
-		}
-		return protocol.AgentSessionJSON{
-			SessionID:     sessionID,
-			AgentName:     "kilo",
-			RepoPath:      protocol.RepoRoot(),
-			SessionRef:    sessionRef,
-			StartTime:     time.Now().UTC().Format(time.RFC3339),
-			NativeData:    data,
-			ModifiedFiles: []string{},
-			NewFiles:      []string{},
-			DeletedFiles:  []string{},
-		}, nil
+
+	// The JSONL layout carries no session header, so recover the id from the
+	// hook input, the messages, or the file name (in that order).
+	if sessionID == "" {
+		sessionID = sessionIDFromMessages(messages)
+	}
+	if sessionID == "" {
+		sessionID = strings.TrimSuffix(filepath.Base(sessionRef), filepath.Ext(sessionRef))
 	}
 
-	startTime := sessionStartTime(session)
+	modified := modifiedFilesFromMessages(messages)
+	if modified == nil {
+		modified = []string{}
+	}
 
 	return protocol.AgentSessionJSON{
-		SessionID:     session.ID,
+		SessionID:     sessionID,
 		AgentName:     "kilo",
 		RepoPath:      protocol.RepoRoot(),
 		SessionRef:    sessionRef,
-		StartTime:     startTime.Format(time.RFC3339),
+		StartTime:     startTimeFromMessages(messages).Format(time.RFC3339),
 		NativeData:    data,
-		ModifiedFiles: modifiedFilesFromSession(session),
+		ModifiedFiles: modified,
 		NewFiles:      []string{},
 		DeletedFiles:  []string{},
 	}, nil
 }
 
-func sessionStartTime(session *Session) time.Time {
-	if session != nil && session.Time != nil {
-		if t := session.Time.Created.Time(); !t.IsZero() {
-			return t
+// sessionIDFromMessages returns the first non-empty sessionID recorded on a
+// message's info (the JSONL layout has no session header line).
+func sessionIDFromMessages(messages []SessionMessage) string {
+	for _, msg := range messages {
+		if id := strings.TrimSpace(msg.Info.SessionID); id != "" {
+			return id
 		}
-		if t := session.Time.Updated.Time(); !t.IsZero() {
-			return t
+	}
+	return ""
+}
+
+// startTimeFromMessages returns the earliest message creation time, or now.
+func startTimeFromMessages(messages []SessionMessage) time.Time {
+	for _, msg := range messages {
+		if msg.Info.Time != nil {
+			if t := msg.Info.Time.Created.Time(); !t.IsZero() {
+				return t
+			}
 		}
 	}
 	return time.Now().UTC()
@@ -138,7 +129,7 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if err := os.MkdirAll(filepath.Dir(session.SessionRef), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(session.SessionRef, session.NativeData, 0o600)
+	return atomicWriteFile(session.SessionRef, session.NativeData, 0o600)
 }
 
 func (a *Agent) ReadTranscript(sessionRef string) ([]byte, error) {
@@ -146,7 +137,7 @@ func (a *Agent) ReadTranscript(sessionRef string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := parseKiloSession(data); err != nil {
+	if _, err := decodeTranscript(data); err != nil {
 		return nil, err
 	}
 	return data, nil
@@ -181,11 +172,11 @@ func (a *Agent) GetTranscriptPosition(path string) (int, error) {
 		}
 		return 0, err
 	}
-	session, err := parseKiloSession(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return 0, err
 	}
-	return len(session.Messages), nil
+	return len(messages), nil
 }
 
 func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, error) {
@@ -193,11 +184,11 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 	if err != nil {
 		return nil, 0, err
 	}
-	session, err := parseKiloSession(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return nil, 0, err
 	}
-	return modifiedFilesFromSessionOffset(session, offset), len(session.Messages), nil
+	return modifiedFilesFromMessages(messagesFromOffset(messages, offset)), len(messages), nil
 }
 
 func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) {
@@ -205,12 +196,12 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 	if err != nil {
 		return nil, err
 	}
-	session, err := parseKiloSession(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return nil, err
 	}
 	var prompts []string
-	for _, msg := range sessionMessagesFromOffset(session, offset) {
+	for _, msg := range messagesFromOffset(messages, offset) {
 		if msg.Info.Role != MessageRoleUser {
 			continue
 		}
@@ -226,12 +217,12 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	session, err := parseKiloSession(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return "", false, err
 	}
-	for i := len(session.Messages) - 1; i >= 0; i-- {
-		msg := session.Messages[i]
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
 		if msg.Info.Role != MessageRoleAssistant {
 			continue
 		}
@@ -243,12 +234,12 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 }
 
 func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageResponse, error) {
-	session, err := parseKiloSession(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return protocol.TokenUsageResponse{}, err
 	}
 	var usage protocol.TokenUsageResponse
-	for _, msg := range sessionMessagesFromOffset(session, offset) {
+	for _, msg := range messagesFromOffset(messages, offset) {
 		if msg.Info.Role != MessageRoleAssistant || msg.Info.Tokens == nil {
 			continue
 		}
@@ -264,25 +255,25 @@ func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageRes
 	return usage, nil
 }
 
-func sessionMessagesFromOffset(session *Session, offset int) []SessionMessage {
-	if session == nil || len(session.Messages) == 0 {
+// messagesFromOffset returns the messages at index >= offset. Because the
+// on-disk transcript is one message per line, the offset Entire records via
+// get-transcript-position (a line index) is also a message index.
+func messagesFromOffset(messages []SessionMessage, offset int) []SessionMessage {
+	if len(messages) == 0 {
 		return nil
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	if offset >= len(session.Messages) {
+	if offset >= len(messages) {
 		return nil
 	}
-	return session.Messages[offset:]
+	return messages[offset:]
 }
 
-func latestSessionModel(session *Session) string {
-	if session == nil {
-		return ""
-	}
-	for i := len(session.Messages) - 1; i >= 0; i-- {
-		info := session.Messages[i].Info
+func latestSessionModel(messages []SessionMessage) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		info := messages[i].Info
 		if info.Role != MessageRoleAssistant {
 			continue
 		}
@@ -291,20 +282,6 @@ func latestSessionModel(session *Session) string {
 		}
 	}
 	return ""
-}
-
-func modifiedFilesFromSession(session *Session) []string {
-	if session == nil {
-		return nil
-	}
-	return modifiedFilesFromMessages(session.Messages)
-}
-
-func modifiedFilesFromSessionOffset(session *Session, offset int) []string {
-	if session == nil {
-		return nil
-	}
-	return modifiedFilesFromMessages(sessionMessagesFromOffset(session, offset))
 }
 
 func modifiedFilesFromMessages(messages []SessionMessage) []string {

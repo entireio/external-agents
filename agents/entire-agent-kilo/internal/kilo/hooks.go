@@ -190,11 +190,13 @@ func writeSessionPayload(sessionRef, sessionID string, sessionRaw, messagesRaw j
 		session.Messages = messages
 	}
 
-	encoded, err := json.Marshal(session)
+	// Store as one-message-per-line JSONL so Entire's line-based transcript
+	// scoping lands on message boundaries. See session_jsonl.go.
+	encoded, err := encodeMessagesJSONL(session.Messages)
 	if err != nil {
-		return fmt.Errorf("marshal session: %w", err)
+		return fmt.Errorf("encode session: %w", err)
 	}
-	return os.WriteFile(sessionRef, encoded, 0o600)
+	return atomicWriteFile(sessionRef, encoded, 0o600)
 }
 
 // latestModelFromSessionRef returns the most recent assistant model recorded
@@ -207,11 +209,11 @@ func latestModelFromSessionRef(sessionRef string) string {
 	if err != nil || len(bytes.TrimSpace(data)) == 0 {
 		return ""
 	}
-	session, err := parseKiloSession(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return ""
 	}
-	return latestSessionModel(session)
+	return latestSessionModel(messages)
 }
 
 func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
@@ -281,8 +283,27 @@ func (a *Agent) fetchSession(sessionID, sessionRef string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), prepareTranscriptTimeout)
 	defer cancel()
-	_, err := runner.ExportSession(ctx, sessionID, sessionRef)
-	return err
+
+	// Export Kilo's native session blob to a scratch file, then re-store it as
+	// one-message-per-line JSONL so downstream scoping works (session_jsonl.go).
+	rawPath := sessionRef + ".raw"
+	defer os.Remove(rawPath)
+	if _, err := runner.ExportSession(ctx, sessionID, rawPath); err != nil {
+		return err
+	}
+	raw, err := os.ReadFile(rawPath)
+	if err != nil {
+		return err
+	}
+	messages, err := decodeTranscript(raw)
+	if err != nil {
+		return fmt.Errorf("parse exported session: %w", err)
+	}
+	encoded, err := encodeMessagesJSONL(messages)
+	if err != nil {
+		return err
+	}
+	return atomicWriteFile(sessionRef, encoded, 0o600)
 }
 
 const entireCmdPlaceholder = "__ENTIRE_CMD__"

@@ -13,9 +13,9 @@ import (
 func writeSession(t *testing.T, dir string, session Session) string {
 	t.Helper()
 	path := filepath.Join(dir, "session.json")
-	data, err := json.Marshal(session)
+	data, err := encodeMessagesJSONL(session.Messages)
 	if err != nil {
-		t.Fatalf("marshal: %v", err)
+		t.Fatalf("encode: %v", err)
 	}
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatalf("write: %v", err)
@@ -32,19 +32,18 @@ func makeTextMessage(id string, role MessageRole, text string) SessionMessage {
 	}
 }
 
-func TestParseKiloSessionRejectsNonObject(t *testing.T) {
-	if _, err := parseKiloSession([]byte("not json")); err == nil {
-		t.Fatal("expected error for non-object data")
-	}
-	if _, err := parseKiloSession([]byte("[1,2,3]")); err == nil {
-		t.Fatal("expected error for array data")
-	}
-	session, err := parseKiloSession([]byte("  "))
-	if err != nil {
-		t.Fatalf("unexpected error on whitespace: %v", err)
-	}
-	if session.ID != "" {
-		t.Fatalf("expected empty session, got %+v", session)
+func TestDecodeTranscriptEdgeCases(t *testing.T) {
+	// The decoder is intentionally tolerant: whitespace, non-JSON, arrays, and
+	// non-message objects yield no messages without error, so header-less scoped
+	// slices and partially-corrupt transcripts decode cleanly.
+	for _, in := range []string{"  ", "not json", "[1,2,3]", `{"foo":"bar"}`} {
+		msgs, err := decodeTranscript([]byte(in))
+		if err != nil {
+			t.Fatalf("decodeTranscript(%q) error = %v", in, err)
+		}
+		if len(msgs) != 0 {
+			t.Fatalf("decodeTranscript(%q) = %d messages, want 0", in, len(msgs))
+		}
 	}
 }
 
