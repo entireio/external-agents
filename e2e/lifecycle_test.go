@@ -169,24 +169,42 @@ func TestLifecycle_RewindAfterCommit(t *testing.T) {
 }
 
 // TestLifecycle_SessionPersistence verifies that a session file is created in
-// .entire/tmp/ after running a prompt.
+// the agent's session directory after running a prompt. The directory comes
+// from the agent binary's get-session-dir — agents with global session
+// stores (e.g. goose) keep it outside the repo, so only files written since
+// the test began count.
 func TestLifecycle_SessionPersistence(t *testing.T) {
 	testutil.ForEachAgent(t, 2*time.Minute, func(t *testing.T, s *testutil.RepoState, ctx context.Context) {
+		agentBinName := "entire-agent-" + s.Agent.EntireAgent()
+		binPath, ok := AgentBinaries[agentBinName]
+		if !ok {
+			t.Skipf("%s binary not built", agentBinName)
+		}
+		sessionDir := agentSessionDir(t, binPath, s.Dir)
+		start := time.Now()
+
 		_, err := s.RunPrompt(t, ctx, "Create a file called session-test.txt with content 'test'. Do not ask for confirmation.")
 		require.NoError(t, err, "prompt failed")
 
-		tmpDir := filepath.Join(s.Dir, ".entire", "tmp")
-		entries, err := os.ReadDir(tmpDir)
-		require.NoError(t, err, "read .entire/tmp/")
+		entries, err := os.ReadDir(sessionDir)
+		require.NoError(t, err, "read session dir %s", sessionDir)
 
 		hasSession := false
 		for _, entry := range entries {
-			if filepath.Ext(entry.Name()) == ".json" {
+			extension := filepath.Ext(entry.Name())
+			if extension != ".json" && extension != ".jsonl" {
+				continue
+			}
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if info.ModTime().After(start) {
 				hasSession = true
 				break
 			}
 		}
-		assert.True(t, hasSession, "expected at least one .json session file in .entire/tmp/")
+		assert.True(t, hasSession, "expected a fresh session file in %s", sessionDir)
 	})
 }
 
@@ -208,6 +226,34 @@ func TestLifecycle_InteractiveSession(t *testing.T) {
 		s.Git(t, "commit", "-m", "interactive test")
 		testutil.WaitForCheckpoint(t, s, 30*time.Second)
 	})
+}
+
+// agentSessionDir asks the agent binary where it stores sessions for the
+// given repo via the get-session-dir protocol subcommand.
+func agentSessionDir(t *testing.T, binPath, repoRoot string) string {
+	t.Helper()
+
+	cmd := exec.Command(binPath, "get-session-dir", "--repo-path", repoRoot)
+	cmd.Env = append(os.Environ(),
+		"ENTIRE_REPO_ROOT="+repoRoot,
+		"LANG=en_US.UTF-8",
+	)
+
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("%s get-session-dir failed: %v\nstdout: %s", binPath, err, out)
+	}
+
+	var resp struct {
+		SessionDir string `json:"session_dir"`
+	}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("parse get-session-dir response: %v\nraw output: %s", err, out)
+	}
+	if resp.SessionDir == "" {
+		t.Fatal("get-session-dir returned an empty session_dir")
+	}
+	return resp.SessionDir
 }
 
 func hooksInstalled(t *testing.T, binPath, repoRoot string) bool {
