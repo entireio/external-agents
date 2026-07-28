@@ -154,7 +154,7 @@ func (a *Agent) ExtractSummary(path string) (string, bool, error) {
 	}
 	for i := len(session.Active) - 1; i >= 0; i-- {
 		message := session.Active[i].Entry.Message
-		if message != nil && message.Role == "assistant" {
+		if message != nil && message.Role == roleAssistant {
 			if text := messageText(message.Content); text != "" {
 				return text, true, nil
 			}
@@ -190,7 +190,7 @@ func latestAssistantModel(data []byte) (string, error) {
 	}
 	for i := len(session.Active) - 1; i >= 0; i-- {
 		message := session.Active[i].Entry.Message
-		if message != nil && message.Role == "assistant" && message.Model != "" {
+		if message != nil && message.Role == roleAssistant && message.Model != "" {
 			return message.Model, nil
 		}
 	}
@@ -211,7 +211,7 @@ func modifiedFiles(entries []parsedEntry, offset int) []string {
 	}
 	for _, record := range entries {
 		message := record.Entry.Message
-		if record.Line <= offset || message == nil || message.Role != "assistant" {
+		if record.Line <= offset || message == nil || message.Role != roleAssistant {
 			continue
 		}
 		for _, block := range messageBlocks(message.Content) {

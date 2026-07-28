@@ -7,7 +7,10 @@ import (
 	"fmt"
 )
 
-const maxSessionLine = 10 * 1024 * 1024
+const (
+	maxSessionLine = 10 * 1024 * 1024
+	roleAssistant  = "assistant"
+)
 
 type sessionEntry struct {
 	Type      string          `json:"type"`

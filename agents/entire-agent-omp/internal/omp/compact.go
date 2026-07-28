@@ -82,13 +82,13 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 			}); err != nil {
 				return nil, err
 			}
-		case "assistant":
+		case roleAssistant:
 			content := compactAssistantBlocks(message.Content, results)
 			if len(content) == 0 {
 				continue
 			}
 			line := compactLine{
-				V: 1, Agent: "omp", CLIVersion: compactCLIVersion(), Type: "assistant",
+				V: 1, Agent: "omp", CLIVersion: compactCLIVersion(), Type: roleAssistant,
 				TS: record.Entry.Timestamp, ID: record.Entry.ID, Content: content,
 			}
 			if message.Usage != nil {
