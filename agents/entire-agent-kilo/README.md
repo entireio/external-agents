@@ -77,6 +77,12 @@ scripts/                 helpers for local verification
 
 `kilo run --session <id> "<prompt>"`
 
+> **Experimental:** resume works only while Kilo still has the session in its
+> local store (`~/.local/share/kilo/kilo.db`). Entire cannot yet re-import a
+> session Kilo has lost (after `kilo session delete`, a fresh clone, or another
+> machine) — that requires `kilo import` and is future work. All other
+> functionality is unaffected. See AGENT.md → Gaps & Limitations.
+
 ## Notes
 
 - Kilo must be installed and on `PATH` as `kilo`.
