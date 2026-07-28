@@ -12,13 +12,25 @@ import (
 // TmuxSession implements Session using tmux for PTY-based interactive agents.
 type TmuxSession struct {
 	name         string
-	stableAtSend string   // stable content snapshot when Send was last called
+	socket       string
+	stableAtSend string // stable content snapshot when Send was last called
+	busyPattern  *regexp.Regexp
 	cleanups     []func() // run on Close
 }
 
 // OnClose registers a function to run when the session is closed.
 func (s *TmuxSession) OnClose(fn func()) {
 	s.cleanups = append(s.cleanups, fn)
+}
+
+// SetBusyPattern prevents WaitFor from treating a matching pane as settled.
+func (s *TmuxSession) SetBusyPattern(pattern string) error {
+	compiled, err := regexp.Compile(pattern)
+	if err != nil {
+		return err
+	}
+	s.busyPattern = compiled
+	return nil
 }
 
 // NewTmuxSession creates a new tmux session running the given command in dir.
@@ -28,7 +40,7 @@ func (s *TmuxSession) OnClose(fn func()) {
 // tmux sessions inherit the tmux server's environment (not the client's), so
 // without this, binaries added to PATH by the test runner would not be found.
 func NewTmuxSession(name string, dir string, unsetEnv []string, command string, args ...string) (*TmuxSession, error) {
-	s := &TmuxSession{name: name}
+	s := &TmuxSession{name: name, socket: name}
 
 	tmuxArgs := []string{"new-session", "-d", "-s", name, "-c", dir}
 	var parts []string
@@ -44,12 +56,12 @@ func NewTmuxSession(name string, dir string, unsetEnv []string, command string, 
 	}
 	tmuxArgs = append(tmuxArgs, strings.Join(parts, " "))
 
-	cmd := exec.Command("tmux", tmuxArgs...)
+	cmd := s.command(tmuxArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("tmux new-session: %w\n%s", err, out)
 	}
 	// Keep the pane around after the command exits so we can capture error output.
-	setCmd := exec.Command("tmux", "set-option", "-t", name, "remain-on-exit", "on")
+	setCmd := s.command("set-option", "-t", name, "remain-on-exit", "on")
 	_ = setCmd.Run()
 	return s, nil
 }
@@ -80,10 +92,25 @@ func (s *TmuxSession) Send(input string) error {
 	return nil
 }
 
+// SendAndWait sends input and waits for the resulting settled screen. Unlike
+// Send followed by WaitFor, it keeps the pre-send screen as the change baseline
+// so commands that finish during the input echo delay can still be observed.
+func (s *TmuxSession) SendAndWait(input, pattern string, timeout time.Duration) (string, error) {
+	s.stableAtSend = stableContent(s.Capture())
+	if err := s.SendKeys(input); err != nil {
+		return "", err
+	}
+	time.Sleep(200 * time.Millisecond)
+	if err := s.SendKeys("Enter"); err != nil {
+		return "", err
+	}
+	return s.WaitFor(pattern, timeout)
+}
+
 // SendKeys sends raw tmux key names without appending Enter.
 func (s *TmuxSession) SendKeys(keys ...string) error {
 	args := append([]string{"send-keys", "-t", s.name}, keys...)
-	cmd := exec.Command("tmux", args...)
+	cmd := s.command(args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("tmux send-keys: %w\n%s", err, out)
@@ -122,7 +149,7 @@ func (s *TmuxSession) WaitFor(pattern string, timeout time.Duration) (string, er
 		stable := stableContent(content)
 
 		// Bail early if the process has exited and the pattern doesn't match.
-		if !re.MatchString(content) {
+		if !re.MatchString(content) || (s.busyPattern != nil && s.busyPattern.MatchString(content)) {
 			if s.IsPaneDead() {
 				return content, fmt.Errorf("process exited while waiting for %q\n--- pane content ---\n%s\n--- end pane content ---", pattern, content)
 			}
@@ -155,7 +182,7 @@ func (s *TmuxSession) WaitFor(pattern string, timeout time.Duration) (string, er
 
 // IsPaneDead returns true if the process inside the tmux pane has exited.
 func (s *TmuxSession) IsPaneDead() bool {
-	cmd := exec.Command("tmux", "display-message", "-t", s.name, "-p", "#{pane_dead}")
+	cmd := s.command("display-message", "-t", s.name, "-p", "#{pane_dead}")
 	out, err := cmd.Output()
 	if err != nil {
 		return true
@@ -164,7 +191,7 @@ func (s *TmuxSession) IsPaneDead() bool {
 }
 
 func (s *TmuxSession) Capture() string {
-	cmd := exec.Command("tmux", "capture-pane", "-t", s.name, "-p")
+	cmd := s.command("capture-pane", "-t", s.name, "-p")
 	out, _ := cmd.Output()
 	return strings.TrimRight(string(out), "\n")
 }
@@ -173,12 +200,16 @@ func (s *TmuxSession) Close() error {
 	for _, fn := range s.cleanups {
 		fn()
 	}
-	cmd := exec.Command("tmux", "kill-session", "-t", s.name)
+	cmd := s.command("kill-session", "-t", s.name)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("tmux kill-session: %w\n%s", err, out)
 	}
 	return nil
+}
+
+func (s *TmuxSession) command(args ...string) *exec.Cmd {
+	return exec.Command("tmux", append([]string{"-L", s.socket}, args...)...)
 }
 
 // shellQuote wraps s in single quotes with proper escaping for POSIX shells.
