@@ -1,0 +1,82 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "b3eaa68a5607",
+  "session_id": "776701b6-44d3-4956-bd36-b0aa6bb1e2de",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-28T11:10:28.520753Z",
+  "branch": "fix/kilo-jsonl-transcript",
+  "checkpoints_count": 5,
+  "save_step_count": 1,
+  "files_touched": [
+    "agents/entire-agent-kilo/AGENT.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-8",
+  "turn_id": "f736717d262d",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 481,
+    "cache_creation_tokens": 982059,
+    "cache_read_tokens": 79838577,
+    "output_tokens": 294968,
+    "api_call_count": 261
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01Fof2Ua4aBR4DMDWXjcZ3Ec",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "simplify"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "f736717d262d",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1160,
+        "end": 1161,
+        "entry_ids": [
+          "fa4ddefb-3d8e-45de-b21f-5c4155d0d48b"
+        ],
+        "tool_use_id": "toolu_01Fof2Ua4aBR4DMDWXjcZ3Ec"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Fof2Ua4aBR4DMDWXjcZ3Ec"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: simplify",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 12
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-28T11:10:28.355863Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 7,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 7,
+    "total_lines_changed": 8,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
