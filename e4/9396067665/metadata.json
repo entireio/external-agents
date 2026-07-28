@@ -1,0 +1,26 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "e49396067665",
+  "strategy": "manual-commit",
+  "branch": "fix/kilo-jsonl-transcript",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "agents/entire-agent-kilo/internal/kilo/jsonl_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e4/9396067665/0/metadata.json",
+      "transcript": "/e4/9396067665/0/full.jsonl",
+      "compact_transcript": "/e4/9396067665/0/transcript.jsonl",
+      "content_hash": "/e4/9396067665/0/content_hash.txt",
+      "prompt": "/e4/9396067665/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 531,
+    "cache_creation_tokens": 1021108,
+    "cache_read_tokens": 95120735,
+    "output_tokens": 327048,
+    "api_call_count": 288
+  }
+}
