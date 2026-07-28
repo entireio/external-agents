@@ -21,6 +21,7 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 | [Qwen Code](agents/entire-agent-qwen/) | `agents/entire-agent-qwen/` | Implemented — hooks + transcript analysis + compact transcripts |
 | [Oh My Pi](agents/entire-agent-omp/) | `agents/entire-agent-omp/` | Implemented — hooks + transcript analysis + compact transcripts |
 | [Kilo](agents/entire-agent-kilo/) | `agents/entire-agent-kilo/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
+| [Devin CLI](agents/entire-agent-devin/) | `agents/entire-agent-devin/` | Implemented — hooks + transcript analysis + token calculation |
 
 See each agent's own README for setup and usage instructions.
 
