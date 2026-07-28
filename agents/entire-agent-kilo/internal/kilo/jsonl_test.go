@@ -139,6 +139,30 @@ func TestTurnEndWritesJSONL(t *testing.T) {
 	}
 }
 
+func TestWriteSessionPayloadKeepsTranscriptOnEmpty(t *testing.T) {
+	dir := t.TempDir()
+	ref := filepath.Join(dir, "s.json")
+	orig, err := encodeMessagesJSONL([]SessionMessage{makeTextMessage("m1", MessageRoleUser, "keep me")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ref, orig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A failed plugin snapshot sends messages:[]; it must NOT clobber the
+	// existing transcript.
+	if err := writeSessionPayload(ref, nil, json.RawMessage(`[]`)); err != nil {
+		t.Fatalf("writeSessionPayload: %v", err)
+	}
+	got, err := os.ReadFile(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(orig) {
+		t.Fatalf("transcript clobbered by empty payload: %q", got)
+	}
+}
+
 func TestReadSessionRecoversIDFromMessages(t *testing.T) {
 	repo := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repo)

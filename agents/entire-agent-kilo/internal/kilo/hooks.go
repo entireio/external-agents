@@ -189,6 +189,14 @@ func writeSessionPayload(sessionRef string, sessionRaw, messagesRaw json.RawMess
 		messages = parsed
 	}
 
+	// Never overwrite an existing transcript with an empty one. A failed
+	// snapshot on the plugin side sends messages:[]; clobbering here would
+	// destroy the last good transcript. Leave the existing file for
+	// prepare-transcript / the next turn to refresh.
+	if len(messages) == 0 {
+		return nil
+	}
+
 	encoded, err := encodeMessagesJSONL(messages)
 	if err != nil {
 		return fmt.Errorf("encode session: %w", err)
@@ -403,17 +411,9 @@ export const EntirePlugin: Plugin = async ({ client, directory }) => {
             if (msg.role === "assistant" && msg.modelID) {
               currentModel = msg.modelID
             }
-            if (msg.role === "user" && !seenUserMessages.has(msg.id)) {
-              seenUserMessages.add(msg.id)
-              const sessionID = msg.sessionID ?? currentSessionID
-              if (sessionID) {
-                callHookSync("turn-start", {
-                  session_id: sessionID,
-                  prompt: "",
-                  model: currentModel ?? "",
-                })
-              }
-            }
+            // Turn-start fires from the text part (message.part.updated), which
+            // carries the actual prompt. Firing here with an empty prompt would
+            // mark the message seen and suppress the real one, dropping prompts.
             break
           }
 

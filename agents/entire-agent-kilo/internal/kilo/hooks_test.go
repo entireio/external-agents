@@ -261,6 +261,18 @@ func TestInstallAndUninstallHooks(t *testing.T) {
 	}
 }
 
+func TestGeneratedPluginStartsTurnFromTextPart(t *testing.T) {
+	plugin := generatePlugin()
+	// Turn-start must not fire with an empty prompt from message.updated —
+	// that suppresses the real prompt carried by message.part.updated.
+	if strings.Contains(plugin, `prompt: ""`) {
+		t.Fatal("plugin still fires turn-start with an empty prompt")
+	}
+	if !strings.Contains(plugin, "prompt: part.text") {
+		t.Fatal("plugin no longer starts a turn from the text part")
+	}
+}
+
 func TestSafeSessionID(t *testing.T) {
 	cases := map[string]string{
 		"":                  "unknown",
