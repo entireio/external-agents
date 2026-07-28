@@ -1,0 +1,85 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "f1d0a5b09d55",
+  "session_id": "776701b6-44d3-4956-bd36-b0aa6bb1e2de",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-28T10:30:22.955605Z",
+  "branch": "fix/kilo-jsonl-transcript",
+  "checkpoints_count": 6,
+  "save_step_count": 1,
+  "files_touched": [
+    "agents/entire-agent-kilo/internal/kilo/hooks.go",
+    "agents/entire-agent-kilo/internal/kilo/session_jsonl.go",
+    "agents/entire-agent-kilo/internal/kilo/transcript.go",
+    "agents/entire-agent-kilo/internal/kilo/transcript_test.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-8",
+  "turn_id": "49b5cb4c0ffc",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 435,
+    "cache_creation_tokens": 934585,
+    "cache_read_tokens": 66790578,
+    "output_tokens": 259948,
+    "api_call_count": 236
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01Fof2Ua4aBR4DMDWXjcZ3Ec",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "simplify"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "49b5cb4c0ffc",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1160,
+        "end": 1161,
+        "entry_ids": [
+          "fa4ddefb-3d8e-45de-b21f-5c4155d0d48b"
+        ],
+        "tool_use_id": "toolu_01Fof2Ua4aBR4DMDWXjcZ3Ec"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Fof2Ua4aBR4DMDWXjcZ3Ec"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: simplify",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-07-28T10:30:22.806193Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 139,
+    "human_removed": 8,
+    "total_committed": 0,
+    "total_lines_changed": 210,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
