@@ -1,0 +1,24 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "cb1848a866ce",
+  "strategy": "manual-commit",
+  "branch": "fix/devin-agent",
+  "checkpoints_count": 5,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/cb/1848a866ce/0/metadata.json",
+      "transcript": "/cb/1848a866ce/0/full.jsonl",
+      "compact_transcript": "/cb/1848a866ce/0/transcript.jsonl",
+      "content_hash": "/cb/1848a866ce/0/content_hash.txt",
+      "prompt": "/cb/1848a866ce/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 635,
+    "cache_creation_tokens": 1760847,
+    "cache_read_tokens": 130947692,
+    "output_tokens": 404874,
+    "api_call_count": 345
+  }
+}
