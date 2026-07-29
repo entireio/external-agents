@@ -1,0 +1,327 @@
+how can I build this agent extension to start testing it with entire locally?
+
+---
+
+I have been testing it at /Users/gtrrz-victor/test/omp 
+I can not generate summary at /Users/gtrrz-victor/test/omp/feat-2 by calling:
+gtrrz-victor@Victors-Laptop ~/t/o/feat-2 (master)> entire checkpoint explain 01KYHDQTH8BQVN22N1GTF97FBV --generate
+Using Claude Code for summary generation.
+Generating checkpoint summary... (transcript: 41.1 KB, provider: claude-code)
+✗ Failed to generate summary
+  detail   transcript has no content to summarize
+
+why ?
+
+---
+
+how can I create a PR over the forked PR?
+
+---
+
+lets do the stacked PR. I want to have into the PR description the bug we have just fixed, how can it be reproduced.
+
+---
+
+please, also comment the issues and the changes proposed -> https://github.com/entireio/external-agents/pull/43
+
+---
+
+Great, the main PR Kh05ifr4nD:feat/omp-agent has accepted the merge. Can we revalidate its content ?
+
+---
+
+how can I install the binary ?
+
+---
+
+go install does the same ?
+
+---
+
+I'm getting this error on my testing folder:
+ ✘ 400 {"type":"error","error":{"type":"invalid_request_error","message":"messages.1.content.0: Invalid `signatu…
+   raw-http-request=/Users/gtrrz-victor/.omp/logs/http-400-requests/1785229443064-rwa0dt9q1lig.json
+
+why ?
+
+---
+
+is there any way to fix it? delete last jsonl line? I accept loosing some info from transcript than right now, modifying the redact logic just to include omp ?
+
+---
+
+same error:
+
+ ⠴ Working… ⟦esc⟧
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ✘ 400 {"type":"error","error":{"type":"invalid_request_error","message":"messages.1.content.0: Invalid `signatu…
+   raw-http-request=/Users/gtrrz-victor/.omp/logs/http-400-requests/1785230153617-11utcy8zgzpzx.json
+ Dismissed when you send your next message.
+
+---
+
+y
+
+---
+
+please, create a PR
+
+---
+
+Great job! Write down the learning of reviewing this contribution because, I want you now to validate this other one -> https://github.com/entireio/external-agents/pull/38
+
+---
+
+lets do everything on top of a stacked PR, I want this external agent to be included asap into our project. So, let's fix all our findings there
+
+---
+
+y
+
+---
+
+great, can we to a run to check if there are code dead or overcomplex solutions that can be done better or simpler ?
+
+---
+
+<task-notification>
+<task-id>aa6e7c72485f2ad13</task-id>
+<tool-use-id>toolu_01KMVRm1JrLt8au5opVaRzzg</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gtrrz-victor-wks-external-agents/d141696d-c214-40c1-85aa-3decead15424/tasks/aa6e7c72485f2ad13.output</output-file>
+<status>completed</status>
+<summary>Agent "Reuse review" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>REUSE review complete. Findings below.
+
+## REUSE review: kilo JSONL transcript change
+
+**Verdict: no directly-actionable intra-module duplication.** Every new helper the diff adds is genuinely new to the `entire-agent-kilo` module — none of them re-implement something the kilo module or its `internal/protocol` package already provides.
+
+I verified each new helper against existing code:
+
+- **`atomicWriteFile`** (`session_jsonl.go:86`) — no prior atomic-write helper existed in kilo. Before this change every writer used raw `os.WriteFile` (`command_runner.go:44`, `hooks.go:239`, and the two sites this diff converts). `protocol.go` offers only `WriteJSON`/`ReadJSON`/`RepoRoot`/`DefaultSessionDir`/`ResolveSessionFile` — no atomic write. Not a duplicate.
+- **`shellQuote` / `isSafeResumeRune`** (`agent.go:38,47`) — no existing quoting utility anywhere in the module (no `strconv.Quote`/`%q`/`command_runner` quoting). New.
+- **`encodeMessagesJSONL` / `decodeTranscript`** (`session_jsonl.go:24,42`) — these *replace* the removed `parseKiloSession`; this is a net consolidation, not a new copy.
+- **`messagesFromOffset`** (`transcript.go:~257`) — actually *removes* duplication: the diff deletes the redundant `sessionMessagesFromOffset`, `modifiedFilesFromSession`, and `modifiedFilesFromSessionOffset` wrappers and funnels everything through one `messagesFromOffset` + `modifiedFilesFromMessages`. This is a reuse improvement, worth crediting.
+- **`sliceFromLine`** (`jsonl_test.go:14`) — a test-only mirror of Entire core's `transcript.SliceFromLine`. That lives in a different (non-importable) module, so re-implementing it in a test is unavoidable, not actionable.
+
+## Cross-adapter pattern divergence (not directly actionable — separate Go modules)
+
+Worth flagging for consistency, since these adapters are deliberate copies of one shared shape:
+
+- **Atomic write:** kilo is now the only adapter that writes transcripts atomically. `entire-agent-amp/internal/amp/transcript.go:162` and `entire-agent-kiro/internal/kiro/agent.go:101` (plus ~10 other kiro sites) still use plain `os.WriteFile` for session/cache writes. If atomic-write is the desired standard, `atomicWriteFile` is a copy candidate for amp/kiro.
+- **Resume-command shell-quoting:** `FormatResumeCommand` exists in amp (`agent.go:50`) and kiro (`agent.go:104`) as well; neither shell-quotes its session id. Kilo is the first to harden this. Same divergence to note.
+- **Offset slicing:** amp already has the same-shaped `threadMessagesFromOffset` / `modifiedFilesFromThreadFromOffset` (`transcript.go:285,318`). Kilo's new `messagesFromOffset` matches that established pattern — good, it aligns rather than diverges.
+
+Since each `entire-agent-*` is its own module, none of the cross-adapter items are importable reuse — they'd be copies. Only noting them as divergence.</result>
+<usage><subagent_tokens>61118</subagent_tokens><tool_uses>13</tool_uses><duration_ms>96393</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a01db53208713a93f</task-id>
+<tool-use-id>toolu_018fjBPxvxnvB2xxbzupYje7</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gtrrz-victor-wks-external-agents/d141696d-c214-40c1-85aa-3decead15424/tasks/a01db53208713a93f.output</output-file>
+<status>completed</status>
+<summary>Agent "Efficiency review" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Review complete. This is an efficiency-only pass on the JSONL storage change in `entire-agent-kilo`.
+
+## Findings
+
+**1. `hooks.go:289-306` (+ `command_runner.go:44`) — `fetchSession` write→read→delete round-trip is fully avoidable**
+`ExportSession` already holds the exported blob in memory (`out`, command_runner.go:36) and writes it to `sessionRef + ".raw"`. `fetchSession` then reads that file back (`os.ReadFile(rawPath)`), decodes, re-encodes to JSONL, atomic-writes the real ref, and `os.Remove`s the scratch file. That's one extra full-transcript disk write, one full read, and a create+unlink of `.raw` per call — pure overhead, since the bytes never left the process.
+- Cheaper: give `CommandRunner` a bytes-returning method (`ExportSession(ctx, id) ([]byte, error)`) and feed `out` straight into `decodeTranscript` → `encodeMessagesJSONL` → `atomicWriteFile`. Eliminates the scratch file entirely.
+- Cost: per-`fetchSession` call, ~2× transcript-sized I/O + 2 extra syscalls. Low priority in practice — the method's own doc comment says it's "reserved" and not on the production path — but it is trivially avoidable and the interface is package-internal, so nothing external constrains the signature.
+
+**2. `session_jsonl.go:26-33 (line 27)` — `encodeMessagesJSONL` allocates a throwaway `[]byte` per message**
+`json.Marshal(messages[i])` allocates a fresh slice for every message, which is then copied into `buf`.
+- Cheaper: `enc := json.NewEncoder(&amp;buf)` and `enc.Encode(&amp;messages[i])` in the loop. `Encode` writes directly into `buf` and appends the `\n` itself (identical bytes, same HTML-escaping default), so you drop the per-message intermediate allocation and the manual `WriteByte('\n')`.
+- Cost: N allocations avoided per encode (N = message count), on every turn-end write and every `fetchSession`. Minor, but this is the encode hot path and the change is a net simplification.
+
+**3. `session_jsonl.go:51-57` — speculative whole-blob unmarshal on every decode, including the common JSONL case**
+`decodeTranscript` first does `json.Unmarshal(trimmed, &amp;blob)` before the JSONL scanner. For the now-standard multi-line JSONL layout this always fails (trailing `{` after the first object), but only after fully parsing the first message object — which the scanner then parses again. So the first message is decoded twice on every call.
+- Cheaper: the blob path only exists for legacy/ingestion input. Both formats start with `{`, so first-byte can't discriminate cheaply, but you can decode with a streaming `json.Decoder`: read one token; if the top-level object has a `messages` key treat as blob, else rewind/scan as JSONL — avoiding the redundant re-parse. Given the modest size, this is a low-severity note, not a must-fix.
+- Cost: one extra first-message parse per `decodeTranscript`, and `decodeTranscript` is called on nearly every hook (`ReadSession`, `GetTranscriptPosition`, `ExtractModifiedFiles`, `ExtractPrompts`, `ExtractSummary`, `CalculateTokens`, `latestModelFromSessionRef`, `ReadTranscript`).
+
+**4. `transcript.go:167-179` — `GetTranscriptPosition` full-decodes the transcript just to count messages**
+It runs `decodeTranscript` (unmarshal every message) and returns `len(messages)`. Since the on-disk format is exactly one message per line, the position equals the newline count — the new test `TestGetTranscriptPositionMatchesLineCount` asserts precisely that.
+- Cheaper (with caveat): `bytes.Count(data, []byte{'\n'})` would give the same answer for adapter-written files without any JSON parsing. The caveat is the dual-format support — a pretty-printed legacy blob has many newlines, so a raw newline count is only safe once you've confirmed the JSONL layout. Because of that format ambiguity I'd rank this a minor note rather than a clear win; flag it only if the legacy-blob path can be assumed gone.
+- Cost: full N-message JSON decode per get-transcript-position call (once per checkpoint) where a byte scan would do.
+
+**5. `transcript.go:182-256` — `ExtractModifiedFiles` / `ExtractPrompts` / `CalculateTokens` decode the whole transcript, then discard `[0:offset]`**
+Each decodes all N messages and then `messagesFromOffset(messages, offset)` throws away the first `offset`. Since `offset` is a line index into JSONL, the leading `offset` messages are parsed for nothing.
+- Cheaper: skip `offset` newlines first (a `sliceFromLine`-style byte scan, which the test file already implements) and decode only the tail.
+- Cost: wasted decode of `offset` messages per call, proportional to how deep into the session you are — grows per-turn over a long session. This is pre-existing structure the diff carried over rather than newly introduced; modest given it's an adapter invoked once per hook.
+
+## Bottom line
+No closure/captured-scope retention issues — the new functions capture nothing problematic and `defer os.Remove` is correctly scoped.
+
+The two worth acting on are **#1** (avoidable file round-trip, trivial once the runner returns bytes) and **#2** (drop per-message allocation via `json.Encoder`). #3 is a small redundant re-parse; #4 and #5 are decode-more-than-needed patterns that are real but bounded by the dual-format requirement and the once-per-hook invocation model, so only worth it if you care about long-session cost.</result>
+<usage><subagent_tokens>59847</subagent_tokens><tool_uses>6</tool_uses><duration_ms>109833</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a3329c95deb3d06a8</task-id>
+<tool-use-id>toolu_01CMHgQo9PxE4UudqaQNKSdu</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gtrrz-victor-wks-external-agents/d141696d-c214-40c1-85aa-3decead15424/tasks/a3329c95deb3d06a8.output</output-file>
+<status>completed</status>
+<summary>Agent "Simplification review" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>All confirmed. Build is clean; the removed helpers are fully gone. Here are the simplification findings.
+
+## Findings
+
+**1. Dead `Session` struct fields + `SessionProject`/`SessionTime` types left behind by the refactor**
+`internal/kilo/types.go:8-27`
+After the refactor everything reads messages, not a session header. Grep shows that in non-test code `Session` is now touched only in `writeSessionPayload` (for `.Messages`, plus a dead `.ID` write — see #2). `Session.Title`, `.ParentID`, `.Project`, `.Time`, `.ID` are never read anywhere; `SessionProject` and `SessionTime` (and `SessionTime.Completed`) are referenced *only* by those dead fields. Start time now comes from `msg.Info.Time` (`MessageTime`), a different type.
+- Cost: ~20 lines of dead type surface that reads as if it were live (a reader assumes `SessionTime` feeds `startTimeFromMessages` — it doesn't).
+- Simpler: delete `SessionProject`, `SessionTime`, and the unused `Session` fields; in `writeSessionPayload` parse into a local anonymous struct `{ Messages []SessionMessage `json:"messages"` }`. Test helpers that build `Session{...}` can build `[]SessionMessage` directly.
+
+**2. Dead `session.ID` assignment in `writeSessionPayload`**
+`internal/kilo/hooks.go:182-184`
+`if session.ID == "" { session.ID = sessionID }` — the ID is never persisted (JSONL has no header line) and never read back; `ReadSession` recovers the id from `msg.Info.SessionID`. Pure dead assignment. Removing it also removes the last reader of `Session.ID`, reinforcing #1.
+- Simpler: drop the three lines.
+
+**3. Dead nil-guard on modified files in `ReadSession`** (added by this diff)
+`internal/kilo/transcript.go:66-69`
+```go
+modified := modifiedFilesFromMessages(messages)
+if modified == nil { modified = []string{} }
+```
+`modifiedFilesFromMessages` (line 296) always returns `make([]string, 0, len(seen))`, which is never nil. The guard can never fire.
+- Simpler: `ModifiedFiles: modifiedFilesFromMessages(messages),` inline, like `NewFiles`/`DeletedFiles`.
+
+**4. Redundant empty-check in `sessionIDFromTranscriptData`** (touched by this diff)
+`internal/kilo/transcript.go:23-26`
+The `if len(bytes.TrimSpace(data)) == 0 { return "", nil }` early return duplicates work `decodeTranscript` already does (it returns `nil,nil` on empty), and `sessionIDFromMessages(nil)` returns `""`. Net effect of the guard is a second `TrimSpace` over the whole buffer for no behavior change.
+- Simpler: delete the guard; body becomes just decode + `sessionIDFromMessages`.
+
+**5. Minor: redundant `blob.Info == nil` guard in `decodeTranscript`**
+`internal/kilo/session_jsonl.go:51-57`
+The blob vs. JSONL dual-path is justified — the blob branch is genuinely exercised by `fetchSession` (Kilo's native export) and legacy files, so neither branch is dead. But `blob.Messages != nil` alone already distinguishes the two layouts (a single message object has no `messages` key → `Messages == nil`). The extra `&amp;&amp; blob.Info == nil` only guards against an object carrying *both* `messages` and `info`, which the format never produces.
+- Cost: an extra struct field + condition that invites "when does this matter?" It doesn't.
+- Simpler: drop the `Info` field and the `&amp;&amp; blob.Info == nil` clause.
+
+## Not flagged (checked, fine)
+- The blob-vs-JSONL dual path itself: both branches are reachable (blob from `fetchSession`/legacy, JSONL from normal writes). `*[]SessionMessage` pointer to distinguish absent-vs-empty `messages` is intentional and correct.
+- `shellQuote`/`isSafeResumeRune` (agent.go): tangential to the JSONL change but a reasonable, self-contained escaping helper — not excess complexity.
+- `messagesFromOffset` consolidation and the `parseKiloSession → decodeTranscript` swap are genuine simplifications; no leftover references remain.
+
+Items 3 and 4 are the cleanest wins introduced by the diff; item 1 (+2) is the largest chunk of dead code the refactor left behind.</result>
+<usage><subagent_tokens>66185</subagent_tokens><tool_uses>10</tool_uses><duration_ms>127967</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a58a0aaca6f7e4676</task-id>
+<tool-use-id>toolu_01UxfFJU8Nq1Li67BmkHiZqi</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-gtrrz-victor-wks-external-agents/d141696d-c214-40c1-85aa-3decead15424/tasks/a58a0aaca6f7e4676.output</output-file>
+<status>completed</status>
+<summary>Agent "Altitude review" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I have enough to assess altitude. The omp adapter's format is natively JSONL with a real header line (line 0 = `{"type":"session",...}` carrying id/version/timestamp/cwd), and it tracks each entry's true physical `Line` number, reporting `session.Lines` (physical count) as the position. Kilo instead re-encodes a native blob into headerless JSONL and collapses position onto surviving-message count. That contrast drives the findings below.
+
+## Altitude review: kilo JSONL transcript change
+
+**1. `session_jsonl.go:42` `decodeTranscript` dual-mode (blob + JSONL) — wrong altitude, conflates two contracts.**
+One function answers two unrelated questions: "parse a native Kilo *export* blob" and "parse *our* on-disk JSONL." The blob branch is load-bearing in exactly one place — `hooks.go:~296` `fetchSession`, which exports to `sessionRef+".raw"` and feeds that native blob through `decodeTranscript`. Everywhere else the on-disk layout is *always* JSONL (both `writeSessionPayload` and `fetchSession` end by writing `encodeMessagesJSONL`). Folding the native-export reader into the on-disk reader makes the disk contract ambiguous: a reader can't tell from the signature whether it's handling ingested Kilo data or a checkpoint slice. Cleaner form (and what omp does — it never needs dual-mode because native == on-disk): a dedicated `parseKiloExport(raw) ([]SessionMessage, error)` used only at the ingestion boundary in `fetchSession`, and a `decodeTranscript` that understands JSONL and nothing else. The "legacy files still parse" justification is also worth pressure-testing — these are regenerated per-session scratch files under the Entire private dir; if no durable legacy blobs exist on disk, that half of the dual-mode is speculative back-compat.
+
+**2. `transcript.go` `sessionIDFromMessages` / `startTimeFromMessages` — reconstructing session metadata from message payloads is the lower-altitude choice vs. omp's header line.** 
+omp proves you can keep a session header *and* line-scope: the header is physical line 0, `parseSessionSlice` peeks the first line and tolerates its absence in a mid-session slice, and `parseFullSession` validates it. Kilo drops the header entirely and recovers identity from `msg.Info.SessionID` (first non-empty) and start time from the earliest `msg.Info.Time`, falling back to filename / `time.Now()`. This couples session identity to message-payload shape and silently loses real session start time (and any title) on scoped/compacted slices where no message carries `SessionID` (e.g. the `fourMessageTranscript` fixtures set none). The deeper form is to mirror omp: write one header record as line 1, report position as a physical line count, and track each message's physical line. That preserves session-level metadata as a first-class on-disk record instead of heuristically re-deriving it. This is the central altitude call — headerless is defensible *only* because kilo consumes almost no session-level metadata downstream, but the divergence from its sibling adapter (same repo, same JSONL problem, opposite decision) is a real maintainability smell worth a deliberate decision rather than drift.
+
+**3. `session_jsonl.go:15-21` + `transcript.go` `messagesFromOffset`/`GetTranscriptPosition` — the "message index == line index" invariant is computed at the wrong layer and is actively undermined by the tolerant decoder.** 
+`GetTranscriptPosition` returns `len(messages)` and `messagesFromOffset` slices `messages[offset:]`, i.e. kilo's offset unit is *surviving-message count*. But Entire's `SliceFromLine` and the encoder operate on *physical newline count*. These coincide only while every physical line is exactly one valid message — yet `decodeTranscript` deliberately **skips** blank and unparseable lines. So the same decoder that everything else routes through can make `len(messages)` &lt; newline count, at which point the position kilo reports and the byte offset Entire slices at refer to different boundaries. omp avoids this entirely by never collapsing the two counts: it records each entry's true physical `Line`, filters with `record.Line &lt;= offset`, and reports `session.Lines` (physical, including skipped/header lines). The invariant here lives in a doc comment and two tests rather than in the position abstraction. The robust shape is omp's — make physical line the offset unit so tolerance-driven line-skipping can't desync position from slicing.
+
+**4. `hooks.go:507` `transcriptPath` — `.json` extension on JSONL content is mildly misleading, and kilo owns it.** 
+The file is now newline-delimited JSON, not a JSON document; `.jsonl` would be honest. Kilo constructs this name itself (`safeSessionID(sessionID)+".json"`), so it's changeable. Low stakes and there's a small coupling — `ReadSession` derives the fallback id via `TrimSuffix(base, Ext(...))`, which is extension-agnostic so a rename is safe — but flag it as a minor correctness-of-naming nit, not urgent.
+
+## Where the depth is right (not worth changing)
+
+- **`atomicWriteFile` (`session_jsonl.go:86`)** — temp-file + rename is the correct depth and matches omp's `WriteSession`/`atomicWriteFile` pattern exactly. Good shared shape, applied consistently (`WriteSession`, `writeSessionPayload`, `fetchSession`).
+- **`encodeMessagesJSONL` (`session_jsonl.go:24`)** — small, single-purpose, guarantees the trailing-newline-per-message on the write side. The encode side is the right place for that guarantee; the gap is only that the read/position side doesn't uphold the same invariant (finding 3).
+- **`shellQuote`/`isSafeResumeRune` (`agent.go`)** — allowlist-based quoting of the resume command is at the right altitude; it's a self-contained hardening of a display/exec string, not a bandaid layered on shared infra. Unrelated to the JSONL change but correctly scoped.
+- **`compact.go` adding `PartReasoning/PartFile/PartSubtask` no-op case** — explicitly enumerating and documenting the dropped part types (rather than a silent `default`) is the right depth; the comment about losing thinking signatures is the kind of contract note that belongs here.
+
+**Net:** the JSONL direction is sound, but three things sit a layer too low relative to the omp sibling: the dual-mode decoder (split it), headerless metadata recovery (reconsider a header record), and offset-as-message-count vs. physical-line (adopt omp's physical-line model). Findings 1 and 3 are the highest-value cleanups; finding 2 is the strategic consistency call; finding 4 is cosmetic.</result>
+<usage><subagent_tokens>67672</subagent_tokens><tool_uses>14</tool_uses><duration_ms>154813</duration_ms></usage>
+</task-notification>
+
+---
+
+nop, I will just do a round of manual testing
+
+---
+
+how can I test if entire resumes properly kilo sessions. Seems like kilo is somehow matching the repo, not the folder where the session is located. So I can't test it by just creating worktrees and plying aorund with folder location. Suggestions ?
+
+---
+
+y
+
+---
+
+how can I delete sessions from kilo ?
+
+---
+
+great, I did that, I deleted all sessions from kilo and now, after calling entire resume master here /Users/gtrrz-victor/test/kilo I don't get any session loaded. Does it have to do something similar as cursor, which calls sqlite ?? I don't know how import/export session is implemented but! kilo has a command kilo export sessionID and kilo import file that loads sessions. Should the plugin call those cli commands to achieve it ?
+
+---
+
+yes, do it
+
+---
+
+have we shipped our changes on top of his PR?
+
+---
+
+uhmm, could we just take over this? so we don't have to wait until they approve/merge our changes? Can we add create a PR with his changes plus ours, so we are the owners of this PR. would this approach keep them as contributors ?
+
+---
+
+great, now, go thru Pr feedback and also fix conflicts
+
+---
+
+gtrrz-victor@Victors-Laptop ~/t/kilo (master)> entire checkpoint explain 01KYM50MCBHH0WR1EGKAJ3PRR5 --generate
+Generating checkpoint summary... (transcript: 36.2 KB, provider: claude-code)
+✗ Failed to generate summary
+  detail   transcript has no content to summarize
+
+---
+
+now its working
+
+---
+
+ship it
+
+---
+
+its time to eval Devin!! https://github.com/entireio/external-agents/pull/45
+
+---
+
+let's take over this development. Create a new branch starting from this point, create a new PR with that branch and let's fix all your findings there.
+
+---
+
+does session restore work with devin sessions ?
+
+---
+
+what other feature from entire-cli won't work with devin ?
+
+---
+
+all these limitations are well documented right now?
+
+---
+
+fix the documentations gaps and create an issue to do not remember what is missing from devin agent implementation.
