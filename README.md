@@ -19,7 +19,9 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 | [Kiro](agents/entire-agent-kiro/) | `agents/entire-agent-kiro/` | Implemented — hooks + transcript analysis |
 | [Amp](agents/entire-agent-amp/) | `agents/entire-agent-amp/` | Implemented — hooks + transcript analysis + token calculation + compact transcripts |
 | [Qwen Code](agents/entire-agent-qwen/) | `agents/entire-agent-qwen/` | Implemented — hooks + transcript analysis + compact transcripts |
-| [Devin CLI](agents/entire-agent-devin/) | `agents/entire-agent-devin/` | Implemented — hooks + transcript analysis + token calculation + compact transcripts |
+| [Oh My Pi](agents/entire-agent-omp/) | `agents/entire-agent-omp/` | Implemented — hooks + transcript analysis + compact transcripts |
+| [Kilo](agents/entire-agent-kilo/) | `agents/entire-agent-kilo/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
+| [Devin CLI](agents/entire-agent-devin/) | `agents/entire-agent-devin/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
 
 See each agent's own README for setup and usage instructions.
 
@@ -133,6 +135,7 @@ agents/                          # Standalone external agent projects
   entire-agent-qwen/             # Qwen Code agent (Go binary)
   entire-agent-omp/              # Oh My Pi agent (Go binary)
   entire-agent-kilo/             # Kilo agent (Go binary)
+  entire-agent-devin/            # Devin CLI agent (Go binary)
 e2e/                             # Lifecycle integration harness
 .github/workflows/               # CI, including protocol compliance via external-agents-tests
 .claude/skills/entire-external-agent/  # Skill files (research, test-writer, implementer)

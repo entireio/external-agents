@@ -80,7 +80,7 @@ func (a *Agent) FormatResumeCommand(sessionID string) string {
 	if strings.TrimSpace(sessionID) == "" {
 		return "devin -c"
 	}
-	return "devin -r " + sessionID
+	return "devin -r " + shellQuote(sessionID)
 }
 
 // ReadSession reads a session from Devin's storage (ATIF transcript file).
@@ -132,7 +132,7 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if err := os.MkdirAll(filepath.Dir(session.SessionRef), 0o750); err != nil {
 		return fmt.Errorf("failed to create transcript directory: %w", err)
 	}
-	if err := os.WriteFile(session.SessionRef, session.NativeData, 0o600); err != nil {
+	if err := atomicWriteFile(session.SessionRef, session.NativeData, 0o600); err != nil {
 		return fmt.Errorf("failed to write transcript: %w", err)
 	}
 	return nil
