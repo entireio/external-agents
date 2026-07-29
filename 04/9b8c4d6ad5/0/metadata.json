@@ -1,0 +1,90 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "049b8c4d6ad5",
+  "session_id": "776701b6-44d3-4956-bd36-b0aa6bb1e2de",
+  "strategy": "manual-commit",
+  "created_at": "2026-07-29T10:34:12.672069Z",
+  "branch": "fix/devin-agent",
+  "checkpoints_count": 5,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-opus-4-8",
+  "turn_id": "1f3f8b74681a",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 689,
+    "cache_creation_tokens": 1822675,
+    "cache_read_tokens": 152323005,
+    "output_tokens": 445510,
+    "api_call_count": 374
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01Fof2Ua4aBR4DMDWXjcZ3Ec",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "simplify"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "1f3f8b74681a",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1160,
+        "end": 1161,
+        "entry_ids": [
+          "fa4ddefb-3d8e-45de-b21f-5c4155d0d48b"
+        ],
+        "tool_use_id": "toolu_01Fof2Ua4aBR4DMDWXjcZ3Ec"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Fof2Ua4aBR4DMDWXjcZ3Ec"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: simplify",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_018jHP25yPRWuMDLswUaz3oV",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "review-pr-feedback"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "1f3f8b74681a",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1604,
+        "end": 1605,
+        "entry_ids": [
+          "495db31d-f833-462e-9e98-7c5cb9e02751"
+        ],
+        "tool_use_id": "toolu_018jHP25yPRWuMDLswUaz3oV"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_018jHP25yPRWuMDLswUaz3oV"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: review-pr-feedback",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 21
+  }
+}
