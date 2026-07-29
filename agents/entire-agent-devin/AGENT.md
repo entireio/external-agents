@@ -144,6 +144,20 @@ Session IDs are word-pairs and pass `validation.ValidateSessionID`.
 
 ## Known v1 limitations
 
+- **Summary generation is limited to the first checkpoint of a session
+  (experimental).** `session_ref` is Devin's canonical ATIF transcript — a
+  single JSON document. Entire scopes an external agent's transcript for
+  `checkpoint explain --generate` by *line* offset (`transcript.SliceFromLine`)
+  starting at the checkpoint's transcript-start (a step index). For any
+  checkpoint after the first, that line-slices the JSON document into an
+  unparseable fragment, so `compact-transcript` fails and Entire reports
+  "transcript has no content to summarize." The proper fix is to materialize
+  an Entire-owned JSONL transcript (one ATIF step per line) so line index ==
+  step index — the same approach `entire-agent-kilo` uses — but it reworks the
+  live-verified flush-timing path and needs validation against a real `devin`
+  binary, so it is deferred. Tracked as a follow-up. Checkpointing,
+  attribution, transcript analysis, and token accounting are unaffected; the
+  agent is `is_preview: true`.
 - Rewind restores the ATIF transcript file, but Devin resumes conversations
   from its SQLite store — a rewound transcript does not truncate Devin's own
   conversation memory, and cross-machine resume requires the session to exist
