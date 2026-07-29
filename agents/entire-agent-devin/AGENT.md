@@ -18,8 +18,14 @@ here at the maintainers' request.
 Payloads carry no `transcript_path`, so `session_ref` is derived from the
 session ID: `<transcripts-dir>/<session_id>.json`.
 
-Capabilities: `hooks`, `transcript_analyzer`, `transcript_preparer`,
-`token_calculator`, `uses_terminal`. `PostToolUse` live file tracking (used by
+Capabilities declared: `hooks`, `transcript_analyzer`, `transcript_preparer`,
+`token_calculator`, `compact_transcript`, `uses_terminal`. Not declared:
+`text_generator` (Entire's `checkpoint explain --generate` uses the
+`claude-code` provider, not Devin itself), `hook_response_writer` (hook-driven
+context injection and `systemMessage` display are not wired — see Known
+limitations), and `subagent_aware_extractor` (Devin exposes no subagent hooks).
+
+`PostToolUse` live file tracking (used by
 the in-tree prototype) is NOT ported: the external protocol's Event object
 does not carry `modified_files`, so per-tool ToolUse events cannot deliver
 their payload. File detection falls back to Entire's git-status detection at
