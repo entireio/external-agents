@@ -24,6 +24,12 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 
 See each agent's own README for setup and usage instructions.
 
+### Native agent notes
+
+The Entire CLI integrates several AI coding agents natively; see [entireio/cli](https://github.com/entireio/cli) for the current list. Known gaps in native integrations that surface to contributors here:
+
+- **Cursor inside JetBrains via ACP is not captured.** JetBrains AI Chat's Agent Client Protocol (which Cursor [joined 2026-03-04](https://blog.jetbrains.com/ai/2026/03/cursor-joined-the-acp-registry-and-is-now-live-in-your-jetbrains-ide/)) does not invoke the `.cursor/hooks.json` hooks Entire installs. Workaround for JetBrains workflows: use standalone Cursor IDE or the `cursor agent` CLI. Tracking: [#18](https://github.com/entireio/external-agents/issues/18).
+
 ## Enabling External Agents
 
 External agent discovery is opt-in. Once an `entire-agent-<name>` binary is on your `PATH`, set `external_agents: true` in the repo's `.entire/settings.json` so Entire scans for it:
