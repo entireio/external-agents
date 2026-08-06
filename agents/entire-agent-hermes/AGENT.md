@@ -94,7 +94,7 @@ The observer applies bounded text sanitization before persistence and the Go ada
 - Primary native storage: `$HERMES_HOME/state.db` according to official documentation; the integration does not open it
 - Secondary Entire storage: observer-owned sanitized JSONL under `$HERMES_HOME/entire/transcripts/`
 - Secondary storage format: repository-scoped JSONL written from public plugin hooks
-- Cross-reference key: public Hermes `session_id`; repositories are resolved by strict canonical containment of explicit `workdir`/`cwd` and path-like tool fields, using the longest registered match; current process CWD is only the no-argument fallback
+- Cross-reference key: public Hermes `session_id`; repositories are resolved by strict canonical containment of explicit top-level `workdir`/`cwd` and path-like tool fields, using the longest registered match; process CWD alone never selects a projection
 - Hook data flow verified: SOURCE-VERIFIED; synthetic callback verification is performed from temp homes/fixtures during implementation
 - Verification method: official docs, installed v0.20.0 source, `hermes --help`, temp-home plugin discovery, and source/unit fixtures
 
@@ -145,7 +145,7 @@ The observer applies bounded text sanitization before persistence and the Go ada
 - Apply Hermes' `redact_sensitive_text(..., force=True, redact_url_credentials=True)` when available, then apply the adapter's independent fallback patterns and allowlists before persistence.
 - A running gateway must restart after plugin installation, update, or final removal because Hermes' process-wide plugin manager does not dynamically rescan.
 - Start the Entire session and turn synchronously from `pre_tool_call` before a repository-scoped tool executes; any lifecycle forwarding failure is swallowed so Hermes continues.
-- Resolve only strict canonical containment in registered repositories, prefer the longest match for nested repositories, reject traversal/sensitive/symlink-escape targets, and use current CWD only when tool args provide no path/workdir evidence.
+- Resolve only strict canonical containment in registered repositories, prefer the longest match for nested repositories, reject traversal/sensitive/symlink-escape targets, and never use process CWD alone as repository evidence.
 - Buffer only the sanitized current prompt/model in memory until the session first touches a registered repository; maintain projections per `(session, repository)` and keep tool/file evidence scoped to the repository resolved for that tool.
 - Restrict transcript reads/writes to the explicit observer transcript root, with read-only access to adapter-owned `testdata` fixtures for shared protocol compliance.
 - Preserve unrelated plugin directories and unrelated `plugins.enabled`/`plugins.disabled` entries.
@@ -154,7 +154,7 @@ The observer applies bounded text sanitization before persistence and the Go ada
 ## Gaps & Limitations
 
 - Live model lifecycle is not verified in the isolated profile because no credentials were copied into it.
-- `terminal` commands are not parsed. Repository selection uses an explicit `workdir`/`cwd` when supplied and otherwise the registered current-CWD fallback; Git status supplies repository-relative changed paths after the tool returns.
+- `terminal` commands are not parsed. Repository selection requires an explicit top-level `workdir`/`cwd` or allowlisted path field; pathless tools are not attributed from process CWD. Git status supplies repository-relative changed paths after the tool returns.
 - Modified-file extraction can include files already dirty in the repository; Entire's own checkpoint baseline remains authoritative for content changes.
 - Hermes may not deliver `on_session_finalize` after a hard kill. TurnEnd still fires from `on_session_end` on normal turn completion.
 - Secret redaction is defense in depth, not a substitute for avoiding sensitive hook fields; the plugin's primary protection is strict field allowlisting.

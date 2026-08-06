@@ -396,10 +396,17 @@ hooks = {}
 class Context:
     def register_hook(self, name, callback): hooks[name] = callback
 module.register(Context())
-os.chdir(gateway)
+os.chdir(repo)
 hooks["on_session_start"](session_id="session", model="model one", platform="platform-id")
 hooks["pre_llm_call"](session_id="session", user_message="password=hunter2", model="model one", conversation_history=[{"role":"system","content":"history-secret"}], platform="platform-id")
 assert not list((home / "entire" / "transcripts").glob("**/*.jsonl"))
+# A new empty turn must clear the prior buffered prompt before repository projection.
+hooks["pre_llm_call"](session_id="session", user_message=None, model="model one")
+# A pathless tool must not use the registered process CWD as repository evidence.
+hooks["pre_tool_call"](session_id="session", tool_name="web_search", args={"query": "unrelated"})
+hooks["post_tool_call"](session_id="session", tool_name="web_search", args={"query": "unrelated"}, result="ignored")
+assert not list((home / "entire" / "transcripts").glob("**/*.jsonl"))
+os.chdir(gateway)
 hooks["pre_tool_call"](session_id="session", tool_name="write_file", args={"path": str(repo / "created.txt"), "content":"tool-arg-secret"})
 (repo / "created.txt").write_text("created\n", encoding="utf-8")
 hooks["post_tool_call"](session_id="session", tool_name="write_file", args={"path": str(repo / "created.txt"), "content":"tool-arg-secret"}, result="raw-result-secret", status="ok")
@@ -506,6 +513,17 @@ hooks["pre_tool_call"](session_id="shared", tool_name="patch", args={"path": str
 hooks["post_tool_call"](session_id="shared", tool_name="patch", args={"path": str(r2 / "two.txt"), "old_string": "repo-two-secret"}, result="two-result")
 hooks["post_llm_call"](session_id="shared", assistant_response="finished both", model="safe-model", conversation_history=[{"content":"history-secret"}])
 hooks["on_session_end"](session_id="shared")
+hooks["pre_llm_call"](session_id="shared", user_message="tool-free follow-up", model="safe-model")
+hooks["post_llm_call"](session_id="shared", assistant_response="tool-free answer", model="safe-model")
+hooks["on_session_end"](session_id="shared")
+hooks["pre_llm_call"](session_id="shared", user_message="unrelated pathless prompt", model="safe-model")
+hooks["pre_tool_call"](session_id="shared", tool_name="web_search", args={"query": "unrelated"})
+hooks["post_tool_call"](session_id="shared", tool_name="web_search", args={"query": "unrelated"}, result="unrelated pathless result")
+hooks["post_llm_call"](session_id="shared", assistant_response="unrelated pathless answer", model="safe-model")
+hooks["on_session_end"](session_id="shared")
+hooks["pre_llm_call"](session_id="shared", user_message="post-pathless tool-free prompt", model="safe-model")
+hooks["post_llm_call"](session_id="shared", assistant_response="post-pathless tool-free answer", model="safe-model")
+hooks["on_session_end"](session_id="shared")
 hooks["on_session_finalize"](session_id="shared", platform="platform-id")
 `
 	cmd := exec.Command(python, "-c", script)
@@ -518,12 +536,12 @@ hooks["on_session_finalize"](session_id="shared", platform="platform-id")
 	one := mustReadFile(t, observerSessionPath(t, repoOne, "shared"))
 	two := mustReadFile(t, observerSessionPath(t, repoTwo, "shared"))
 	for label, text := range map[string]string{"repo one": one, "repo two": two} {
-		for _, required := range []string{"touch both", "finished both", `"type":"turn_end"`, `"type":"session_end"`} {
+		for _, required := range []string{"touch both", "finished both", "tool-free follow-up", "tool-free answer", `"type":"turn_end"`, `"type":"session_end"`} {
 			if !strings.Contains(text, required) {
 				t.Fatalf("%s transcript lacks %q: %s", label, required, text)
 			}
 		}
-		for _, forbidden := range []string{"repo-one-secret", "repo-two-secret", "one-result", "two-result", "history-secret", "platform-id", repoOne, repoTwo} {
+		for _, forbidden := range []string{"repo-one-secret", "repo-two-secret", "one-result", "two-result", "history-secret", "platform-id", "unrelated pathless", "post-pathless tool-free", repoOne, repoTwo} {
 			if strings.Contains(text, forbidden) {
 				t.Fatalf("%s transcript contains forbidden data %q: %s", label, forbidden, text)
 			}

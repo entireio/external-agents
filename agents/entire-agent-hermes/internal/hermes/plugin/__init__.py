@@ -275,8 +275,10 @@ def _repositories(args: Any = None) -> list[Tuple[Path, Path, str]]:
                 matches[str(match[1])] = match
         return list(matches.values())
 
-    match = _match_repository(home, registrations, process_cwd, False)
-    return [match] if match is not None else []
+    # Repository attribution requires an explicit allowlisted path, workdir, or
+    # cwd in the current tool payload. Process CWD is not trustworthy for
+    # long-running gateways and must never select a projection by itself.
+    return []
 
 
 def _session_file(home: Path, repo: Path, session_id: Any) -> Path:
@@ -407,6 +409,8 @@ def _session_state(session_id: Any) -> Optional[Dict[str, Any]]:
             "model": "",
             "turn": 0,
             "turn_repos": set(),
+            "last_turn_repos": set(),
+            "tool_seen": False,
             "projections": {},
         }
         _SESSIONS[key] = state
@@ -460,8 +464,9 @@ def _on_session_start(**kwargs: Any) -> None:
             model = _safe_model(kwargs.get("model"))
             if model:
                 state["model"] = model
-            for info in _repositories():
-                _ensure_projection(info, session_id, state, start_turn=False)
+            # Do not project from process CWD alone. Gateway/CLI startup CWD
+            # can differ from the repository a tool actually targets. The
+            # first repository-scoped pre_tool_call starts the projection.
     except Exception:
         return
 
@@ -475,14 +480,16 @@ def _on_pre_llm_call(**kwargs: Any) -> None:
             state = _session_state(session_id)
             if state is None:
                 return
-            state["prompt"] = _sanitize_text(kwargs.get("user_message"))
+            prompt = _sanitize_text(kwargs.get("user_message"))
             model = _safe_model(kwargs.get("model"))
+            state["prompt"] = prompt
             if model:
                 state["model"] = model
             state["turn"] += 1
             state["turn_repos"] = set()
-            for info in _repositories():
-                _ensure_projection(info, session_id, state, start_turn=True)
+            state["tool_seen"] = False
+            # Buffer only. Repository selection is deferred until a tool's
+            # allowlisted top-level path/workdir fields establish a match.
     except Exception:
         return
 
@@ -496,6 +503,7 @@ def _on_pre_tool_call(**kwargs: Any) -> None:
             state = _session_state(session_id)
             if state is None:
                 return
+            state["tool_seen"] = True
             for info in _repositories(kwargs.get("args")):
                 _ensure_projection(
                     info,
@@ -520,6 +528,7 @@ def _on_post_tool_call(**kwargs: Any) -> None:
             state = _session_state(session_id)
             if state is None:
                 return
+            state["tool_seen"] = True
             for info in _repositories(kwargs.get("args")):
                 _ensure_projection(info, session_id, state, start_turn=True)
                 _append(
@@ -544,6 +553,16 @@ def _on_post_llm_call(**kwargs: Any) -> None:
                 return
             if model:
                 state["model"] = model
+            if not state["turn_repos"] and not state["tool_seen"]:
+                # A genuinely tool-free follow-up remains attributable only to the
+                # repositories established by the immediately preceding turn.
+                # Do this at post_llm time so a tool targeting a new repository
+                # can select that repository without leaking the prompt to the
+                # old projection.
+                for repo_key in list(state["last_turn_repos"]):
+                    info = state["projections"].get(repo_key)
+                    if info is not None:
+                        _ensure_projection(info, session_id, state, start_turn=True)
             for repo_key in list(state["turn_repos"]):
                 info = state["projections"].get(repo_key)
                 if info is None:
@@ -561,6 +580,12 @@ def _on_post_llm_call(**kwargs: Any) -> None:
                     assistant_response=response,
                     model=state["model"],
                 )
+            if state["turn_repos"]:
+                state["last_turn_repos"] = set(state["turn_repos"])
+            elif state["tool_seen"]:
+                # An unattributed tool turn breaks repository affinity. A later
+                # tool-free turn must not inherit a projection across it.
+                state["last_turn_repos"] = set()
     except Exception:
         return
 

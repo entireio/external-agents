@@ -244,7 +244,7 @@ callbacks["pre_tool_call"](
 callbacks["post_tool_call"](
     session_id=session,
     tool_name="write_file",
-    args={"content": "raw-tool-secret"},
+    args={"path": "hello.txt", "content": "raw-tool-secret"},
     result="raw-tool-result-secret",
     status="ok",
 )
