@@ -260,10 +260,17 @@ func TestTranscriptAnalysisSanitizesAndCompacts(t *testing.T) {
 	if !slices.Equal(files, []string{"README.md", "cmd/main.go"}) {
 		t.Fatalf("modified files: %v", files)
 	}
-	if position != len(data) {
-		t.Fatalf("position: got %d, want %d", position, len(data))
+	if position != 4 {
+		t.Fatalf("position: got %d, want 4 transcript lines", position)
 	}
-	prompts, err := agent.ExtractPrompts(path, 0)
+	files, position, err = agent.ExtractModifiedFiles(path, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 || position != 4 {
+		t.Fatalf("line-offset files=%v position=%d, want no files at position 4", files, position)
+	}
+	prompts, err := agent.ExtractPrompts(path, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,6 +298,7 @@ func TestTranscriptAnalysisSanitizesAndCompacts(t *testing.T) {
 	if !strings.Contains(native, `"modified_files":["README.md","cmd/main.go"]`) || !strings.Contains(native, "[REDACTED]") {
 		t.Fatalf("read-session native data was not sanitized: %s", native)
 	}
+	assertEntireParserCompatibleTranscript(t, session.NativeData)
 
 	compact, err := agent.CompactTranscript(path)
 	if err != nil {
@@ -308,6 +316,66 @@ func TestTranscriptAnalysisSanitizesAndCompacts(t *testing.T) {
 	}
 	if !strings.Contains(compactText, `"modified_files":["README.md","cmd/main.go"]`) {
 		t.Fatalf("compact transcript lacks safe file metadata: %s", compactText)
+	}
+}
+
+func assertEntireParserCompatibleTranscript(t *testing.T, data []byte) {
+	t.Helper()
+	seen := map[string]bool{}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		var raw struct {
+			Type       string          `json:"type"`
+			HermesType string          `json:"hermes_type"`
+			Content    json.RawMessage `json:"content"`
+			Message    *struct {
+				Content json.RawMessage `json:"content"`
+			} `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(line), &raw); err != nil {
+			t.Fatalf("portable transcript line is invalid JSON: %v\n%s", err, line)
+		}
+		if len(raw.Content) != 0 {
+			t.Fatalf("portable user/assistant content must use the message envelope: %s", line)
+		}
+		switch raw.Type {
+		case "user":
+			if raw.Message == nil {
+				t.Fatalf("portable user line lacks message envelope: %s", line)
+			}
+			var text string
+			if err := json.Unmarshal(raw.Message.Content, &text); err != nil || text == "" {
+				t.Fatalf("portable user content is not parser-readable text: %s", line)
+			}
+			seen["user"] = true
+		case "assistant":
+			if raw.Message == nil {
+				t.Fatalf("portable assistant line lacks message envelope: %s", line)
+			}
+			var blocks []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+				Name string `json:"name"`
+			}
+			if err := json.Unmarshal(raw.Message.Content, &blocks); err != nil || len(blocks) == 0 {
+				t.Fatalf("portable assistant content is not a parser-readable block array: %s", line)
+			}
+			if raw.HermesType == "tool" {
+				if blocks[0].Type != "tool_use" || blocks[0].Name == "" {
+					t.Fatalf("portable tool line lacks a tool_use block: %s", line)
+				}
+				seen["tool"] = true
+			} else {
+				if blocks[0].Type != "text" || blocks[0].Text == "" {
+					t.Fatalf("portable assistant line lacks a text block: %s", line)
+				}
+				seen["assistant"] = true
+			}
+		}
+	}
+	for _, kind := range []string{"user", "tool", "assistant"} {
+		if !seen[kind] {
+			t.Fatalf("portable transcript lacks %s content: %s", kind, data)
+		}
 	}
 }
 

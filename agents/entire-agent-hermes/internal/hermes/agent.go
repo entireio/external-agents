@@ -213,12 +213,12 @@ func (a *Agent) GetTranscriptPosition(path string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	info, err := os.Stat(resolved)
+	position, err := transcriptFileLineCount(resolved)
 	if errors.Is(err, os.ErrNotExist) {
 		return 0, nil
 	}
 	if err != nil {
 		return 0, err
 	}
-	return int(info.Size()), nil
+	return position, nil
 }

@@ -16,14 +16,43 @@ import (
 var errTranscriptPathNotOwned = errors.New("transcript path is not owned by the Hermes observer")
 
 type transcriptEntry struct {
-	Version       int      `json:"v"`
-	Type          string   `json:"type"`
-	Timestamp     string   `json:"timestamp"`
-	Content       string   `json:"content"`
-	Model         string   `json:"model"`
-	Name          string   `json:"name"`
-	Status        string   `json:"status"`
-	ModifiedFiles []string `json:"modified_files"`
+	Version       int                `json:"v"`
+	Type          string             `json:"type"`
+	HermesType    string             `json:"hermes_type,omitempty"`
+	Timestamp     string             `json:"timestamp"`
+	Content       string             `json:"content,omitempty"`
+	Message       *transcriptMessage `json:"message,omitempty"`
+	Model         string             `json:"model,omitempty"`
+	Name          string             `json:"name,omitempty"`
+	Status        string             `json:"status,omitempty"`
+	ModifiedFiles []string           `json:"modified_files,omitempty"`
+}
+
+type transcriptMessage struct {
+	Content json.RawMessage `json:"content"`
+}
+
+type portableTranscriptEntry struct {
+	Version       int              `json:"v"`
+	Type          string           `json:"type"`
+	HermesType    string           `json:"hermes_type,omitempty"`
+	Timestamp     string           `json:"timestamp,omitempty"`
+	Message       *portableMessage `json:"message,omitempty"`
+	Model         string           `json:"model,omitempty"`
+	Name          string           `json:"name,omitempty"`
+	Status        string           `json:"status,omitempty"`
+	ModifiedFiles []string         `json:"modified_files,omitempty"`
+}
+
+type portableMessage struct {
+	Content any `json:"content"`
+}
+
+type portableAssistantBlock struct {
+	Type  string         `json:"type"`
+	Text  string         `json:"text,omitempty"`
+	Name  string         `json:"name,omitempty"`
+	Input map[string]any `json:"input,omitempty"`
 }
 
 var secretPatterns = []*regexp.Regexp{
@@ -66,6 +95,96 @@ func sanitizeModel(value string) string {
 	return unsafeModel.ReplaceAllString(value, "_")
 }
 
+func messageText(message *transcriptMessage) string {
+	if message == nil || len(message.Content) == 0 {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(message.Content, &text) == nil {
+		return text
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(message.Content, &blocks) != nil {
+		return ""
+	}
+	texts := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		if block.Type == "text" && block.Text != "" {
+			texts = append(texts, block.Text)
+		}
+	}
+	return strings.Join(texts, "\n\n")
+}
+
+func marshalPortableEntry(entry transcriptEntry) ([]byte, error) {
+	version := entry.Version
+	if version == 0 {
+		version = 1
+	}
+	portable := portableTranscriptEntry{
+		Version:       version,
+		Type:          entry.Type,
+		Timestamp:     entry.Timestamp,
+		Model:         entry.Model,
+		Name:          entry.Name,
+		Status:        entry.Status,
+		ModifiedFiles: entry.ModifiedFiles,
+	}
+	switch entry.Type {
+	case "user":
+		if entry.Content != "" {
+			portable.Message = &portableMessage{Content: entry.Content}
+		}
+	case "assistant":
+		if entry.Content != "" {
+			portable.Message = &portableMessage{Content: []portableAssistantBlock{{Type: "text", Text: entry.Content}}}
+		}
+	case "tool":
+		portable.Type = "assistant"
+		portable.HermesType = "tool"
+		portable.Message = &portableMessage{Content: []portableAssistantBlock{{
+			Type:  "tool_use",
+			Name:  entry.Name,
+			Input: map[string]any{"modified_files": entry.ModifiedFiles},
+		}}}
+	}
+	return json.Marshal(portable)
+}
+
+func transcriptFromLine(data []byte, offset int) []byte {
+	start := 0
+	for range offset {
+		next := bytes.IndexByte(data[start:], '\n')
+		if next < 0 {
+			return nil
+		}
+		start += next + 1
+	}
+	return data[start:]
+}
+
+func transcriptFileLineCount(path string) (int, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	count := 0
+	for scanner.Scan() {
+		count++
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, fmt.Errorf("count Hermes observer transcript lines: %w", err)
+	}
+	return count, nil
+}
+
 func readEntries(path string, offset int) ([]transcriptEntry, []byte, error) {
 	if offset < 0 {
 		return nil, nil, fmt.Errorf("offset must not be negative: %d", offset)
@@ -78,18 +197,7 @@ func readEntries(path string, offset int) ([]transcriptEntry, []byte, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	start := offset
-	if start > len(data) {
-		start = len(data)
-	}
-	if start > 0 && start < len(data) && data[start-1] != '\n' {
-		if next := bytes.IndexByte(data[start:], '\n'); next >= 0 {
-			start += next + 1
-		} else {
-			start = len(data)
-		}
-	}
-	rawSelected := data[start:]
+	rawSelected := transcriptFromLine(data, offset)
 	scanner := bufio.NewScanner(bytes.NewReader(rawSelected))
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	entries := make([]transcriptEntry, 0)
@@ -103,10 +211,16 @@ func readEntries(path string, offset int) ([]transcriptEntry, []byte, error) {
 		if err := json.Unmarshal(line, &entry); err != nil {
 			continue
 		}
+		if entry.HermesType != "" {
+			entry.Type = entry.HermesType
+		}
+		if entry.Content == "" {
+			entry.Content = messageText(entry.Message)
+		}
 		entry.Content = sanitizeText(entry.Content)
 		entry.Model = sanitizeModel(entry.Model)
 		entry.ModifiedFiles = sanitizeModifiedFiles(entry.ModifiedFiles)
-		encoded, err := json.Marshal(entry)
+		encoded, err := marshalPortableEntry(entry)
 		if err != nil {
 			return nil, nil, fmt.Errorf("encode sanitized Hermes observer entry: %w", err)
 		}
