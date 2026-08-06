@@ -54,5 +54,9 @@ jobs:
 
       - name: Run protocol compliance suite
         uses: entireio/external-agents-tests@3220ca8cc7ba2fbfc5a951ce4a5937ca1a5ca26e # main
+        env:
+          # Hermes intentionally refuses hook installation without an explicit
+          # profile. Other adapters ignore this runner-temporary directory.
+          HERMES_HOME: ${{ runner.temp }}/external-agent-hermes-profile
         with:
           binary-path: ${{ matrix.binary }}

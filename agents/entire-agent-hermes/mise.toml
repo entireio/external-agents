@@ -1,0 +1,19 @@
+[tasks.build]
+description = "Build entire-agent-hermes"
+run = "go build -o entire-agent-hermes ./cmd/entire-agent-hermes"
+
+[tasks.test]
+description = "Run Hermes adapter unit tests"
+run = "go test ./..."
+
+[tasks.verify]
+description = "Run shared protocol compliance with an isolated Hermes home"
+run = '''
+repo_root="$(cd ../.. && pwd)"
+tmp_home="$(mktemp -d)"
+trap 'rm -rf -- "$tmp_home"' EXIT
+cd "$repo_root"
+HERMES_HOME="$tmp_home" external-agents-tests verify \
+  "$repo_root/agents/entire-agent-hermes/entire-agent-hermes" \
+  --fixtures "$repo_root/agents/entire-agent-hermes/testdata/compliance.json"
+'''
