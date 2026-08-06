@@ -142,6 +142,8 @@ The observer applies bounded text sanitization before persistence and the Go ada
 - Never install into an implicit/default Hermes home.
 - Never copy or inspect Hermes credentials, session databases, memory, or profile files beyond the explicit temp/config paths under test.
 - Never persist system/developer prompts, memory, full conversation history, platform/sender/task/turn/request/tool-call IDs, environment dumps, secrets, raw tool inputs, or raw tool results.
+- Apply Hermes' `redact_sensitive_text(..., force=True, redact_url_credentials=True)` when available, then apply the adapter's independent fallback patterns and allowlists before persistence.
+- A running gateway must restart after plugin installation, update, or final removal because Hermes' process-wide plugin manager does not dynamically rescan.
 - Start the Entire session and turn synchronously from `pre_tool_call` before a repository-scoped tool executes; any lifecycle forwarding failure is swallowed so Hermes continues.
 - Resolve only strict canonical containment in registered repositories, prefer the longest match for nested repositories, reject traversal/sensitive/symlink-escape targets, and use current CWD only when tool args provide no path/workdir evidence.
 - Buffer only the sanitized current prompt/model in memory until the session first touches a registered repository; maintain projections per `(session, repository)` and keep tool/file evidence scoped to the repository resolved for that tool.

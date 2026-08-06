@@ -24,7 +24,7 @@ printf '{"external_agents":true}\n' > .entire/settings.json
 entire enable --agent hermes --telemetry=false
 ```
 
-Installation adds only `entire-observer` to the profile's plugin enablement and registers the current canonical repo. Repeating the command in another repo adds a second registration. Removing Hermes from one repo leaves the plugin and other repo registrations intact.
+Installation adds only `entire-observer` to the profile's plugin enablement and registers the current canonical repo. Repeating the command in another repo adds a second registration. Removing Hermes from one repo leaves the plugin and other repo registrations intact. Restart a running Hermes gateway after installation, update, or final removal because its process-wide plugin manager does not rescan plugins dynamically.
 
 ## Safety model
 

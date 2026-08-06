@@ -19,6 +19,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Tuple
 
+try:
+    from agent.redact import redact_sensitive_text as _hermes_redact_sensitive_text  # type: ignore[import-not-found]
+except Exception:  # Standalone verification and older Hermes installations.
+    _hermes_redact_sensitive_text = None
+
 
 _PLUGIN_NAME = "entire-observer"
 _MAX_TEXT = 32768
@@ -76,6 +81,18 @@ def _sanitize_text(value: Any) -> str:
     if not isinstance(value, str):
         return ""
     text = "".join(ch if ch in "\n\t" or ord(ch) >= 32 else " " for ch in value)
+    if _hermes_redact_sensitive_text is not None:
+        try:
+            text = _hermes_redact_sensitive_text(
+                text,
+                force=True,
+                redact_url_credentials=True,
+            )
+        except Exception:
+            # Observer failures must never interrupt Hermes; local patterns
+            # below remain the independent fail-open privacy boundary.
+            pass
+    text = re.sub(r"«redacted:[^»]*»", "[REDACTED]", text)
     for pattern in _SECRET_PATTERNS:
         text = pattern.sub("[REDACTED]", text)
     if len(text) > _MAX_TEXT:

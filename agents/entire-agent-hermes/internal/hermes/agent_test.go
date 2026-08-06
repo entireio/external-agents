@@ -144,6 +144,13 @@ path = Path(os.environ["HERMES_HOME"]) / "plugins" / "entire-observer" / "__init
 spec = importlib.util.spec_from_file_location("entire_observer_session_key_test", path, submodule_search_locations=[str(path.parent)])
 module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
 assert module._session_key("a" * 256 + "x") != module._session_key("a" * 256 + "y")
+seen = {}
+def fake_redactor(text, **kwargs):
+    seen.update(kwargs)
+    return "«redacted:credential-…»"
+module._hermes_redact_sensitive_text = fake_redactor
+assert module._sanitize_text("https://user:pass@example.test") == "[REDACTED]"
+assert seen == {"force": True, "redact_url_credentials": True}
 `
 	cmd := exec.Command(python, "-c", script)
 	cmd.Env = os.Environ()
