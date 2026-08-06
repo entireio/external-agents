@@ -299,6 +299,13 @@ func TestTranscriptAnalysisSanitizesAndCompacts(t *testing.T) {
 		t.Fatalf("read-session native data was not sanitized: %s", native)
 	}
 	assertEntireParserCompatibleTranscript(t, session.NativeData)
+	transcriptData, err := agent.ReadTranscript(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(transcriptData) != string(session.NativeData) {
+		t.Fatalf("read-transcript did not return the sanitized portable transcript:\n%s", transcriptData)
+	}
 
 	compact, err := agent.CompactTranscript(path)
 	if err != nil {

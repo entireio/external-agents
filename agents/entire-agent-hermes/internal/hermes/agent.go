@@ -133,11 +133,11 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 }
 
 func (a *Agent) ReadTranscript(ref string) ([]byte, error) {
-	path, err := resolveTranscriptPath(ref, false)
+	_, data, err := readEntries(ref, 0)
 	if err != nil {
 		return nil, err
 	}
-	return os.ReadFile(path)
+	return data, nil
 }
 
 func (a *Agent) ChunkTranscript(data []byte, maxSize int) ([][]byte, error) {
