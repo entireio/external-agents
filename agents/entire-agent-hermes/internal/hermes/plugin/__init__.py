@@ -374,7 +374,12 @@ def _append(repo_info: Tuple[Path, Path, str], session_id: Any, entry: Dict[str,
             path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
             try:
-                os.write(fd, data)
+                view = memoryview(data)
+                while view:
+                    written = os.write(fd, view)
+                    if written <= 0:
+                        raise OSError("short transcript write")
+                    view = view[written:]
             finally:
                 os.close(fd)
     except Exception:

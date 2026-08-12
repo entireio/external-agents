@@ -327,6 +327,21 @@ func TestPrepareTranscriptIgnoresArbitraryPath(t *testing.T) {
 	}
 }
 
+func TestTranscriptPositionIgnoresIncompleteTrailingRecord(t *testing.T) {
+	home := t.TempDir()
+	repo := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	path := observerSessionPath(t, repo, "partial-entry")
+	writeFixture(t, path, []byte("{\"v\":1,\"type\":\"user\",\"content\":\"complete\"}\n{\"v\":1"), 0o600)
+	position, err := New().GetTranscriptPosition(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if position != 1 {
+		t.Fatalf("position includes incomplete record: got %d, want 1", position)
+	}
+}
+
 func TestTranscriptAnalysisAcceptsObserverSizedToolEntry(t *testing.T) {
 	home := t.TempDir()
 	repo := t.TempDir()

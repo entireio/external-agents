@@ -169,22 +169,11 @@ func transcriptFromLine(data []byte, offset int) []byte {
 }
 
 func transcriptFileLineCount(path string) (int, error) {
-	file, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
 	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), maxTranscriptLineSize)
-	count := 0
-	for scanner.Scan() {
-		count++
-	}
-	if err := scanner.Err(); err != nil {
-		return 0, fmt.Errorf("count Hermes observer transcript lines: %w", err)
-	}
-	return count, nil
+	return bytes.Count(data, []byte{'\n'}), nil
 }
 
 func readEntries(path string, offset int) ([]transcriptEntry, []byte, error) {
