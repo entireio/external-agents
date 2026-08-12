@@ -107,17 +107,34 @@ func TestInstallRequiresExplicitHermesHome(t *testing.T) {
 	}
 }
 
-func TestResolveSessionFileUsesCollisionResistantSessionID(t *testing.T) {
+func TestResolveSessionFilePreservesSafeSessionID(t *testing.T) {
+	dir := t.TempDir()
+	path := New().ResolveSessionFile(dir, "test-session-123")
+	if filepath.Dir(path) != dir {
+		t.Fatalf("session path escaped directory: %s", path)
+	}
+	if !strings.Contains(filepath.Base(path), "test-session-123") {
+		t.Fatalf("session path does not preserve session ID: %s", path)
+	}
+	if filepath.Ext(path) != ".jsonl" {
+		t.Fatalf("unexpected session extension: %s", path)
+	}
+}
+
+func TestResolveSessionFileSafelyDistinguishesUnsafeSessionIDs(t *testing.T) {
 	dir := t.TempDir()
 	agent := New()
-	first := agent.ResolveSessionFile(dir, "session/a")
-	second := agent.ResolveSessionFile(dir, "session?a")
+	first := agent.ResolveSessionFile(dir, "../session/a")
+	second := agent.ResolveSessionFile(dir, "../session?a")
 	if first == second {
 		t.Fatalf("distinct session IDs collided: %s", first)
 	}
 	for _, path := range []string{first, second} {
-		if filepath.Dir(path) != dir || filepath.Ext(path) != ".jsonl" || len(strings.TrimSuffix(filepath.Base(path), ".jsonl")) != 64 {
-			t.Fatalf("unexpected hashed session path: %s", path)
+		if filepath.Dir(path) != dir || filepath.Ext(path) != ".jsonl" {
+			t.Fatalf("unsafe session path escaped directory: %s", path)
+		}
+		if strings.Contains(filepath.Base(path), "..") || strings.ContainsAny(filepath.Base(path), `/\\`) {
+			t.Fatalf("unsafe session path retained traversal characters: %s", path)
 		}
 	}
 }

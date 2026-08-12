@@ -88,7 +88,28 @@ func (a *Agent) GetSessionDir(repoPath string) (string, error) {
 
 func (a *Agent) ResolveSessionFile(sessionDir, sessionID string) string {
 	sum := sha256.Sum256([]byte(sessionID))
-	return filepath.Join(sessionDir, hex.EncodeToString(sum[:])+".jsonl")
+	name := safeSessionFileComponent(sessionID)
+	return filepath.Join(sessionDir, fmt.Sprintf("%s-%s.jsonl", name, hex.EncodeToString(sum[:8])))
+}
+
+func safeSessionFileComponent(sessionID string) string {
+	var name strings.Builder
+	for _, r := range sessionID {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '-' || r == '_' {
+			name.WriteRune(r)
+		} else {
+			name.WriteByte('-')
+		}
+		if name.Len() >= 80 {
+			break
+		}
+	}
+	trimmed := strings.Trim(name.String(), "-")
+	if trimmed == "" {
+		return "session"
+	}
+	return trimmed
 }
 
 func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {

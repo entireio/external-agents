@@ -281,10 +281,21 @@ def _repositories(args: Any = None) -> list[Tuple[Path, Path, str]]:
     return []
 
 
+def _session_file_component(session_id: Any) -> str:
+    value = str(session_id or "")
+    component = "".join(
+        char if char.isascii() and (char.isalnum() or char in "-_") else "-"
+        for char in value
+    )[:80].strip("-")
+    return component or "session"
+
+
 def _session_file(home: Path, repo: Path, session_id: Any) -> Path:
     repo_digest = hashlib.sha256(str(repo).encode("utf-8")).hexdigest()[:16]
-    session_digest = hashlib.sha256(str(session_id or "").encode("utf-8")).hexdigest()
-    return home / "entire" / "transcripts" / repo_digest / f"{session_digest}.jsonl"
+    value = str(session_id or "")
+    session_digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    name = _session_file_component(value)
+    return home / "entire" / "transcripts" / repo_digest / f"{name}-{session_digest}.jsonl"
 
 
 def _safe_relative_path(repo: Path, value: str) -> Optional[str]:
