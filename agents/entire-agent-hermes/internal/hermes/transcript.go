@@ -15,6 +15,8 @@ import (
 
 var errTranscriptPathNotOwned = errors.New("transcript path is not owned by the Hermes observer")
 
+const maxTranscriptLineSize = 16 * 1024 * 1024
+
 type transcriptEntry struct {
 	Version       int                `json:"v"`
 	Type          string             `json:"type"`
@@ -174,7 +176,7 @@ func transcriptFileLineCount(path string) (int, error) {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 64*1024), maxTranscriptLineSize)
 	count := 0
 	for scanner.Scan() {
 		count++
@@ -217,7 +219,7 @@ func parseEntries(data []byte, offset int) ([]transcriptEntry, []byte, error) {
 	}
 	rawSelected := transcriptFromLine(data, offset)
 	scanner := bufio.NewScanner(bytes.NewReader(rawSelected))
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 64*1024), maxTranscriptLineSize)
 	entries := make([]transcriptEntry, 0)
 	var sanitized bytes.Buffer
 	for scanner.Scan() {

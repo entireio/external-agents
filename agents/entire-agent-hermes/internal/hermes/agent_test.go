@@ -3,6 +3,7 @@ package hermes
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -323,6 +324,32 @@ func TestPrepareTranscriptIgnoresArbitraryPath(t *testing.T) {
 	}
 	if got := mustReadFile(t, outside); got != string(original) {
 		t.Fatalf("PrepareTranscript modified arbitrary path: %s", got)
+	}
+}
+
+func TestTranscriptAnalysisAcceptsObserverSizedToolEntry(t *testing.T) {
+	home := t.TempDir()
+	repo := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	path := observerSessionPath(t, repo, "large-entry")
+	files := make([]string, 300)
+	for i := range files {
+		files[i] = strings.Repeat("a", 4000) + fmt.Sprintf("-%03d.txt", i)
+	}
+	line, err := json.Marshal(transcriptEntry{Version: 1, Type: "tool", Name: "write_file", ModifiedFiles: files})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(line) <= 1024*1024 {
+		t.Fatalf("fixture must exceed the former scanner limit: %d", len(line))
+	}
+	writeFixture(t, path, append(line, '\n'), 0o600)
+	got, position, err := New().ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(files) || position != 1 {
+		t.Fatalf("large entry: files=%d position=%d", len(got), position)
 	}
 }
 
