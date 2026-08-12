@@ -31,7 +31,7 @@ func (a *Agent) Info() protocol.InfoResponse {
 		ProtectedDirs:   []string{},
 		ProtectedFiles:  []string{},
 		HookNames:       []string{"on_session_start", "pre_llm_call", "on_session_end", "on_session_finalize"},
-		Capabilities:    protocol.DeclaredCapabilities{Hooks: true, TranscriptAnalyzer: true, CompactTranscript: true, UsesTerminal: true},
+		Capabilities:    protocol.DeclaredCapabilities{Hooks: true, TranscriptAnalyzer: true, TranscriptPreparer: true, CompactTranscript: true, UsesTerminal: true},
 	}
 }
 

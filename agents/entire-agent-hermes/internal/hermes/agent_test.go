@@ -283,6 +283,44 @@ print(json.dumps(module._modified_files(Path(os.environ["ENTIRE_REPO_ROOT"]))))
 	}
 }
 
+func TestPrepareTranscriptConvertsObserverJSONLIdempotently(t *testing.T) {
+	home := t.TempDir()
+	repo := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	path := observerSessionPath(t, repo, "prepare")
+	raw := strings.Join([]string{
+		`{"v":1,"type":"user","timestamp":"2026-08-06T12:00:01Z","content":"Create hello.txt"}`,
+		`{"v":1,"type":"tool","timestamp":"2026-08-06T12:00:02Z","name":"write_file","status":"ok","modified_files":["hello.txt"]}`,
+		`{"v":1,"type":"assistant","timestamp":"2026-08-06T12:00:03Z","content":"Created hello.txt"}`,
+	}, "\n") + "\n"
+	writeFixture(t, path, []byte(raw), 0o600)
+
+	agent := New()
+	if err := agent.PrepareTranscript(path); err != nil {
+		t.Fatal(err)
+	}
+	first := mustReadFile(t, path)
+	assertEntireParserCompatibleTranscript(t, []byte(first))
+	if first == raw {
+		t.Fatalf("raw observer transcript was not converted: %s", first)
+	}
+	if err := agent.PrepareTranscript(path); err != nil {
+		t.Fatal(err)
+	}
+	if second := mustReadFile(t, path); second != first {
+		t.Fatalf("preparation is not idempotent:\nfirst: %s\nsecond: %s", first, second)
+	}
+}
+
+func TestPrepareTranscriptRejectsArbitraryPath(t *testing.T) {
+	t.Setenv("HERMES_HOME", t.TempDir())
+	outside := filepath.Join(t.TempDir(), "private.jsonl")
+	writeFixture(t, outside, []byte(`{"v":1,"type":"user","content":"outside"}`+"\n"), 0o600)
+	if err := New().PrepareTranscript(outside); err == nil {
+		t.Fatal("PrepareTranscript accepted an arbitrary path")
+	}
+}
+
 func TestTranscriptAnalysisSanitizesAndCompacts(t *testing.T) {
 	home := t.TempDir()
 	repo := t.TempDir()

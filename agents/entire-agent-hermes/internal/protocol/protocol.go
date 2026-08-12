@@ -22,6 +22,7 @@ type Agent interface {
 	ChunkTranscript([]byte, int) ([][]byte, error)
 	ReassembleTranscript([][]byte) ([]byte, error)
 	CompactTranscript(string) (CompactTranscriptResponse, error)
+	PrepareTranscript(string) error
 	FormatResumeCommand(string) string
 	ParseHook(string, []byte) (*EventJSON, error)
 	InstallHooks(bool, bool) (int, error)
@@ -146,6 +147,13 @@ func Run(agent Agent, args []string, stdin io.Reader, stdout io.Writer) error {
 			return err
 		}
 		return WriteJSON(stdout, out)
+	case "prepare-transcript":
+		fs := newFlags(args[0])
+		ref := fs.String("session-ref", "", "session ref")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		return agent.PrepareTranscript(*ref)
 	case "format-resume-command":
 		fs := newFlags(args[0])
 		id := fs.String("session-id", "", "session id")

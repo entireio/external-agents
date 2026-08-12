@@ -113,6 +113,7 @@ The observer applies bounded text sanitization before persistence and the Go ada
 | `chunk-transcript` | Raw bytes | Byte chunking with positive-size validation | Required |
 | `reassemble-transcript` | Raw bytes | Concatenate decoded chunks | Required |
 | `compact-transcript` | Sanitized JSONL | Emit compact user/assistant/tool metadata without raw results | compact_transcript |
+| `prepare-transcript` | Observer JSONL | Atomically convert observer entries to Entire-compatible message envelopes | transcript_preparer |
 | `format-resume-command` | Hermes resume | `hermes --resume <quoted-id>` | Required |
 | `parse-hook` | Plugin lifecycle payload | Normalize four lifecycle hooks; observer-only hooks return null | hooks |
 | `install-hooks` | User plugin | Embedded plugin + registry + config merge under explicit `HERMES_HOME` | hooks |
@@ -129,7 +130,7 @@ The observer applies bounded text sanitization before persistence and the Go ada
 |-----------|----------|---------------|
 | hooks | true | Hermes provides public CLI/gateway plugin hooks |
 | transcript_analyzer | true | Observer JSONL has stable prompt, response, and modified-file entries |
-| transcript_preparer | false | Observer writes the final parseable JSONL directly |
+| transcript_preparer | true | Converts observer JSONL to Entire-compatible message envelopes before checkpoint storage |
 | token_calculator | false | Token fields are intentionally not captured |
 | compact_transcript | true | Safe compact JSONL is derived from the already-sanitized observer transcript |
 | text_generator | false | Avoids credential/model invocation inside the protocol adapter |

@@ -374,6 +374,28 @@ func sanitizeModifiedFiles(values []string) []string {
 	return uniqueSorted(files)
 }
 
+func (a *Agent) PrepareTranscript(path string) error {
+	resolved, err := resolveTranscriptPath(path, true)
+	if err != nil {
+		return err
+	}
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return err
+	}
+	entries, portable, err := parseEntries(data, 0)
+	if err != nil {
+		return err
+	}
+	if !isObserverTranscript(entries) {
+		return nil
+	}
+	if bytes.Equal(data, portable) {
+		return nil
+	}
+	return atomicWrite(resolved, portable, 0o600)
+}
+
 func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, error) {
 	entries, _, err := readEntries(path, offset)
 	if errors.Is(err, errTranscriptPathNotOwned) {
