@@ -124,9 +124,15 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 		}
 		ref = a.ResolveSessionFile(dir, input.SessionID)
 	}
-	entries, data, err := readEntries(ref, 0)
+	data, err := os.ReadFile(ref)
 	if err != nil {
 		return protocol.AgentSessionJSON{}, err
+	}
+	entries, sanitized, parseErr := parseEntries(data, 0)
+	if parseErr != nil || !isObserverTranscript(entries) {
+		entries = nil
+	} else {
+		data = sanitized
 	}
 	start := input.Timestamp
 	var files []string

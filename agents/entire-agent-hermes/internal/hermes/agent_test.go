@@ -139,6 +139,33 @@ func TestResolveSessionFileSafelyDistinguishesUnsafeSessionIDs(t *testing.T) {
 	}
 }
 
+func TestWriteAndReadSessionPreservesOpaqueNativeData(t *testing.T) {
+	home := t.TempDir()
+	repo := t.TempDir()
+	t.Setenv("HERMES_HOME", home)
+	t.Setenv("ENTIRE_REPO_ROOT", repo)
+	agent := New()
+	dir, err := agent.GetSessionDir(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := agent.ResolveSessionFile(dir, "test-roundtrip-session")
+	want := []byte(`{"test": true}`)
+	if err := agent.WriteSession(protocol.AgentSessionJSON{SessionRef: ref, NativeData: want}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := agent.ReadSession(&protocol.HookInputJSON{SessionID: "test-roundtrip-session", SessionRef: ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got.NativeData, want) {
+		t.Fatalf("native data changed: got %q, want %q", got.NativeData, want)
+	}
+	if got.ModifiedFiles == nil || got.NewFiles == nil || got.DeletedFiles == nil {
+		t.Fatal("session file lists must be initialized")
+	}
+}
+
 func TestObserverSessionStateUsesFullSessionID(t *testing.T) {
 	python, err := exec.LookPath("python3")
 	if err != nil {

@@ -186,9 +186,6 @@ func transcriptFileLineCount(path string) (int, error) {
 }
 
 func readEntries(path string, offset int) ([]transcriptEntry, []byte, error) {
-	if offset < 0 {
-		return nil, nil, fmt.Errorf("offset must not be negative: %d", offset)
-	}
 	resolved, err := resolveTranscriptPath(path, false)
 	if err != nil {
 		return nil, nil, err
@@ -196,6 +193,27 @@ func readEntries(path string, offset int) ([]transcriptEntry, []byte, error) {
 	data, err := os.ReadFile(resolved)
 	if err != nil {
 		return nil, nil, err
+	}
+	return parseEntries(data, offset)
+}
+
+func isObserverTranscript(entries []transcriptEntry) bool {
+	if len(entries) == 0 {
+		return false
+	}
+	for _, entry := range entries {
+		switch entry.Type {
+		case "session_start", "user", "assistant", "tool", "session_end":
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func parseEntries(data []byte, offset int) ([]transcriptEntry, []byte, error) {
+	if offset < 0 {
+		return nil, nil, fmt.Errorf("offset must not be negative: %d", offset)
 	}
 	rawSelected := transcriptFromLine(data, offset)
 	scanner := bufio.NewScanner(bytes.NewReader(rawSelected))
