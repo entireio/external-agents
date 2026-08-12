@@ -8,12 +8,5 @@ run = "go test ./..."
 
 [tasks.verify]
 description = "Run shared protocol compliance with an isolated Hermes home"
-run = '''
-repo_root="$(cd ../.. && pwd)"
-tmp_home="$(mktemp -d)"
-trap 'rm -rf -- "$tmp_home"' EXIT
-cd "$repo_root"
-HERMES_HOME="$tmp_home" external-agents-tests verify \
-  "$repo_root/agents/entire-agent-hermes/entire-agent-hermes" \
-  --fixtures "$repo_root/agents/entire-agent-hermes/testdata/compliance.json"
-'''
+depends = ["build"]
+run = "scripts/verify-compliance.sh"

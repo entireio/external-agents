@@ -376,6 +376,9 @@ func sanitizeModifiedFiles(values []string) []string {
 
 func (a *Agent) PrepareTranscript(path string) error {
 	resolved, err := resolveTranscriptPath(path, true)
+	if errors.Is(err, errTranscriptPathNotOwned) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}

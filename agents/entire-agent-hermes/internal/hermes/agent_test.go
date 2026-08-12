@@ -312,12 +312,16 @@ func TestPrepareTranscriptConvertsObserverJSONLIdempotently(t *testing.T) {
 	}
 }
 
-func TestPrepareTranscriptRejectsArbitraryPath(t *testing.T) {
+func TestPrepareTranscriptIgnoresArbitraryPath(t *testing.T) {
 	t.Setenv("HERMES_HOME", t.TempDir())
 	outside := filepath.Join(t.TempDir(), "private.jsonl")
-	writeFixture(t, outside, []byte(`{"v":1,"type":"user","content":"outside"}`+"\n"), 0o600)
-	if err := New().PrepareTranscript(outside); err == nil {
-		t.Fatal("PrepareTranscript accepted an arbitrary path")
+	original := []byte(`{"v":1,"type":"user","content":"outside"}` + "\n")
+	writeFixture(t, outside, original, 0o600)
+	if err := New().PrepareTranscript(outside); err != nil {
+		t.Fatalf("PrepareTranscript arbitrary path: %v", err)
+	}
+	if got := mustReadFile(t, outside); got != string(original) {
+		t.Fatalf("PrepareTranscript modified arbitrary path: %s", got)
 	}
 }
 

@@ -42,14 +42,10 @@ Transcript file APIs accept production reads and writes only beneath the explici
 ## Protocol compliance
 
 ```bash
-mise run build
-tmp_home="$(mktemp -d)"
-trap 'rm -rf -- "$tmp_home"' EXIT
-HERMES_HOME="$tmp_home" external-agents-tests verify ./entire-agent-hermes \
-  --fixtures testdata/compliance.json
+mise run verify
 ```
 
-The explicit temp home is required because the compliance suite otherwise inherits `HERMES_HOME` from the invoking shell.
+The task builds the adapter, creates an isolated `HERMES_HOME`, and runs the installed shared compliance runner from a temporary directory outside this Go module. It also verifies that the shared mandatory tests ran, preventing a false pass caused by the runner selecting the caller's `go.mod`.
 
 ## Verification
 
