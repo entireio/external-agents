@@ -292,6 +292,7 @@ func TestPrepareTranscriptConvertsObserverJSONLIdempotently(t *testing.T) {
 		`{"v":1,"type":"user","timestamp":"2026-08-06T12:00:01Z","content":"Create hello.txt"}`,
 		`{"v":1,"type":"tool","timestamp":"2026-08-06T12:00:02Z","name":"write_file","status":"ok","modified_files":["hello.txt"]}`,
 		`{"v":1,"type":"assistant","timestamp":"2026-08-06T12:00:03Z","content":"Created hello.txt"}`,
+		`{"v":1,"type":"turn_end","timestamp":"2026-08-06T12:00:04Z"}`,
 	}, "\n") + "\n"
 	writeFixture(t, path, []byte(raw), 0o600)
 
@@ -803,6 +804,9 @@ func TestTranscriptAPIsRejectArbitraryPaths(t *testing.T) {
 	writeFixture(t, outside, []byte(`{"v":1,"type":"user","content":"outside-secret"}`+"\n"), 0o600)
 	if _, err := agent.ReadTranscript(outside); err == nil {
 		t.Fatal("ReadTranscript accepted an arbitrary path")
+	}
+	if _, err := agent.ReadSession(&protocol.HookInputJSON{SessionID: "outside", SessionRef: outside}); err == nil {
+		t.Fatal("ReadSession accepted an arbitrary path")
 	}
 	if err := agent.WriteSession(protocol.AgentSessionJSON{SessionRef: outside, NativeData: []byte("overwritten")}); err == nil {
 		t.Fatal("WriteSession accepted an arbitrary path")

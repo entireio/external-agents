@@ -124,7 +124,11 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 		}
 		ref = a.ResolveSessionFile(dir, input.SessionID)
 	}
-	data, err := os.ReadFile(ref)
+	resolved, err := resolveTranscriptPath(ref, false)
+	if err != nil {
+		return protocol.AgentSessionJSON{}, err
+	}
+	data, err := os.ReadFile(resolved)
 	if err != nil {
 		return protocol.AgentSessionJSON{}, err
 	}

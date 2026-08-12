@@ -203,7 +203,7 @@ func isObserverTranscript(entries []transcriptEntry) bool {
 	}
 	for _, entry := range entries {
 		switch entry.Type {
-		case "session_start", "user", "assistant", "tool", "session_end":
+		case "session_start", "user", "assistant", "tool", "turn_end", "session_end":
 		default:
 			return false
 		}
