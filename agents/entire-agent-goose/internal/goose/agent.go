@@ -68,5 +68,39 @@ func (a *Agent) GetSessionID(input *protocol.HookInputJSON) string {
 }
 
 func (a *Agent) FormatResumeCommand(sessionID string) string {
+	// Goose sessions are named YYYYMMDD_N, but the session ID arrives from a
+	// hook payload and is never validated before formatting. The formatted
+	// string is printed to the user's terminal by the Entire CLI and run
+	// verbatim, so a hostile session ID (for example one containing shell
+	// metacharacters) would execute arbitrary commands when the user runs
+	// the printed command. Refuse to emit the command for IDs outside the
+	// expected character set, matching the allowlist used by the kilo and
+	// qwen adapters.
+	if !isValidResumeSessionID(sessionID) {
+		return ""
+	}
 	return "goose session --resume --session-id " + sessionID
+}
+
+// isValidResumeSessionID reports whether sessionID contains only the
+// characters a normal goose session name may carry (YYYYMMDD_N style).
+// Anything else (shell metacharacters, control characters, path separators)
+// makes the resume command unsafe and the formatter refuses to emit it.
+func isValidResumeSessionID(sessionID string) bool {
+	if sessionID == "" {
+		return false
+	}
+	for _, r := range sessionID {
+		if !isSafeResumeRune(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSafeResumeRune(r rune) bool {
+	return r == '-' || r == '_' || r == '.' || r == ':' ||
+		(r >= '0' && r <= '9') ||
+		(r >= 'a' && r <= 'z') ||
+		(r >= 'A' && r <= 'Z')
 }

@@ -51,5 +51,37 @@ func (a *Agent) FormatResumeCommand(sessionID string) string {
 	if sessionID == "" {
 		return "PLUGINS=all amp threads continue --last"
 	}
+	// Reject session IDs that cannot be passed to the shell safely. The
+	// formatted string is printed to the user's terminal by the Entire CLI
+	// and run verbatim, so a hostile session ID (for example one containing
+	// shell metacharacters) would execute arbitrary commands when the user
+	// runs the printed command. Validation mirrors the allowlist used by
+	// the kilo and qwen adapters.
+	if !isValidResumeSessionID(sessionID) {
+		return ""
+	}
 	return "PLUGINS=all amp threads continue " + sessionID
+}
+
+// isValidResumeSessionID reports whether sessionID contains only the
+// characters a normal amp thread/session identifier may carry. Anything
+// else (shell metacharacters, control characters, path separators) makes
+// the resume command unsafe and the formatter refuses to emit it.
+func isValidResumeSessionID(sessionID string) bool {
+	if sessionID == "" {
+		return false
+	}
+	for _, r := range sessionID {
+		if !isSafeResumeRune(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isSafeResumeRune(r rune) bool {
+	return r == '-' || r == '_' || r == '.' || r == ':' ||
+		(r >= '0' && r <= '9') ||
+		(r >= 'a' && r <= 'z') ||
+		(r >= 'A' && r <= 'Z')
 }
