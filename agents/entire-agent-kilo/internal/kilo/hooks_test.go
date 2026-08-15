@@ -195,6 +195,87 @@ func TestParseHookMissingSessionID(t *testing.T) {
 	}
 }
 
+func TestInstallHooksRefusesForeignPluginWithoutForce(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repo)
+	a := New()
+
+	// Install the Entire-generated plugin once to establish ownership.
+	if _, err := a.InstallHooks(false, false); err != nil {
+		t.Fatalf("first install error: %v", err)
+	}
+
+	pluginPath := filepath.Join(repo, pluginFile)
+	if err := os.WriteFile(pluginPath, []byte("// user's custom kilo plugin\nexport default {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Default install must refuse to overwrite the foreign plugin.
+	count, err := a.InstallHooks(false, false)
+	if err == nil || count != 0 {
+		t.Fatalf("foreign install count=%d err=%v, want error", count, err)
+	}
+	foreign, readErr := os.ReadFile(pluginPath)
+	if readErr != nil || !strings.Contains(string(foreign), "user's custom kilo plugin") {
+		t.Fatalf("foreign plugin was changed: %q err=%v", foreign, readErr)
+	}
+
+	// Explicit force install may replace the foreign plugin.
+	count, err = a.InstallHooks(false, true)
+	if err != nil || count != 1 {
+		t.Fatalf("forced install count=%d err=%v, want success", count, err)
+	}
+	if !a.AreHooksInstalled() {
+		t.Fatal("generated plugin should be installed after forced replacement")
+	}
+}
+
+func TestUninstallHooksLeavesForeignPluginUntouched(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repo)
+	a := New()
+
+	pluginPath := filepath.Join(repo, pluginFile)
+	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginPath, []byte("// user's custom kilo plugin\nexport default {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.UninstallHooks(); err != nil {
+		t.Fatalf("uninstall error: %v", err)
+	}
+	data, readErr := os.ReadFile(pluginPath)
+	if readErr != nil || string(data) != "// user's custom kilo plugin\nexport default {}\n" {
+		t.Fatalf("uninstall changed foreign plugin: %q err=%v", data, readErr)
+	}
+}
+
+func TestAreHooksInstalledRequiresOwnershipMarker(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repo)
+	a := New()
+
+	pluginPath := filepath.Join(repo, pluginFile)
+	if err := os.MkdirAll(filepath.Dir(pluginPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pluginPath, []byte("// user's custom kilo plugin\nexport default {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if a.AreHooksInstalled() {
+		t.Fatal("foreign plugin reported as installed")
+	}
+	if err := a.UninstallHooks(); err != nil {
+		t.Fatal(err)
+	}
+	data, readErr := os.ReadFile(pluginPath)
+	if readErr != nil || !strings.Contains(string(data), "user's custom kilo plugin") {
+		t.Fatalf("uninstall changed foreign plugin: %q err=%v", data, readErr)
+	}
+}
+
 func TestInstallAndUninstallHooks(t *testing.T) {
 	repo := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repo)
