@@ -3,6 +3,7 @@ package goose
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 // Goose stores sessions in a SQLite database (sessions.db) inside its data
@@ -35,8 +36,22 @@ func (a *Agent) GetSessionDir(_ string) (string, error) {
 	return filepath.Join(dataHome, "goose", "sessions"), nil
 }
 
+// safePathSessionID strips every character that could move a session file
+// out of its session directory (path separators, "..", control characters).
+// An empty result falls back to "unknown" so callers always get a real
+// filename. Goose session names are YYYYMMDD_N, which the sanitizer leaves
+// untouched.
+func safePathSessionID(sessionID string) string {
+	if sessionID == "" {
+		return "unknown"
+	}
+	return sessionIDPathSanitizer.ReplaceAllString(sessionID, "_")
+}
+
+var sessionIDPathSanitizer = regexp.MustCompile(`[^A-Za-z0-9_.-]+`)
+
 func (a *Agent) ResolveSessionFile(sessionDirPath, sessionID string) string {
-	return filepath.Join(sessionDirPath, sessionID+".json")
+	return filepath.Join(sessionDirPath, safePathSessionID(sessionID)+".json")
 }
 
 // transcriptPath is the materialized export location for a session.
@@ -46,5 +61,5 @@ func transcriptPath(sessionID string) string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, sessionID+".json")
+	return filepath.Join(dir, safePathSessionID(sessionID)+".json")
 }
