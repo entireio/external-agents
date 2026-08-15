@@ -231,10 +231,19 @@ func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
 	content := strings.ReplaceAll(generatePlugin(), entireCmdPlaceholder, cmdPrefix)
 
 	path := filepath.Join(root, pluginFile)
-	if !force {
-		if existing, readErr := os.ReadFile(path); readErr == nil && string(existing) == content {
+	if existing, readErr := os.ReadFile(path); readErr == nil {
+		if string(existing) == content {
 			return 0, nil
 		}
+		// Protect user-owned or third-party Kilo plugins from being silently
+		// overwritten by the generated Entire plugin. Only an explicit force
+		// install may replace a foreign plugin file, matching the ownership
+		// contract used by the omp adapter.
+		if !isOwnedPlugin(existing) && !force {
+			return 0, fmt.Errorf("refusing to overwrite foreign kilo plugin %s; pass force to replace it", path)
+		}
+	} else if !os.IsNotExist(readErr) {
+		return 0, readErr
 	}
 
 	dir := filepath.Join(root, pluginDir)
@@ -251,6 +260,17 @@ func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
 func (a *Agent) UninstallHooks() error {
 	root := protocol.RepoRoot()
 	path := filepath.Join(root, pluginFile)
+
+	// Leave user-owned or third-party Kilo plugins untouched; uninstall only
+	// removes the Entire-generated plugin identified by the ownership marker.
+	if existing, err := os.ReadFile(path); err == nil && !isOwnedPlugin(existing) {
+		return nil
+	} else if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -265,10 +285,21 @@ func (a *Agent) UninstallHooks() error {
 	return nil
 }
 
+func isOwnedPlugin(data []byte) bool {
+	return strings.Contains(string(data), pluginMarker)
+}
+
 func (a *Agent) AreHooksInstalled() bool {
+	// Kilo skips loading external plugins in pure mode. A generated plugin file
+	// may still exist, but it is not active in that mode, so reporting hooks as
+	// installed would make Entire believe lifecycle events are being emitted.
+	if strings.TrimSpace(os.Getenv("KILO_PURE")) == "1" {
+		return false
+	}
+
 	root := protocol.RepoRoot()
 	data, err := os.ReadFile(filepath.Join(root, pluginFile))
-	return err == nil && strings.Contains(string(data), pluginMarker)
+	return err == nil && isOwnedPlugin(data)
 }
 
 // fetchSession is reserved for mid-turn refresh from the Kilo HTTP server.
