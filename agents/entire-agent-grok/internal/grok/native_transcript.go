@@ -123,7 +123,7 @@ func promptsFromChatHistory(messages []chatHistoryMessage, offset int) []string 
 // do not, callers fall back to the <user_query> heuristic.
 func hasPromptIndex(messages []chatHistoryMessage) bool {
 	for _, message := range messages {
-		if message.Type == "user" && message.PromptIndex != nil {
+		if message.Type == roleUser && message.PromptIndex != nil {
 			return true
 		}
 	}
@@ -131,7 +131,7 @@ func hasPromptIndex(messages []chatHistoryMessage) bool {
 }
 
 func isPromptCandidate(message chatHistoryMessage, marked bool) bool {
-	if message.Type != "user" || message.SyntheticReason != "" {
+	if message.Type != roleUser || message.SyntheticReason != "" {
 		return false
 	}
 	if marked {
@@ -143,7 +143,7 @@ func isPromptCandidate(message chatHistoryMessage, marked bool) bool {
 func summaryFromChatHistory(messages []chatHistoryMessage) (string, bool) {
 	for i := len(messages) - 1; i >= 0; i-- {
 		message := messages[i]
-		if message.Type != "assistant" {
+		if message.Type != roleAssistant {
 			continue
 		}
 		if text, ok := assistantText(message); ok && strings.TrimSpace(text) != "" {
@@ -162,7 +162,7 @@ func modifiedFilesFromChatHistory(messages []chatHistoryMessage, offset int) []s
 	}
 	seen := map[string]struct{}{}
 	for _, message := range messages[offset:] {
-		if message.Type != "assistant" {
+		if message.Type != roleAssistant {
 			continue
 		}
 		for _, call := range message.ToolCalls {
@@ -282,7 +282,7 @@ func readTranscriptEntries(path string) ([]sidecarRecord, error) {
 	for _, message := range messages {
 		record := sidecarRecord{Agent: AgentName}
 		switch message.Type {
-		case "user":
+		case roleUser:
 			if !isPromptCandidate(message, marked) {
 				continue
 			}
@@ -296,7 +296,7 @@ func readTranscriptEntries(path string) ([]sidecarRecord, error) {
 			if record.Prompt == "" {
 				continue
 			}
-		case "assistant":
+		case roleAssistant:
 			if text, ok := assistantText(message); ok {
 				record.Event = "Stop"
 				record.LastAssistantMessage = text
@@ -348,7 +348,7 @@ func compactChatHistoryBytes(data []byte) ([]byte, error) {
 			}
 			consumed[message.ToolCallID] = true
 			if err := writeCompactLine(&buf, compactLine{
-				V: 1, Agent: AgentName, CLIVersion: compactCLIVersion, Type: "assistant",
+				V: 1, Agent: AgentName, CLIVersion: compactCLIVersion, Type: roleAssistant,
 				ID: message.ToolCallID,
 				Content: []any{compactToolUseBlock{
 					Type: "tool_use", ID: message.ToolCallID, Name: "unknown", Result: result,
@@ -356,14 +356,14 @@ func compactChatHistoryBytes(data []byte) ([]byte, error) {
 			}); err != nil {
 				return nil, err
 			}
-		case "user":
+		case roleUser:
 			if !isPromptCandidate(message, marked) {
 				continue
 			}
 			for _, text := range messageTextParts(message.Content) {
 				if prompt := extractUserQuery(text); prompt != "" {
 					if err := writeCompactLine(&buf, compactLine{
-						V: 1, Agent: AgentName, CLIVersion: compactCLIVersion, Type: "user",
+						V: 1, Agent: AgentName, CLIVersion: compactCLIVersion, Type: roleUser,
 						Content: []compactUserTextBlock{{Text: prompt}},
 					}); err != nil {
 						return nil, err
@@ -379,12 +379,12 @@ func compactChatHistoryBytes(data []byte) ([]byte, error) {
 				continue
 			}
 			if err := writeCompactLine(&buf, compactLine{
-				V: 1, Agent: AgentName, CLIVersion: compactCLIVersion, Type: "assistant",
+				V: 1, Agent: AgentName, CLIVersion: compactCLIVersion, Type: roleAssistant,
 				Content: []compactAssistantTextBlock{{Type: "thinking", Text: text}},
 			}); err != nil {
 				return nil, err
 			}
-		case "assistant":
+		case roleAssistant:
 			for _, call := range message.ToolCalls {
 				block := compactToolUseBlock{
 					Type: "tool_use", ID: call.ID, Name: call.Name,
@@ -395,7 +395,7 @@ func compactChatHistoryBytes(data []byte) ([]byte, error) {
 					consumed[call.ID] = true
 				}
 				if err := writeCompactLine(&buf, compactLine{
-					V: 1, Agent: AgentName, CLIVersion: compactCLIVersion, Type: "assistant",
+					V: 1, Agent: AgentName, CLIVersion: compactCLIVersion, Type: roleAssistant,
 					ID: call.ID, Content: []any{block},
 				}); err != nil {
 					return nil, err
@@ -403,7 +403,7 @@ func compactChatHistoryBytes(data []byte) ([]byte, error) {
 			}
 			if text, ok := assistantText(message); ok && text != "" {
 				if err := writeCompactLine(&buf, compactLine{
-					V: 1, Agent: AgentName, CLIVersion: compactCLIVersion, Type: "assistant",
+					V: 1, Agent: AgentName, CLIVersion: compactCLIVersion, Type: roleAssistant,
 					Content: []compactAssistantTextBlock{{Type: "text", Text: text}},
 				}); err != nil {
 					return nil, err

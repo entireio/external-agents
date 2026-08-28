@@ -73,7 +73,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 				V:          1,
 				Agent:      AgentName,
 				CLIVersion: compactCLIVersion,
-				Type:       "user",
+				Type:       roleUser,
 				TS:         record.TS,
 				Content:    []compactUserTextBlock{{Text: record.Prompt}},
 			}); err != nil {
@@ -96,7 +96,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 				V:          1,
 				Agent:      AgentName,
 				CLIVersion: compactCLIVersion,
-				Type:       "assistant",
+				Type:       roleAssistant,
 				TS:         record.TS,
 				ID:         record.ToolUseID,
 				Content:    []any{block},
@@ -115,7 +115,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 				V:          1,
 				Agent:      AgentName,
 				CLIVersion: compactCLIVersion,
-				Type:       "assistant",
+				Type:       roleAssistant,
 				TS:         record.TS,
 				Content:    []compactAssistantTextBlock{{Type: "text", Text: text}},
 			}); err != nil {
@@ -132,7 +132,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 // chatHistoryTypes are the line types only a Grok chat_history.jsonl carries.
 // Entire's own sidecar records use an "event" field instead of "type".
 var chatHistoryTypes = map[string]bool{
-	"user": true, "assistant": true, "system": true,
+	roleUser: true, roleAssistant: true, roleSystem: true,
 	"reasoning": true, "tool_result": true,
 }
 

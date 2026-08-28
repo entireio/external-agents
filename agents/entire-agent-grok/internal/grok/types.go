@@ -10,6 +10,12 @@ const (
 	hooksFileName = "entire.json"
 
 	restoredSummaryTitle = "Restored by Entire"
+
+	// Message/record types shared by Grok's chat_history.jsonl and Entire's
+	// compact transcript records.
+	roleUser      = "user"
+	roleAssistant = "assistant"
+	roleSystem    = "system"
 )
 
 // grokSessionSummary is the subset of Grok's summary.json needed for it to
