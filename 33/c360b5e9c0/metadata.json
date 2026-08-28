@@ -1,0 +1,28 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "33c360b5e9c0",
+  "strategy": "manual-commit",
+  "branch": "fix/grok-gaps",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "agents/entire-agent-grok/internal/grok/compact.go",
+    "agents/entire-agent-grok/internal/grok/native_transcript.go",
+    "agents/entire-agent-grok/internal/grok/types.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/33/c360b5e9c0/0/metadata.json",
+      "transcript": "/33/c360b5e9c0/0/full.jsonl",
+      "compact_transcript": "/33/c360b5e9c0/0/transcript.jsonl",
+      "content_hash": "/33/c360b5e9c0/0/content_hash.txt",
+      "prompt": "/33/c360b5e9c0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 50,
+    "cache_creation_tokens": 20387,
+    "cache_read_tokens": 2813879,
+    "output_tokens": 10083,
+    "api_call_count": 25
+  }
+}

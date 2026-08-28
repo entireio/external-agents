@@ -1,0 +1,27 @@
+<task-notification>
+<task-id>b92yis3gn</task-id>
+<summary>Monitor event: "PR 64 CI check results"</summary>
+<event>discover-agents: pass</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>b92yis3gn</task-id>
+<summary>Monitor event: "PR 64 CI check results"</summary>
+<event>check-licenses / license-check: pass
+fmt: pass
+lint-agents (agents/entire-agent-amp): pass
+lint-agents (agents/entire-agent-goose): pass
+lint-agents (agents/entire-agent-grok): fail
+lint-agents (agents/entire-agent-kilo): pass
+lint-agents (agents/entire-agent-omp): pass
+lint-agents (agents/entire-agent-qwen): pass
+lint-e2e: pass
+test-agents (entire-agent-amp): pass
+test-agents (entire-agent-goose): pass
+test-agents (entire-agent-grok): pass
+test-agents (entire-agent-kilo): pass
+test-agents (entire-agent-omp): pass
+test-agents (entire-agent-qwen): pass</event>
+</task-notification>
