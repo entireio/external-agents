@@ -1,0 +1,26 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "2678f3bbab40",
+  "strategy": "manual-commit",
+  "branch": "fix/grok-gaps",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/lint.yml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/26/78f3bbab40/0/metadata.json",
+      "transcript": "/26/78f3bbab40/0/full.jsonl",
+      "compact_transcript": "/26/78f3bbab40/0/transcript.jsonl",
+      "content_hash": "/26/78f3bbab40/0/content_hash.txt",
+      "prompt": "/26/78f3bbab40/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 86,
+    "cache_creation_tokens": 68483,
+    "cache_read_tokens": 3253195,
+    "output_tokens": 13591,
+    "api_call_count": 43
+  }
+}
