@@ -47,19 +47,20 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 			Metadata:   metadata,
 		}, nil
 	case HookNameUserPromptSubmit:
-		if strings.TrimSpace(raw.Prompt) == "" {
+		prompt := unwrapUserQuery(raw.Prompt)
+		if prompt == "" {
 			return nil, nil
 		}
 		return &protocol.EventJSON{
 			Type:       2,
 			SessionID:  raw.SessionID,
 			SessionRef: sessionRef,
-			Prompt:     raw.Prompt,
+			Prompt:     prompt,
 			Model:      raw.Model,
 			Timestamp:  raw.Timestamp,
 			Metadata:   metadata,
 		}, nil
-	case HookNameStop:
+	case HookNameStop, HookNameStopCancelled:
 		return &protocol.EventJSON{
 			Type:            3,
 			SessionID:       raw.SessionID,
@@ -237,6 +238,8 @@ func grokEventName(hookName string, existing string, existingCamel string) strin
 		return "PreToolUse"
 	case HookNameStop:
 		return "Stop"
+	case HookNameStopCancelled:
+		return "StopCancelled"
 	case HookNameStopFailure:
 		return "StopFailure"
 	case HookNameSessionEnd:

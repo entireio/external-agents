@@ -24,7 +24,7 @@ type Grok struct{}
 func (g *Grok) Name() string               { return "grok" }
 func (g *Grok) Binary() string             { return "grok" }
 func (g *Grok) EntireAgent() string        { return "grok" }
-func (g *Grok) PromptPattern() string      { return `>`
+func (g *Grok) PromptPattern() string      { return `>` }
 func (g *Grok) TimeoutMultiplier() float64 { return 2.0 }
 func (g *Grok) IsExternalAgent() bool      { return true }
 
@@ -63,8 +63,11 @@ func (g *Grok) RunPrompt(ctx context.Context, dir string, prompt string, opts ..
 		return Output{}, fmt.Errorf("%s not in PATH: %w", g.Binary(), err)
 	}
 
-	args := []string{prompt, "--headless", "--always-approve"}
-	displayArgs := []string{fmt.Sprintf("%q", prompt), "--headless", "--always-approve"}
+	// Grok has no --headless flag; -p/--single is the single-turn headless mode.
+	// --trust grants folder trust so project hooks in .grok/hooks/ actually run;
+	// without it Grok silently skips them and Entire captures nothing.
+	args := []string{"-p", prompt, "--always-approve", "--trust"}
+	displayArgs := []string{"-p", fmt.Sprintf("%q", prompt), "--always-approve", "--trust"}
 	if cfg.Model != "" {
 		args = append(args, "--model", cfg.Model)
 		displayArgs = append(displayArgs, "--model", cfg.Model)

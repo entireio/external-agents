@@ -1,11 +1,11 @@
 package grok
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 
 	"github.com/entireio/external-agents/agents/entire-agent-grok/internal/protocol"
@@ -58,13 +58,10 @@ func (a *Agent) CompactTranscript(sessionRef string) (protocol.CompactTranscript
 }
 
 func compactTranscriptBytes(data []byte) ([]byte, error) {
-	if bytes.Contains(data, []byte(`"type":"user"`)) || bytes.Contains(data, []byte(`"type":"assistant"`)) {
+	if looksLikeChatHistory(data) {
 		return compactChatHistoryBytes(data)
 	}
-	records, err := parseSidecarRecords(data)
-	if err != nil {
-		return nil, err
-	}
+	records := parseSidecarRecords(data)
 	var buf bytes.Buffer
 	for _, record := range records {
 		switch record.Event {
@@ -132,7 +129,45 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func parseSidecarRecords(data []byte) ([]sidecarRecord, error) {
+// chatHistoryTypes are the line types only a Grok chat_history.jsonl carries.
+// Entire's own sidecar records use an "event" field instead of "type".
+var chatHistoryTypes = map[string]bool{
+	"user": true, "assistant": true, "system": true,
+	"reasoning": true, "tool_result": true,
+}
+
+// looksLikeChatHistory decides which parser to use by decoding line types rather
+// than substring-matching the raw bytes. A byte match is whitespace-sensitive
+// (`"type": "user"` with a space would miss) and can be fooled by a checkpoint
+// slice whose lines happen not to contain the literal it looks for.
+func looksLikeChatHistory(data []byte) bool {
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var probe struct {
+			Type  string `json:"type"`
+			Event string `json:"event"`
+		}
+		if err := json.Unmarshal(line, &probe); err != nil {
+			continue
+		}
+		if probe.Event != "" {
+			return false
+		}
+		if chatHistoryTypes[probe.Type] {
+			return true
+		}
+	}
+	return false
+}
+
+// parseSidecarRecords parses Entire's own sidecar JSONL, skipping any line it
+// cannot decode so a truncated slice does not fail the whole transcript.
+func parseSidecarRecords(data []byte) []sidecarRecord {
 	lines := bytes.Split(data, []byte("\n"))
 	records := make([]sidecarRecord, 0, len(lines))
 	for _, line := range lines {
@@ -142,11 +177,13 @@ func parseSidecarRecords(data []byte) ([]sidecarRecord, error) {
 		}
 		var record sidecarRecord
 		if err := json.Unmarshal(line, &record); err != nil {
-			return nil, fmt.Errorf("parse sidecar record: %w", err)
+			// Tolerate a truncated first/last line from checkpoint scoping or a
+			// concurrent write, the same way the chat-history scanner does.
+			continue
 		}
 		records = append(records, record)
 	}
-	return records, nil
+	return records
 }
 
 func writeCompactLine(buf *bytes.Buffer, line compactLine) error {

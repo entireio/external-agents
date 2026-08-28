@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/entireio/external-agents/agents/entire-agent-grok/internal/protocol"
 	"github.com/entireio/external-agents/agents/entire-agent-grok/internal/grok"
+	"github.com/entireio/external-agents/agents/entire-agent-grok/internal/protocol"
 )
 
 func main() {

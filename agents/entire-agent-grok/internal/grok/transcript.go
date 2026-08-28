@@ -82,10 +82,90 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if strings.TrimSpace(session.SessionRef) == "" {
 		return errMissingSessionRef
 	}
-	if err := os.MkdirAll(filepath.Dir(session.SessionRef), 0o700); err != nil {
+	sessionDir := filepath.Dir(session.SessionRef)
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(session.SessionRef, session.NativeData, 0o600)
+	if err := os.WriteFile(session.SessionRef, session.NativeData, 0o600); err != nil {
+		return err
+	}
+	return writeSessionSummary(sessionDir, session)
+}
+
+// writeSessionSummary synthesizes the summary.json that Grok requires to
+// recognize a session directory.
+//
+// Restoring chat_history.jsonl alone is not enough: Grok's session lookup
+// ignores a directory with no summary.json, reports "Session not found
+// locally", and falls back to the remote registry (404 for a local-only
+// session). Worse, `grok --continue` then silently resumes a different, older
+// session instead of failing, so a bad restore looks like a good one.
+//
+// An existing summary.json is left alone so a restore over a live session
+// does not clobber Grok's own metadata.
+func writeSessionSummary(sessionDir string, session protocol.AgentSessionJSON) error {
+	path := filepath.Join(sessionDir, "summary.json")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	sessionID := strings.TrimSpace(session.SessionID)
+	if sessionID == "" {
+		sessionID = filepath.Base(sessionDir)
+	}
+	cwd := strings.TrimSpace(session.RepoPath)
+	if cwd == "" {
+		cwd = protocol.RepoRoot()
+	}
+	timestamp := normalizedSummaryTime(session.StartTime)
+	count := countTranscriptLines(session.NativeData)
+
+	messages, _ := readChatHistoryMessagesFromBytes(session.NativeData)
+	summary := grokSessionSummary{
+		Info:              grokSessionSummaryInfo{ID: sessionID, CWD: cwd},
+		SessionSummary:    restoredSummaryTitle,
+		GeneratedTitle:    restoredSummaryTitle,
+		CurrentModelID:    lastModelID(messages),
+		CreatedAt:         timestamp,
+		UpdatedAt:         timestamp,
+		LastActiveAt:      timestamp,
+		NumMessages:       count,
+		NumChatMessages:   count,
+		ChatFormatVersion: 1,
+		// Grok records git_root_dir with a trailing separator.
+		GitRootDir: strings.TrimSuffix(cwd, "/") + "/",
+		GrokHome:   grokHome(),
+	}
+	data, err := json.Marshal(summary)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o600)
+}
+
+// normalizedSummaryTime returns an RFC3339 timestamp Grok will accept.
+//
+// Entire sends an unset StartTime as a formatted zero time rather than an
+// empty string, and Grok rejects a summary carrying a year-1 timestamp with
+// "Session does not exist", so treat unparseable and zero values as absent.
+func normalizedSummaryTime(value string) string {
+	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+	if err != nil || parsed.IsZero() || parsed.Year() < 2000 {
+		return time.Now().UTC().Format(time.RFC3339)
+	}
+	return parsed.UTC().Format(time.RFC3339)
+}
+
+func countTranscriptLines(data []byte) int {
+	count := 0
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 func (a *Agent) ReadTranscript(sessionRef string) ([]byte, error) {
@@ -97,7 +177,7 @@ func (a *Agent) ChunkTranscript(content []byte, maxSize int) ([][]byte, error) {
 		return nil, fmt.Errorf("max-size must be positive, got %d", maxSize)
 	}
 	if len(content) == 0 {
-		return [][]byte{[]byte{}}, nil
+		return [][]byte{{}}, nil
 	}
 	var chunks [][]byte
 	for start := 0; start < len(content); start += maxSize {

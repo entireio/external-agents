@@ -8,13 +8,38 @@ const (
 	grokBinary    = "grok"
 	stubSessionID = "grok-session-000"
 	hooksFileName = "entire.json"
+
+	restoredSummaryTitle = "Restored by Entire"
 )
+
+// grokSessionSummary is the subset of Grok's summary.json needed for it to
+// recognize and load a restored session directory.
+type grokSessionSummary struct {
+	Info              grokSessionSummaryInfo `json:"info"`
+	SessionSummary    string                 `json:"session_summary"`
+	CurrentModelID    string                 `json:"current_model_id,omitempty"`
+	CreatedAt         string                 `json:"created_at"`
+	UpdatedAt         string                 `json:"updated_at"`
+	LastActiveAt      string                 `json:"last_active_at"`
+	NumMessages       int                    `json:"num_messages"`
+	NumChatMessages   int                    `json:"num_chat_messages"`
+	ChatFormatVersion int                    `json:"chat_format_version"`
+	GitRootDir        string                 `json:"git_root_dir"`
+	GrokHome          string                 `json:"grok_home"`
+	GeneratedTitle    string                 `json:"generated_title"`
+}
+
+type grokSessionSummaryInfo struct {
+	ID  string `json:"id"`
+	CWD string `json:"cwd"`
+}
 
 const (
 	HookNameSessionStart       = "session-start"
 	HookNameUserPromptSubmit   = "user-prompt-submit"
 	HookNamePreToolUse         = "pre-tool-use"
 	HookNameStop               = "stop"
+	HookNameStopCancelled      = "stop-cancelled"
 	HookNameStopFailure        = "stop-failure"
 	HookNameSessionEnd         = "session-end"
 	HookNamePreCompact         = "pre-compact"
@@ -32,6 +57,10 @@ var hookSpecs = []hookSpec{
 	{GrokEvent: "UserPromptSubmit", HookName: HookNameUserPromptSubmit, EntryName: "entire-user-prompt-submit"},
 	{GrokEvent: "PreToolUse", HookName: HookNamePreToolUse, EntryName: "entire-pre-tool-use", Matcher: "*"},
 	{GrokEvent: "Stop", HookName: HookNameStop, EntryName: "entire-stop"},
+	// Grok fires StopCancelled instead of Stop when a turn ends without completing:
+	// user interrupt (Ctrl+C/Esc), a declined permission prompt, --max-turns, or a
+	// no-progress bail-out. Without this the turn produces no end-of-turn checkpoint.
+	{GrokEvent: "StopCancelled", HookName: HookNameStopCancelled, EntryName: "entire-stop-cancelled"},
 	{GrokEvent: "StopFailure", HookName: HookNameStopFailure, EntryName: "entire-stop-failure"},
 	{GrokEvent: "SessionEnd", HookName: HookNameSessionEnd, EntryName: "entire-session-end"},
 	{GrokEvent: "PreCompact", HookName: HookNamePreCompact, EntryName: "entire-pre-compact"},
