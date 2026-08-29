@@ -116,20 +116,49 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	}
 }
 
+// exportSession runs `goose session export` into a scratch directory and
+// materializes the result at sessionRef as JSONL, one conversation message per
+// line. The native export is an ingestion format only: writing its single JSON
+// document to sessionRef is what made every checkpoint's compact transcript
+// empty, because Entire slices external-agent transcripts by line before
+// compacting them (see session_jsonl.go).
+//
+// The write is atomic, so a concurrent reader never sees a half-written
+// transcript, and an export this build cannot parse is stored verbatim rather
+// than discarded — an unrecognised goose version must not break checkpointing.
 func (a *Agent) exportSession(sessionID, sessionRef string) error {
 	if sessionID == "" || sessionRef == "" {
 		return errors.New("session id and session ref are required")
 	}
-	if err := os.MkdirAll(filepath.Dir(sessionRef), 0o750); err != nil {
+	dir := filepath.Dir(sessionRef)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 	runner := a.CommandRunner
 	if runner == nil {
 		runner = &DefaultCommandRunner{}
 	}
+	scratch, err := os.MkdirTemp(dir, ".goose-export-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(scratch) }()
+
+	nativePath := filepath.Join(scratch, sessionID+".json")
 	ctx, cancel := context.WithTimeout(context.Background(), exportTimeout)
 	defer cancel()
-	return runner.ExportSession(ctx, sessionID, sessionRef)
+	if err := runner.ExportSession(ctx, sessionID, nativePath); err != nil {
+		return err
+	}
+	native, err := os.ReadFile(nativePath)
+	if err != nil {
+		return err
+	}
+	data, ok := materializeExport(native)
+	if !ok {
+		data = native
+	}
+	return atomicWriteFile(sessionRef, data, 0o600)
 }
 
 // hooksFileContent renders the goose plugin hooks.json forwarding native

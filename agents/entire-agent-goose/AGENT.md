@@ -69,7 +69,21 @@ real captured payloads unless marked `(unverified)`.
   goose session and TurnEnd checkpoints would be skipped (found the hard way).
 - Transcript positions/offsets are **message indexes**, not bytes: each export
   rewrites the whole JSON document, so byte offsets would not be stable.
-- Format: single JSON object with session metadata + `conversation` array of messages.
+- Stored format: **JSONL, one conversation message per line.** The native export
+  is an ingestion format only — `prepare-transcript` converts it before writing.
+  Entire slices external-agent transcripts by LINE offset
+  (`transcript.SliceFromLine`) before compacting them, so a single JSON document
+  is cut mid-value and every checkpoint's `transcript.jsonl` came out empty. One
+  message per line makes line index == message index == the unit
+  `get-transcript-position` reports.
+- Each stored record carries goose's native message fields, the export's
+  session-level header under `session` (stamped on every record, because a
+  scoped slice has no header), and an Entire-facing projection (`type`,
+  `timestamp`, `message`) built from them. Entire's generic JSONL compactor
+  needs a top-level `type`/`role` AND content under a top-level `message`
+  wrapper; goose's own `content` array is where Entire does not look.
+- Native export format (input to the conversion): single JSON object with
+  session metadata + `conversation` array of messages.
 - Export top-level fields **(verified)**: `id`, `working_dir`, `name`, `session_type`, `created_at`/`updated_at` (RFC 3339), `total_tokens`, `input_tokens`, `output_tokens`, `accumulated_total_tokens`, `accumulated_input_tokens`, `accumulated_output_tokens`, `accumulated_cost`, `conversation`, `message_count`, `provider_name`, `model_config` (has `model_name`).
 - Message schema (camelCase content, unlike snake_case hook payloads) **(verified)**:
   ```json
@@ -110,11 +124,11 @@ real captured payloads unless marked `(unverified)`.
 | `install-hooks` | project plugin | write `<repo>/.agents/plugins/entire/hooks/hooks.json` calling the entire hook handler | hooks |
 | `uninstall-hooks` | — | remove that plugin dir | hooks |
 | `are-hooks-installed` | — | check plugin dir + hooks.json content | hooks |
-| `get-transcript-position` | export size | file size (re-export shifts bytes; position resets via prepare) | transcript_analyzer |
+| `get-transcript-position` | message count | number of stored JSONL lines (== `len(conversation)`) | transcript_analyzer |
 | `extract-modified-files` | `toolRequest` entries | parse `conversation` for write/edit tool calls | transcript_analyzer |
 | `extract-prompts` | user text messages | parse `conversation` | transcript_analyzer |
 | `extract-summary` | session `name` | auto-generated session name (`"File verification request"`) as summary | transcript_analyzer |
-| `prepare-transcript` | `goose session export` | shell out: `goose session export --session-id <id> --format json -o <path>` | transcript_preparer |
+| `prepare-transcript` | `goose session export` | shell out: `goose session export --session-id <id> --format json -o <scratch>`, then materialize as JSONL and write atomically to `session_ref` | transcript_preparer |
 | `calculate-tokens` | export token fields | `accumulated_input/output_tokens`; `api_call_count` = assistant message count | token_calculator |
 
 ## Selected Capabilities
