@@ -316,6 +316,18 @@ func safeFilename(name string) string {
 	return out
 }
 
+// maxSidecarLine bounds a single sidecar record. One record embeds a whole
+// tool_input/tool_response, so 64 KB (bufio.Scanner's default) is far too
+// small: a single large file read or write would make every transcript
+// operation on that session fail with "token too long", permanently, because
+// the oversized record stays on disk. 10 MB matches the limit the other JSONL
+// transcript scanners use.
+const maxSidecarLine = 10 * 1024 * 1024
+
+// readSidecarRecords parses the append-only JSONL sidecar. Unparseable lines
+// are skipped rather than failing the whole read: the sidecar can be read
+// while Qwen is mid-turn, and a single torn or foreign line must not destroy
+// the rest of the session.
 func readSidecarRecords(path string) ([]sidecarRecord, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -325,14 +337,15 @@ func readSidecarRecords(path string) ([]sidecarRecord, error) {
 
 	var records []sidecarRecord
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), maxSidecarLine)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
 		var record sidecarRecord
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
-			return nil, err
+		if json.Unmarshal([]byte(line), &record) != nil {
+			continue
 		}
 		records = append(records, record)
 	}
