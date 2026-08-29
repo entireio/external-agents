@@ -104,7 +104,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 				V:          1,
 				Agent:      compactTranscriptAgent,
 				CLIVersion: cliVersion,
-				Type:       "user",
+				Type:       roleUser,
 				TS:         entry.User.Timestamp,
 				Content:    []compactUserTextBlock{{Text: prompt}},
 			}); err != nil {
@@ -141,7 +141,7 @@ func compactAssistantEntry(entry kiroHistoryEntry, nextUserContent json.RawMessa
 		V:          1,
 		Agent:      compactTranscriptAgent,
 		CLIVersion: cliVersion,
-		Type:       "assistant",
+		Type:       roleAssistant,
 		TS:         entry.User.Timestamp,
 	}
 
