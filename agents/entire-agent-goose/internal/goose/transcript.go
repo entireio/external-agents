@@ -1,6 +1,7 @@
 package goose
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,19 +16,12 @@ import (
 
 // gooseExport models the output of `goose session export --format json`
 // (verified against goose 1.37.0). Message content is camelCase, unlike the
-// snake_case hook payloads.
+// snake_case hook payloads. The session-level fields live in gooseSessionMeta,
+// embedded so they stay at the top level of the native document and can also be
+// stamped onto every stored JSONL record (see session_jsonl.go).
 type gooseExport struct {
-	ID                     string         `json:"id"`
-	WorkingDir             string         `json:"working_dir"`
-	Name                   string         `json:"name"`
-	CreatedAt              string         `json:"created_at"`
-	AccumulatedInputTokens int            `json:"accumulated_input_tokens"`
-	AccumulatedOutput      int            `json:"accumulated_output_tokens"`
-	Conversation           []gooseMessage `json:"conversation"`
-	ProviderName           string         `json:"provider_name"`
-	ModelConfig            struct {
-		ModelName string `json:"model_name"`
-	} `json:"model_config"`
+	gooseSessionMeta
+	Conversation []gooseMessage `json:"conversation"`
 }
 
 type gooseMessage struct {
@@ -60,14 +54,26 @@ type gooseContent struct {
 	} `json:"toolResult,omitempty"`
 }
 
-// parseGooseExport is tolerant: any valid JSON object parses, and callers
-// check ID to decide whether it is a real goose export.
+// parseGooseExport reads a materialized transcript. Transcripts are stored as
+// JSONL (one conversation message per line, see session_jsonl.go), but a native
+// whole-document export written by an older build is still accepted so those
+// files keep reading; the next export rewrites them as JSONL.
+//
+// It stays tolerant: any valid JSON parses, and callers check ID to decide
+// whether it is a real goose session.
 func parseGooseExport(data []byte) (*gooseExport, error) {
-	var export gooseExport
-	if err := json.Unmarshal(data, &export); err != nil {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return nil, errors.New("parse goose export: empty transcript")
+	}
+	if export, ok := legacyGooseExport(trimmed); ok {
+		return export, nil
+	}
+	export, err := decodeSessionJSONL(trimmed)
+	if err != nil {
 		return nil, fmt.Errorf("parse goose export: %w", err)
 	}
-	return &export, nil
+	return export, nil
 }
 
 // tryParseGooseExport returns nil when data is not a goose export. For the
@@ -342,7 +348,7 @@ func modelFromSessionRef(sessionRef string) string {
 		return ""
 	}
 	export, err := parseGooseExport(data)
-	if err != nil {
+	if err != nil || export.ModelConfig == nil {
 		return ""
 	}
 	return export.ModelConfig.ModelName
