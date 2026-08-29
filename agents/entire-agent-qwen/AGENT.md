@@ -38,6 +38,35 @@ Qwen Code exposes command hooks in `.qwen/settings.json` and stores project-scop
 | `extract-summary` | `Stop`/failure | Reads final assistant/error message |
 | `compact-transcript` | Sidecar JSONL | Emits base64 Entire Transcript Format JSONL |
 
+## Sidecar Record Shape
+
+Every sidecar record carries Qwen's own hook fields plus an Entire-facing
+projection, because Entire compacts an external agent's transcript with the
+generic JSONL reader in `cmd/entire/cli/transcript/compact/compact.go`, which
+keeps a line only when **both** of these hold. An adapter's own
+`compact-transcript` method does not change this: `checkpoint/persistent.go`
+always runs the generic compactor over the raw transcript.
+
+| half | what cli reads | native record |
+|---|---|---|
+| kind | `normalizeKind` (compact.go:197) reads a top-level `type`, falling back to `role` | had neither — the discriminator is `event`, so every line was dropped |
+| content | `parseMessage` (compact.go:617) reads content from a top-level `message` **object** | `message` was a **string** (Qwen's notification text), so nothing was found |
+
+The projection is derived data — `readSidecarRecords` ignores `type` and
+`message` — so a sidecar written before it existed still reads.
+
+| event | projected as | content |
+|---|---|---|
+| `UserPromptSubmit` | `user` | text block with the prompt |
+| `PreToolUse` | `assistant` | `tool_use` (`type`/`id`/`name`/`input`, the only fields `stripAssistantContent` keeps) |
+| `PostToolUse` / `PostToolUseFailure` | `user` | `tool_result` with snake_case `tool_use_id`, so cli inlines the output into the preceding `tool_use` |
+| `Stop` / `StopFailure` | `assistant` | text block with the final message or error details |
+| everything else | not projected | dropped from the compact transcript |
+
+`message` is stored as raw JSON so a record round-trips whichever shape it
+carries. Typed as a string, a projected line would fail to unmarshal and take
+the whole sidecar read with it.
+
 ## Lifecycle Mapping
 
 | Qwen Hook | Entire Hook Verb | Entire Event |
@@ -49,9 +78,9 @@ Qwen Code exposes command hooks in `.qwen/settings.json` and stores project-scop
 | `SessionEnd` | `session-end` | `SessionEnd` |
 | `PreCompact` | `pre-compact` | `Compaction` |
 | `PostCompact` | `post-compact` | `Compaction` |
-| `PreToolUse` | `pre-tool-use` | sidecar metadata only |
-| `PostToolUse` | `post-tool-use` | sidecar metadata only |
-| `PostToolUseFailure` | `post-tool-use-failure` | sidecar metadata only |
+| `PreToolUse` | `pre-tool-use` | sidecar only; projected as an assistant `tool_use` |
+| `PostToolUse` | `post-tool-use` | sidecar only; projected as a user `tool_result` |
+| `PostToolUseFailure` | `post-tool-use-failure` | sidecar only; projected as a failed user `tool_result` |
 | `Notification` | `notification` | sidecar metadata only |
 | `PermissionRequest` | `permission-request` | sidecar metadata only |
 | `SubagentStart` | `subagent-start` | sidecar metadata only |

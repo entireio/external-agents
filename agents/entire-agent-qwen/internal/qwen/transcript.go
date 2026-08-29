@@ -211,7 +211,7 @@ func (a *Agent) appendSidecar(raw qwenHookInputRaw) error {
 		StopHookActive:       raw.StopHookActive,
 		Trigger:              raw.Trigger,
 		NotificationType:     raw.NotificationType,
-		Message:              raw.Message,
+		Message:              jsonString(raw.Message),
 		AgentID:              raw.AgentID,
 		AgentType:            raw.AgentType,
 		AgentTranscriptPath:  raw.AgentTranscriptPath,
@@ -227,6 +227,16 @@ func (a *Agent) appendSidecar(raw qwenHookInputRaw) error {
 		LastAssistantMessage: raw.LastAssistantMessage,
 		CustomInstructions:   raw.CustomInstructions,
 		CompactSummary:       raw.CompactSummary,
+	}
+	// Give the line the shape Entire's compact reader needs; see
+	// sidecar_jsonl.go. The projection is derived from the fields above and is
+	// ignored on read, so it never changes what the adapter itself sees.
+	if kind, message := projectSidecarRecord(record, raw.Message); message != nil {
+		if encoded := jsonObject(message); encoded != nil {
+			record.Type = kind
+			record.Timestamp = record.TS
+			record.Message = encoded
+		}
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
