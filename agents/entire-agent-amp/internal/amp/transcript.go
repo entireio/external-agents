@@ -2,7 +2,6 @@ package amp
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,29 +17,22 @@ import (
 
 const prepareTranscriptTimeout = 30 * time.Second
 
-func parseAmpThread(data []byte) (*Thread, error) {
-	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) == 0 {
-		return &Thread{}, nil
-	}
-	if trimmed[0] != '{' {
-		return nil, errors.New("amp transcript is not prepared: run prepare-transcript first")
-	}
-	var thread Thread
-	if err := json.Unmarshal(trimmed, &thread); err != nil {
-		return nil, fmt.Errorf("parse amp thread transcript: %w", err)
-	}
-	return &thread, nil
-}
-
+// threadIDFromTranscriptData recovers the Amp thread id from a stored
+// transcript. The JSONL layout has no thread header, so the id comes from the
+// messages first (see ThreadMessage.ThreadID), then from any unprepared hook
+// payload lines the plugin wrote before the first export.
 func threadIDFromTranscriptData(data []byte) (string, error) {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) == 0 {
 		return "", errors.New("empty amp transcript")
 	}
 
-	if thread, err := parseAmpThread(trimmed); err == nil && thread.ID != "" {
-		return thread.ID, nil
+	// An unprepared transcript is not an error here: the hook payloads it
+	// holds are exactly what carries the thread id we need to export with.
+	if messages, err := decodeTranscript(trimmed); err == nil {
+		if id := threadIDFromMessages(messages); id != "" {
+			return id, nil
+		}
 	}
 
 	for line := range bytes.SplitSeq(trimmed, []byte("\n")) {
@@ -67,6 +59,29 @@ func threadIDFromTranscriptData(data []byte) (string, error) {
 	return "", errors.New("cannot prepare transcript: missing amp thread_id")
 }
 
+// threadIDFromMessages returns the first thread id stamped on a message.
+func threadIDFromMessages(messages []ThreadMessage) string {
+	for _, msg := range messages {
+		if id := strings.TrimSpace(msg.ThreadID); id != "" {
+			return id
+		}
+	}
+	return ""
+}
+
+// startTimeFromMessages returns the first message send time, or now.
+func startTimeFromMessages(messages []ThreadMessage) time.Time {
+	for _, msg := range messages {
+		if msg.Meta == nil {
+			continue
+		}
+		if ts := msg.Meta.SentAt.Time(); !ts.IsZero() {
+			return ts
+		}
+	}
+	return time.Now().UTC()
+}
+
 func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {
 	var sessionID string
 	var sessionRef string
@@ -85,11 +100,11 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 	if err != nil {
 		return protocol.AgentSessionJSON{}, err
 	}
-	thread, err := parseAmpThread(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return protocol.AgentSessionJSON{}, err
 	}
-	if thread.ID == "" {
+	if len(messages) == 0 {
 		if sessionID == "" {
 			sessionID = strings.TrimSuffix(filepath.Base(sessionRef), filepath.Ext(sessionRef))
 		}
@@ -106,22 +121,23 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 		}, nil
 	}
 
-	startTime := thread.Created.Time()
-	if startTime.IsZero() && !thread.UpdatedAt.IsZero() {
-		startTime = thread.UpdatedAt.UTC()
+	// The JSONL layout carries no thread header, so recover the id from the
+	// hook input, the messages, or the file name (in that order).
+	if sessionID == "" {
+		sessionID = threadIDFromMessages(messages)
 	}
-	if startTime.IsZero() {
-		startTime = time.Now().UTC()
+	if sessionID == "" {
+		sessionID = strings.TrimSuffix(filepath.Base(sessionRef), filepath.Ext(sessionRef))
 	}
 
 	return protocol.AgentSessionJSON{
-		SessionID:     thread.ID,
+		SessionID:     sessionID,
 		AgentName:     "amp",
 		RepoPath:      protocol.RepoRoot(),
 		SessionRef:    sessionRef,
-		StartTime:     startTime.Format(time.RFC3339),
+		StartTime:     startTimeFromMessages(messages).Format(time.RFC3339),
 		NativeData:    data,
-		ModifiedFiles: modifiedFilesFromThread(thread),
+		ModifiedFiles: modifiedFilesFromMessages(messages),
 		NewFiles:      []string{},
 		DeletedFiles:  []string{},
 	}, nil
@@ -142,14 +158,7 @@ func (a *Agent) PrepareTranscript(sessionRef string) error {
 	if threadID == "" {
 		return nil
 	}
-	runner := a.CommandRunner
-	if runner == nil {
-		runner = &DefaultCommandRunner{}
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), prepareTranscriptTimeout)
-	defer cancel()
-	_, err = runner.ExportThread(ctx, threadID, sessionRef)
-	return err
+	return a.exportThread(threadID, sessionRef)
 }
 
 func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
@@ -159,7 +168,7 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if err := os.MkdirAll(filepath.Dir(session.SessionRef), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(session.SessionRef, session.NativeData, 0o600)
+	return atomicWriteFile(session.SessionRef, session.NativeData, 0o600)
 }
 
 func (a *Agent) ReadTranscript(sessionRef string) ([]byte, error) {
@@ -167,7 +176,7 @@ func (a *Agent) ReadTranscript(sessionRef string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := parseAmpThread(data); err != nil {
+	if _, err := decodeTranscript(data); err != nil {
 		return nil, err
 	}
 	return data, nil
@@ -202,11 +211,11 @@ func (a *Agent) GetTranscriptPosition(path string) (int, error) {
 		}
 		return 0, err
 	}
-	thread, err := parseAmpThread(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return 0, err
 	}
-	return len(thread.Messages), nil
+	return len(messages), nil
 }
 
 func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, error) {
@@ -214,11 +223,11 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 	if err != nil {
 		return nil, 0, err
 	}
-	thread, err := parseAmpThread(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return nil, 0, err
 	}
-	return modifiedFilesFromThreadFromOffset(thread, offset), len(thread.Messages), nil
+	return modifiedFilesFromMessagesFromOffset(messages, offset), len(messages), nil
 }
 
 func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) {
@@ -226,12 +235,12 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 	if err != nil {
 		return nil, err
 	}
-	thread, err := parseAmpThread(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return nil, err
 	}
 	var prompts []string
-	for _, msg := range threadMessagesFromOffset(thread, offset) {
+	for _, msg := range messagesFromOffset(messages, offset) {
 		if msg.Role != ThreadMessageRoleUser {
 			continue
 		}
@@ -247,12 +256,12 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	thread, err := parseAmpThread(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return "", false, err
 	}
-	for i := len(thread.Messages) - 1; i >= 0; i-- {
-		msg := thread.Messages[i]
+	for i := len(messages) - 1; i >= 0; i-- {
+		msg := messages[i]
 		if msg.Role != ThreadMessageRoleAssistant {
 			continue
 		}
@@ -264,12 +273,12 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 }
 
 func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageResponse, error) {
-	thread, err := parseAmpThread(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return protocol.TokenUsageResponse{}, err
 	}
 	var usage protocol.TokenUsageResponse
-	for _, msg := range threadMessagesFromOffset(thread, offset) {
+	for _, msg := range messagesFromOffset(messages, offset) {
 		if msg.Usage == nil {
 			continue
 		}
@@ -282,25 +291,25 @@ func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageRes
 	return usage, nil
 }
 
-func threadMessagesFromOffset(thread *Thread, offset int) []ThreadMessage {
-	if thread == nil || len(thread.Messages) == 0 {
+// messagesFromOffset returns the messages at index >= offset. Because the
+// on-disk transcript is one message per line, the offset Entire records via
+// get-transcript-position (a line index) is also a message index.
+func messagesFromOffset(messages []ThreadMessage, offset int) []ThreadMessage {
+	if len(messages) == 0 {
 		return nil
 	}
 	if offset < 0 {
 		offset = 0
 	}
-	if offset >= len(thread.Messages) {
+	if offset >= len(messages) {
 		return nil
 	}
-	return thread.Messages[offset:]
+	return messages[offset:]
 }
 
-func latestThreadModel(thread *Thread) string {
-	if thread == nil {
-		return ""
-	}
-	for i := len(thread.Messages) - 1; i >= 0; i-- {
-		usage := thread.Messages[i].Usage
+func latestThreadModel(messages []ThreadMessage) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		usage := messages[i].Usage
 		if usage != nil && strings.TrimSpace(usage.Model) != "" {
 			return strings.TrimSpace(usage.Model)
 		}
@@ -308,18 +317,12 @@ func latestThreadModel(thread *Thread) string {
 	return ""
 }
 
-func modifiedFilesFromThread(thread *Thread) []string {
-	if thread == nil {
-		return nil
-	}
-	return modifiedFilesFromMessagesWithContext(thread.Messages, thread.Messages)
+func modifiedFilesFromMessages(messages []ThreadMessage) []string {
+	return modifiedFilesFromMessagesWithContext(messages, messages)
 }
 
-func modifiedFilesFromThreadFromOffset(thread *Thread, offset int) []string {
-	if thread == nil {
-		return nil
-	}
-	return modifiedFilesFromMessagesWithContext(threadMessagesFromOffset(thread, offset), thread.Messages)
+func modifiedFilesFromMessagesFromOffset(messages []ThreadMessage, offset int) []string {
+	return modifiedFilesFromMessagesWithContext(messagesFromOffset(messages, offset), messages)
 }
 
 func modifiedFilesFromMessagesWithContext(messages []ThreadMessage, contextMessages []ThreadMessage) []string {

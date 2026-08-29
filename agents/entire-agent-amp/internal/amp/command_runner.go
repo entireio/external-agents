@@ -6,28 +6,24 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
 // CommandRunner defines the interface for running `amp` commands, allowing for easier testing and abstraction.
 type CommandRunner interface {
-	// ExportThread runs the `amp threads export <threadID>` command for the given thread ID, stores the output at the specified outputPath and returns the path to the exported transcript file.
-	ExportThread(ctx context.Context, threadID string, outputPath string) (string, error)
+	// ExportThread runs `amp threads export <threadID>` and returns the raw
+	// export document. It deliberately does not write to disk: the native
+	// single-JSON export is an ingestion format only, converted to JSONL by
+	// Agent.exportThread before anything is stored (see session_jsonl.go).
+	ExportThread(ctx context.Context, threadID string) ([]byte, error)
 }
 
 // DefaultCommandRunner is the default implementation of CommandRunner that actually runs the `amp` commands.
 type DefaultCommandRunner struct{}
 
-func (r *DefaultCommandRunner) ExportThread(ctx context.Context, threadID string, outputPath string) (string, error) {
+func (r *DefaultCommandRunner) ExportThread(ctx context.Context, threadID string) ([]byte, error) {
 	if strings.TrimSpace(threadID) == "" {
-		return "", errors.New("thread ID is required")
-	}
-	if strings.TrimSpace(outputPath) == "" {
-		return "", errors.New("output path is required")
-	}
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0o750); err != nil {
-		return "", fmt.Errorf("create output dir: %w", err)
+		return nil, errors.New("thread ID is required")
 	}
 
 	cmd := exec.CommandContext(ctx, "amp", "threads", "export", threadID)
@@ -35,15 +31,11 @@ func (r *DefaultCommandRunner) ExportThread(ctx context.Context, threadID string
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			return "", fmt.Errorf("amp threads export %s: %w: %s", threadID, err, strings.TrimSpace(string(exitErr.Stderr)))
+			return nil, fmt.Errorf("amp threads export %s: %w: %s", threadID, err, strings.TrimSpace(string(exitErr.Stderr)))
 		}
-		return "", fmt.Errorf("amp threads export %s: %w", threadID, err)
+		return nil, fmt.Errorf("amp threads export %s: %w", threadID, err)
 	}
-	if err := os.WriteFile(outputPath, out, 0o600); err != nil {
-		return "", fmt.Errorf("write exported transcript: %w", err)
-	}
-
-	return outputPath, nil
+	return out, nil
 }
 
 // ampEnv returns the parent environment with Bun-specific variables stripped.
