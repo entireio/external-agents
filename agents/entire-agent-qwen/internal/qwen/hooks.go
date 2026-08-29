@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -359,12 +358,15 @@ func marshalHookType(rawHooks map[string]json.RawMessage, event string, matchers
 	}
 }
 
+// hookCommand renders the command written into .qwen/settings.json. It names
+// the binary as plain `entire` so it is resolved through PATH when the hook
+// runs, matching every other Entire hook installer. Baking in the absolute
+// path `entire` happened to have at install time would put a machine-specific
+// path into a repo-local settings file that is routinely committed; on any
+// other machine that path does not exist, the `command -v` guard fails, and
+// every hook silently becomes a no-op.
 func hookCommand(hookName string) string {
-	entire := "entire"
-	if path, err := exec.LookPath("entire"); err == nil && strings.TrimSpace(path) != "" {
-		entire = path
-	}
-	return fmt.Sprintf("sh -c 'if command -v %s >/dev/null 2>&1; then %s hooks qwen %s >/dev/null 2>&1 || true; fi'", shellQuote(entire), shellQuote(entire), hookName)
+	return fmt.Sprintf("sh -c 'if command -v entire >/dev/null 2>&1; then entire hooks qwen %s >/dev/null 2>&1 || true; fi'", hookName)
 }
 
 func hookExists(matchers []qwenHookMatcher, matcher string, entryName string) bool {
