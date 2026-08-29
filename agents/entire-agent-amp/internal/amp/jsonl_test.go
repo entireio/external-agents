@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/entireio/external-agents/agents/entire-agent-amp/internal/protocol"
@@ -240,4 +241,222 @@ func readFileT(t *testing.T, path string) []byte {
 		t.Fatal(err)
 	}
 	return data
+}
+
+// compactKind mirrors normalizeKind in Entire's
+// cmd/entire/cli/transcript/compact/compact.go:197: the entry kind comes from
+// the TOP-LEVEL "type", falling back to "role". Amp's message already carries
+// "role", so this half held once the transcript became JSONL.
+func compactKind(line map[string]json.RawMessage) string {
+	var kind string
+	if json.Unmarshal(line["type"], &kind) == nil && kind != "" {
+		return kind
+	}
+	if json.Unmarshal(line["role"], &kind) == nil {
+		return kind
+	}
+	return ""
+}
+
+// compactMessageContent mirrors parseMessage (compact.go:617): content is read
+// from a TOP-LEVEL "message" object, never from the line's own "content" array.
+// This is the half amp was missing — lines were kept, and every one of them
+// compacted to an empty content array.
+func compactMessageContent(line map[string]json.RawMessage) []map[string]json.RawMessage {
+	var msg map[string]json.RawMessage
+	if json.Unmarshal(line["message"], &msg) != nil {
+		return nil
+	}
+	var blocks []map[string]json.RawMessage
+	if json.Unmarshal(msg["content"], &blocks) != nil {
+		return nil
+	}
+	return blocks
+}
+
+func decodeLines(t *testing.T, data []byte) []map[string]json.RawMessage {
+	t.Helper()
+	var out []map[string]json.RawMessage
+	for line := range bytes.SplitSeq(bytes.TrimRight(data, "\n"), []byte{'\n'}) {
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(line, &m); err != nil {
+			t.Fatalf("line is not valid JSON: %v (%s)", err, line)
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// preparedLines materializes the native export through the real write path
+// (materializeThread -> encodeMessagesJSONL) and returns the stored lines, so
+// these assertions exercise the encoder rather than a checked-in constant.
+func preparedLines(t *testing.T) []map[string]json.RawMessage {
+	t.Helper()
+	export, ok := legacyThreadExport([]byte(testPreparedTranscriptJSON))
+	if !ok {
+		t.Fatal("testPreparedTranscriptJSON is not a thread export")
+	}
+	data, err := materializeThread(export)
+	if err != nil {
+		t.Fatalf("materializeThread: %v", err)
+	}
+	return decodeLines(t, data)
+}
+
+func blockString(t *testing.T, block map[string]json.RawMessage, key string) string {
+	t.Helper()
+	var s string
+	if err := json.Unmarshal(block[key], &s); err != nil {
+		t.Fatalf("block[%q] = %s: %v", key, block[key], err)
+	}
+	return s
+}
+
+// Storing JSONL made Entire keep the lines; it did not make them carry
+// anything. Both halves of the contract are asserted because satisfying only
+// the first yields a correctly-sized transcript.jsonl full of empty content.
+func TestStoredLinesSatisfyEntireCompactContract(t *testing.T) {
+	lines := decodeLines(t, fourMessageTranscript(t))
+	if len(lines) != 4 {
+		t.Fatalf("got %d lines, want 4", len(lines))
+	}
+
+	wantKind := []string{"user", "assistant", "user", "assistant"}
+	wantText := []string{"first prompt", "first answer", "second prompt", "second answer"}
+
+	for i, line := range lines {
+		if got := compactKind(line); got != wantKind[i] {
+			t.Fatalf("line %d: compactKind = %q, want %q — Entire drops this line", i, got, wantKind[i])
+		}
+		blocks := compactMessageContent(line)
+		if len(blocks) == 0 {
+			t.Fatalf("line %d: no content under the \"message\" wrapper — Entire emits an empty line", i)
+		}
+		if got := blockString(t, blocks[0], "text"); got != wantText[i] {
+			t.Fatalf("line %d: message content text = %q, want %q", i, got, wantText[i])
+		}
+	}
+}
+
+// A mid-session slice must keep satisfying the contract: Entire compacts the
+// scoped bytes, not the whole file.
+func TestScopedSliceSatisfiesEntireCompactContract(t *testing.T) {
+	lines := decodeLines(t, sliceFromLine(fourMessageTranscript(t), 2))
+	if len(lines) != 2 {
+		t.Fatalf("scoped slice has %d lines, want 2", len(lines))
+	}
+	for i, line := range lines {
+		if compactKind(line) == "" {
+			t.Fatalf("scoped line %d has no top-level type/role", i)
+		}
+		if len(compactMessageContent(line)) == 0 {
+			t.Fatalf("scoped line %d carries no message content", i)
+		}
+	}
+}
+
+// Tool calls and their results must land in the shapes Entire matches on:
+// tool_use keeps type/id/name/input (compact.go:704), and a user tool_result
+// uses snake_case tool_use_id with a string "content" (compact.go:665) so
+// Entire can inline the output into the preceding assistant's tool_use.
+func TestToolBlocksProjectToEntireShapes(t *testing.T) {
+	lines := preparedLines(t)
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want 3", len(lines))
+	}
+
+	toolUse := compactMessageContent(lines[1])[0]
+	for key, want := range map[string]string{"type": "tool_use", "id": "tool1", "name": "edit_file"} {
+		if got := blockString(t, toolUse, key); got != want {
+			t.Fatalf("tool_use %q = %q, want %q", key, got, want)
+		}
+	}
+	if got := string(toolUse["input"]); got != `{"path":"hello.txt"}` {
+		t.Fatalf("tool_use input = %s", got)
+	}
+
+	toolResult := compactMessageContent(lines[2])[0]
+	for key, want := range map[string]string{"type": "tool_result", "tool_use_id": "tool1", "content": "ok"} {
+		if got := blockString(t, toolResult, key); got != want {
+			t.Fatalf("tool_result %q = %q, want %q", key, got, want)
+		}
+	}
+}
+
+// Usage must use Entire's snake_case names (compact.go:517). Amp's native
+// camelCase inputTokens/outputTokens read as zero there.
+func TestUsageProjectsToSnakeCaseTokens(t *testing.T) {
+	lines := preparedLines(t)
+	var msg struct {
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(lines[1]["message"], &msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg.Usage.InputTokens != 100 || msg.Usage.OutputTokens != 25 {
+		t.Fatalf("usage = %+v, want 100/25", msg.Usage)
+	}
+}
+
+// Back-compat: a JSONL transcript written before the projection existed carries
+// only the native fields. It must still decode, and re-encoding self-heals it.
+func TestLegacyJSONLWithoutProjectionStillDecodes(t *testing.T) {
+	legacy := []byte(`{"threadID":"T-9","role":"user","content":[{"type":"text","text":"old line"}],"messageId":1}` + "\n")
+	msgs, err := decodeTranscript(legacy)
+	if err != nil {
+		t.Fatalf("decodeTranscript: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].ThreadID != "T-9" || msgs[0].Content[0].Text != "old line" {
+		t.Fatalf("legacy decode = %+v", msgs)
+	}
+
+	healed, err := encodeMessagesJSONL(msgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := decodeLines(t, healed)[0]
+	if compactKind(line) != "user" || len(compactMessageContent(line)) == 0 {
+		t.Fatalf("re-encoded legacy line did not self-heal: %s", healed)
+	}
+}
+
+// The projection is derived data: decoding ignores it and yields the native
+// message unchanged, so a round-trip through the stored layout is lossless.
+func TestProjectionIsIgnoredOnDecode(t *testing.T) {
+	in := stampThreadID([]ThreadMessage{
+		makeTextMessage("1", ThreadMessageRoleUser, "first prompt"),
+		makeTextMessage("2", ThreadMessageRoleAssistant, "first answer"),
+	}, "T-4")
+	data, err := encodeMessagesJSONL(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := decodeTranscript(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(in, out) {
+		t.Fatalf("round-trip lost data:\n in = %+v\nout = %+v", in, out)
+	}
+}
+
+// An info message has no compact representation, so it stays unprojected and
+// Entire drops it — same as compactTranscriptBytes does.
+func TestInfoMessagesAreNotProjected(t *testing.T) {
+	data, err := encodeMessagesJSONL([]ThreadMessage{
+		makeTextMessage("1", ThreadMessageRoleInfo, "connected"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := decodeLines(t, data)[0]
+	if _, ok := line["message"]; ok {
+		t.Fatalf("info message was projected: %s", data)
+	}
+	if kind := compactKind(line); kind != "info" {
+		t.Fatalf("compactKind = %q, want info (which Entire drops)", kind)
+	}
 }

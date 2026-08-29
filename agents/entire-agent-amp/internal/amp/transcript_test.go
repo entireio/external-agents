@@ -21,9 +21,15 @@ const testPreparedTranscriptJSON = `{"v":1,"id":"T-123","created":1778155200000,
 // testPreparedTranscriptJSONL is what the agent stores at session_ref after
 // materializing the export above: one message per line, thread id stamped on
 // each, so Entire's line-based scoping lands on message boundaries.
-const testPreparedTranscriptJSONL = `{"threadID":"T-123","meta":{"sentAt":1778155200000},"role":"user","content":[{"type":"text","text":"Create hello.txt"}],"messageId":1}
-{"threadID":"T-123","meta":{"sentAt":1778155201000},"role":"assistant","content":[{"type":"tool_use","id":"tool1","name":"edit_file","input":{"path":"hello.txt"}},{"type":"text","text":"Created hello.txt"}],"messageId":"a1","usage":{"model":"claude","timestamp":"2026-05-07T12:00:01Z","inputTokens":100,"outputTokens":25,"maxInputTokens":0,"totalInputTokens":0,"cacheReadInputTokens":7,"cacheCreationInputTokens":3}}
-{"threadID":"T-123","meta":{"sentAt":1778155202000},"role":"user","content":[{"type":"tool_result","toolUseID":"tool1","run":{"status":"done","result":{"output":"ok"},"trackFiles":["hello.txt"]}}],"messageId":2}
+//
+// Each line also carries the Entire-facing projection ("type", "timestamp",
+// "message"). The native fields stay where Amp puts them; the projection is
+// what Entire's generic compactJSONL actually reads content from
+// (compact.go:617 parseMessage). Without it every compacted line came out with
+// an empty content array.
+const testPreparedTranscriptJSONL = `{"threadID":"T-123","meta":{"sentAt":1778155200000},"role":"user","content":[{"type":"text","text":"Create hello.txt"}],"messageId":1,"type":"user","timestamp":"2026-05-07T12:00:00Z","message":{"role":"user","id":"1","content":[{"type":"text","text":"Create hello.txt"}]}}
+{"threadID":"T-123","meta":{"sentAt":1778155201000},"role":"assistant","content":[{"type":"tool_use","id":"tool1","name":"edit_file","input":{"path":"hello.txt"}},{"type":"text","text":"Created hello.txt"}],"messageId":"a1","usage":{"model":"claude","timestamp":"2026-05-07T12:00:01Z","inputTokens":100,"outputTokens":25,"maxInputTokens":0,"totalInputTokens":0,"cacheReadInputTokens":7,"cacheCreationInputTokens":3},"type":"assistant","timestamp":"2026-05-07T12:00:01Z","message":{"role":"assistant","id":"a1","content":[{"type":"tool_use","id":"tool1","name":"edit_file","input":{"path":"hello.txt"}},{"type":"text","text":"Created hello.txt"}],"usage":{"input_tokens":100,"output_tokens":25}}}
+{"threadID":"T-123","meta":{"sentAt":1778155202000},"role":"user","content":[{"type":"tool_result","toolUseID":"tool1","run":{"status":"done","result":{"output":"ok"},"trackFiles":["hello.txt"]}}],"messageId":2,"type":"user","timestamp":"2026-05-07T12:00:02Z","message":{"role":"user","id":"2","content":[{"type":"tool_result","tool_use_id":"tool1","content":"ok"}]}}
 `
 
 type fakeCommandRunner struct {
