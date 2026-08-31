@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -401,5 +402,100 @@ func TestFormatResumeCommandNamesTheSession(t *testing.T) {
 	}
 	if strings.Contains(got, "--continue") {
 		t.Fatalf("resume command still uses --continue: %q", got)
+	}
+}
+
+// Grok percent-encodes every byte outside the RFC 3986 unreserved set, uppercase
+// hex. Encoding only "/" misses any repo path with a space, an accent, or
+// punctuation, and Entire then looks in a directory that does not exist. Both
+// expectations below are real directory names Grok created on disk.
+func TestEncodeRepoCWDMatchesGrok(t *testing.T) {
+	cases := map[string]string{
+		"/Users/gtrrz-victor/test/grok-lab":          "%2FUsers%2Fgtrrz-victor%2Ftest%2Fgrok-lab",
+		"/tmp/a.b_c~d!e(f)g'h*i+j@k&l=m,n;o:p$q z-é": "%2Ftmp%2Fa.b_c~d%21e%28f%29g%27h%2Ai%2Bj%40k%26l%3Dm%2Cn%3Bo%3Ap%24q%20z-%C3%A9",
+	}
+	for path, want := range cases {
+		if got := percentEncodeCWD(path); got != want {
+			t.Errorf("percentEncodeCWD(%q)\n got %q\nwant %q", path, got, want)
+		}
+	}
+}
+
+// Above 255 encoded bytes Grok names the group "<last-segment>-<hash>" and drops
+// a .cwd marker inside it. The hash is not reproducible, so the group has to be
+// found by reading those markers.
+func TestNativeSessionDirFindsHashedGroup(t *testing.T) {
+	home := testGrokHome(t)
+	repo := "/very/long/path/" + strings.Repeat("segmentxxxxxxxxxx/", 20) + "tail"
+	if len(percentEncodeCWD(repo)) <= maxEncodedCWDLen {
+		t.Fatalf("fixture path is not long enough to trigger hashing")
+	}
+
+	hashed := filepath.Join(home, "sessions", "tail-ef7e9df7f86a6cd2")
+	if err := os.MkdirAll(hashed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Grok writes the marker with a trailing newline.
+	if err := os.WriteFile(filepath.Join(hashed, cwdMarkerFile), []byte(repo+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := nativeSessionDir(repo); got != hashed {
+		t.Fatalf("nativeSessionDir\n got %q\nwant %q", got, hashed)
+	}
+}
+
+// With no marker to match, fall back to the encoded name rather than guessing:
+// the session may simply not exist yet.
+func TestNativeSessionDirFallsBackWhenNoMarker(t *testing.T) {
+	home := testGrokHome(t)
+	repo := "/very/long/path/" + strings.Repeat("segmentxxxxxxxxxx/", 20) + "tail"
+	want := filepath.Join(home, "sessions", percentEncodeCWD(repo))
+	if got := nativeSessionDir(repo); got != want {
+		t.Fatalf("nativeSessionDir\n got %q\nwant %q", got, want)
+	}
+}
+
+// An empty snapshot must never truncate Grok's own transcript. ReadSession
+// returns nil NativeData when the native file is missing, so empty means
+// "nothing captured" — and redaction damage to Grok's history is irreversible.
+func TestWriteSessionRefusesEmptyTranscript(t *testing.T) {
+	repo := t.TempDir()
+	testGrokHome(t)
+	agent := New()
+
+	sessionID := "01a0428c-8bcf-7000-8a5b-13ba3773a892"
+	ref := nativeTranscriptPath(repo, sessionID)
+	if err := agent.WriteSession(protocol.AgentSessionJSON{
+		SessionID: sessionID, RepoPath: repo, SessionRef: ref,
+		NativeData: []byte(realTranscript),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, payload := range map[string][]byte{
+		"nil":        nil,
+		"empty":      {},
+		"whitespace": []byte("  \n\t\n"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := agent.WriteSession(protocol.AgentSessionJSON{
+				SessionID: sessionID, RepoPath: repo, SessionRef: ref,
+				NativeData: payload,
+			})
+			if !errors.Is(err, errEmptySessionData) {
+				t.Fatalf("expected errEmptySessionData, got %v", err)
+			}
+			after, err := os.ReadFile(ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatal("existing transcript was modified by an empty write")
+			}
+		})
 	}
 }

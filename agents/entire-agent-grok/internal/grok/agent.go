@@ -111,3 +111,5 @@ func isSafeShellQuoteRune(r rune) bool {
 }
 
 var errMissingSessionRef = errors.New("session_ref or session_id is required")
+
+var errEmptySessionData = errors.New("refusing to write an empty transcript over the Grok session")

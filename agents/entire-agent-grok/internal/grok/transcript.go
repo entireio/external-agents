@@ -84,6 +84,13 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if strings.TrimSpace(session.SessionRef) == "" {
 		return errMissingSessionRef
 	}
+	// Never truncate a real transcript with an empty snapshot. ReadSession
+	// yields nil NativeData when the native transcript is missing, so an empty
+	// payload means "nothing was captured", not "the session is empty" — and
+	// writing it would destroy Grok's own history, which redaction cannot undo.
+	if len(bytes.TrimSpace(session.NativeData)) == 0 {
+		return errEmptySessionData
+	}
 	sessionDir := filepath.Dir(session.SessionRef)
 	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
 		return err
