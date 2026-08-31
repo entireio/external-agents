@@ -16,6 +16,12 @@ const (
 	roleUser      = "user"
 	roleAssistant = "assistant"
 	roleSystem    = "system"
+	roleReasoning = "reasoning"
+
+	// encryptedContentKey is Grok's opaque reasoning payload. Stripped before
+	// storage; see sanitizeTranscriptForStorage.
+	encryptedContentKey = "encrypted_content"
+	roleTypeKey         = "type"
 )
 
 // grokSessionSummary is the subset of Grok's summary.json needed for it to

@@ -59,6 +59,8 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 	} else if err != nil {
 		return protocol.AgentSessionJSON{}, err
 	}
+	// NativeData is the copy Entire stores and later redacts.
+	data = sanitizeTranscriptForStorage(data)
 	modifiedFiles, _, err := a.ExtractModifiedFiles(sessionRef, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		modifiedFiles = nil
@@ -169,7 +171,11 @@ func countTranscriptLines(data []byte) int {
 }
 
 func (a *Agent) ReadTranscript(sessionRef string) ([]byte, error) {
-	return os.ReadFile(sessionRef)
+	data, err := os.ReadFile(sessionRef)
+	if err != nil {
+		return nil, err
+	}
+	return sanitizeTranscriptForStorage(data), nil
 }
 
 func (a *Agent) ChunkTranscript(content []byte, maxSize int) ([][]byte, error) {

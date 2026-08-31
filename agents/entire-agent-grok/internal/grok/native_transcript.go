@@ -466,3 +466,69 @@ func reasoningSummaryText(summary any) string {
 		return ""
 	}
 }
+
+// sanitizeTranscriptForStorage removes Grok's opaque reasoning payloads from a
+// copy of the transcript before Entire stores it.
+//
+// Grok stamps each reasoning line with an "encrypted_content" blob of
+// high-entropy base64. Two reasons not to store it. It is big: a
+// reasoning-heavy session produced values up to 12 KB, 15% of the transcript,
+// and Entire re-stores the transcript on every checkpoint. And its name does not
+// match the "*signature" rule in the CLI redactor, so the entropy scanner
+// rewrites it to REDACTED, which makes the session unreplayable ("This session's
+// conversation history is incompatible with the current model"). Grok replays
+// fine when the field is absent, so dropping it beats trying to preserve it.
+//
+// This mirrors the built-in Codex agent's SanitizeTranscriptForStorage. The
+// external agent protocol exposes no sanitizer hook, so it runs in the adapter's
+// read paths instead. Grok's own chat_history.jsonl is never modified here.
+func sanitizeTranscriptForStorage(data []byte) []byte {
+	// A transcript without the marker cannot change, so skip parsing entirely.
+	if !bytes.Contains(data, []byte(encryptedContentKey)) {
+		return data
+	}
+
+	var out bytes.Buffer
+	out.Grow(len(data))
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+	for scanner.Scan() {
+		out.Write(sanitizeTranscriptLine(scanner.Bytes()))
+		out.WriteByte('\n')
+	}
+	if scanner.Err() != nil {
+		// Prefer the unsanitized transcript over a truncated one.
+		return data
+	}
+	return out.Bytes()
+}
+
+// sanitizeTranscriptLine strips encryptedContentKey from a single reasoning line,
+// returning the line unchanged in every other case.
+//
+// Callers rely on one output line per input line. Entire counts checkpoint
+// offsets in messages (see chatHistoryPosition), so dropping a line would shift
+// every offset after it. An unparseable line is therefore kept verbatim rather
+// than discarded: a scoped checkpoint slice can begin mid-line.
+func sanitizeTranscriptLine(line []byte) []byte {
+	trimmed := bytes.TrimSpace(line)
+	if len(trimmed) == 0 || !bytes.Contains(trimmed, []byte(encryptedContentKey)) {
+		return line
+	}
+	var message map[string]any
+	if err := json.Unmarshal(trimmed, &message); err != nil {
+		return line
+	}
+	if messageType, _ := message[roleTypeKey].(string); messageType != roleReasoning {
+		return line
+	}
+	if _, ok := message[encryptedContentKey]; !ok {
+		return line
+	}
+	delete(message, encryptedContentKey)
+	encoded, err := json.Marshal(message)
+	if err != nil {
+		return line
+	}
+	return encoded
+}

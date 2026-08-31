@@ -1,6 +1,7 @@
 package grok
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -293,5 +294,112 @@ func TestCompactTranscriptResponseIsBase64(t *testing.T) {
 	}
 	if _, err := base64.StdEncoding.DecodeString(resp.Transcript); err != nil {
 		t.Fatalf("transcript is not valid base64: %v", err)
+	}
+}
+
+// Grok's encrypted_content is large and, because its name does not match the
+// CLI redactor's "*signature" rule, the entropy scanner corrupts it — which makes
+// the restored session unreplayable. It must never reach Entire's stored copy.
+func TestReadPathsStripEncryptedContent(t *testing.T) {
+	repo := t.TempDir()
+	ref := writeNativeTranscript(t, repo, "strip", realTranscript)
+	agent := New()
+
+	transcript, err := agent.ReadTranscript(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := agent.ReadSession(&protocol.HookInputJSON{SessionID: "strip", SessionRef: ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string][]byte{
+		"ReadTranscript": transcript,
+		"ReadSession":    session.NativeData,
+	} {
+		if bytes.Contains(data, []byte("encrypted_content")) {
+			t.Errorf("%s: encrypted_content survived", name)
+		}
+		if bytes.Contains(data, []byte("8k0KExCUBzdOBM4cHXfgVQ==")) {
+			t.Errorf("%s: blob value survived", name)
+		}
+	}
+}
+
+// Only the key goes. The reasoning line and its plaintext summary are useful
+// context and must stay.
+func TestSanitizeKeepsReasoningLineAndSummary(t *testing.T) {
+	out := sanitizeTranscriptForStorage([]byte(realTranscript))
+	if !bytes.Contains(out, []byte("The user wants a file.")) {
+		t.Fatal("reasoning summary was dropped")
+	}
+	var found bool
+	for _, line := range bytes.Split(bytes.TrimSpace(out), []byte("\n")) {
+		var m map[string]any
+		if json.Unmarshal(line, &m) != nil || m["type"] != "reasoning" {
+			continue
+		}
+		found = true
+		if _, ok := m["encrypted_content"]; ok {
+			t.Fatal("encrypted_content still present on reasoning line")
+		}
+		if m["id"] != "r1" {
+			t.Fatalf("reasoning line lost its id: %v", m["id"])
+		}
+	}
+	if !found {
+		t.Fatal("reasoning line was removed entirely")
+	}
+}
+
+// Entire counts checkpoint offsets in messages, so the sanitizer must emit one
+// line per input line. Dropping any would shift every offset after it.
+func TestSanitizePreservesLineCount(t *testing.T) {
+	in := []byte(realTranscript)
+	out := sanitizeTranscriptForStorage(in)
+	want := len(bytes.Split(bytes.TrimSpace(in), []byte("\n")))
+	got := len(bytes.Split(bytes.TrimSpace(out), []byte("\n")))
+	if got != want {
+		t.Fatalf("line count changed: %d -> %d", want, got)
+	}
+}
+
+// A transcript with nothing to strip must come back untouched, byte for byte.
+func TestSanitizeNoMarkerReturnsInputUnchanged(t *testing.T) {
+	clean := []byte(`{"type":"user","prompt_index":0,"content":[{"type":"text","text":"hi"}]}` + "\n")
+	out := sanitizeTranscriptForStorage(clean)
+	if !bytes.Equal(out, clean) {
+		t.Fatalf("clean transcript was rewritten:\n got %q\nwant %q", out, clean)
+	}
+}
+
+// A checkpoint slice can start mid-line, and Grok may be mid-append. Such a line
+// is not corruption, so keep it verbatim rather than dropping or repairing it.
+func TestSanitizeKeepsUnparseableLinesVerbatim(t *testing.T) {
+	partial := `{"type":"reasoning","encrypted_content":"abc`
+	in := []byte(realTranscript + partial + "\n")
+	out := sanitizeTranscriptForStorage(in)
+	if !bytes.Contains(out, []byte(partial)) {
+		t.Fatal("truncated line was not preserved verbatim")
+	}
+}
+
+func TestSanitizeIsIdempotent(t *testing.T) {
+	once := sanitizeTranscriptForStorage([]byte(realTranscript))
+	twice := sanitizeTranscriptForStorage(once)
+	if !bytes.Equal(once, twice) {
+		t.Fatal("sanitizing twice differs from sanitizing once")
+	}
+}
+
+// "grok --continue" resumes the most recent session in the directory, which can
+// be a different one — it silently answered from the wrong history in testing.
+func TestFormatResumeCommandNamesTheSession(t *testing.T) {
+	got := New().FormatResumeCommand("01a0428c-8bcf-7000-8a5b-13ba3773a892")
+	if !strings.Contains(got, "01a0428c-8bcf-7000-8a5b-13ba3773a892") {
+		t.Fatalf("resume command omits the session id: %q", got)
+	}
+	if strings.Contains(got, "--continue") {
+		t.Fatalf("resume command still uses --continue: %q", got)
 	}
 }

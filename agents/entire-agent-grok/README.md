@@ -40,6 +40,10 @@ Hook commands are wrapped so a missing `entire` binary never breaks a Grok sessi
 
 Project hooks require Grok folder trust. Run `/hooks-trust` (or launch with `--trust`) before hooks execute.
 
+> **Trust is required, and failure is silent.** Until the folder is trusted Grok skips
+> `.grok/hooks/entire.json` without any warning, so Entire captures nothing and no
+> checkpoints appear. If a session produced no checkpoints, check trust first.
+
 ## Usage
 
 ```bash
@@ -54,6 +58,42 @@ Entire resolves transcripts from Grok's native session store:
 `~/.grok/sessions/<encoded-repo-cwd>/<session-id>/chat_history.jsonl`
 
 A small `.entire/tmp/<session_id>.json` marker is also written so Entire's shared session persistence tooling can discover the session.
+
+## Session Restore And Resume
+
+Entire can restore a Grok session onto another machine, or back onto this one after the
+local session directory is gone. `entire session resume <branch>` writes
+`chat_history.jsonl` and a `summary.json` back into
+`~/.grok/sessions/<encoded-repo-cwd>/<session-id>/`, and the session can then be continued
+with:
+
+```bash
+grok --resume <session-id>
+```
+
+Two limitations are worth knowing before relying on it.
+
+**Resume is not full fidelity.** Grok records its reasoning state in an
+`encrypted_content` blob on every `reasoning` line. Entire strips that field before storing
+the transcript, so a resumed session replays the conversation, tool calls and results, but
+without Grok's prior reasoning context. Conversation recall is unaffected in testing; the
+effect on long or complex threads has not been characterised.
+
+The field is stripped for two reasons. It is large: a reasoning-heavy session produced
+values up to 12 KB each, around 15% of the transcript, and the transcript is re-stored on
+every checkpoint. And Entire's redactor treats it as a secret because it is high-entropy
+base64, corrupting it on restore and leaving a session Grok refuses to replay at all
+("This session's conversation history is incompatible with the current model"). Dropping
+the field avoids both problems, and Grok replays correctly without it. This mirrors what
+Entire already does for the built-in Codex agent.
+
+**Sessions captured before this behaviour shipped cannot be resumed.** Their stored
+transcripts already contain redaction-corrupted `encrypted_content`. Redaction is
+irreversible, so those sessions must be started fresh.
+
+Prefer `grok --resume <session-id>` over `grok --continue`. `--continue` picks whichever
+session Grok saw most recently in that directory, which may be a different one, and it
+resumes it without complaining.
 
 ## Development
 

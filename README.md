@@ -67,7 +67,9 @@ entire enable --agent grok --telemetry=false
 grok "Create hello.txt with hello world"
 ```
 
-The adapter installs Grok command hooks in `.grok/hooks/entire.json` and reads native transcripts from `~/.grok/sessions/<encoded-cwd>/<session-id>/chat_history.jsonl`. Project hooks require folder trust (`/hooks-trust` or `--trust`) before they execute.
+The adapter installs Grok command hooks in `.grok/hooks/entire.json` and reads native transcripts from `~/.grok/sessions/<encoded-cwd>/<session-id>/chat_history.jsonl`. Project hooks require folder trust (`/hooks-trust` or `--trust`) before they execute, and until the folder is trusted Grok skips them silently, so nothing is captured.
+
+Restored sessions can be resumed with `grok --resume <session-id>`, but not at full fidelity: Grok's `encrypted_content` reasoning state is stripped before storage, so a resumed session replays the conversation without its prior reasoning context. Sessions captured before this behaviour shipped cannot be resumed at all. See the [agent README](agents/entire-agent-grok/README.md#session-restore-and-resume).
 
 ## Building a New External Agent
 

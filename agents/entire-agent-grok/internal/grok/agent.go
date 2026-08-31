@@ -82,8 +82,13 @@ func (a *Agent) ResolveSessionFile(sessionDir, sessionID string) string {
 }
 
 func (a *Agent) FormatResumeCommand(sessionID string) string {
-	_ = sessionID
-	return "grok --continue"
+	// "grok --continue" resumes whichever session Grok saw most recently, which
+	// is not necessarily this one: a stale session in the same directory wins
+	// silently and the agent answers from the wrong history. Always name the id.
+	if strings.TrimSpace(sessionID) == "" {
+		return "grok --continue"
+	}
+	return "grok --resume " + shellQuote(sessionID)
 }
 
 func shellQuote(value string) string {
