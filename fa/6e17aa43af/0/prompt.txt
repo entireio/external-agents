@@ -1,0 +1,82 @@
+please review this PR https://github.com/entireio/external-agents/pull/41
+it is trying to add a new external agent, use you memory to know what other issues we had adding other agents, and even more important, how did we test them.
+
+---
+
+In order to test it properly, you need to create a temp git repo under ~/test with entire enabled and this plugin installed. Run grok agent with some prompts to check we are creating checkpoints, with proper attribuition and the checkpoint can be visualize with entire checkpoint explain + generate the summary, and also we are able to resume a branch that contains those checkpoints, so the transcript is added back to ngrok internals so we can resume the sesion somewhere else. Those are the key features, we should be able to test. Please, test if this plugin already works, otherwise, start a branch starting from this contribuitor work ( so he/she will appear as contribuitor later on ) and try to fill the gap from this implementation
+
+---
+
+grok has login
+
+---
+
+why can't you just run it?
+
+---
+
+done, try again
+
+---
+
+for the entireio/cli issue, create an issue on that project linked to this PR. Then, about this changes, push them with a comment about what has been fixed/changes
+
+---
+
+don't look on my laptop for this, check the source from remote git repo https://github.com/entireio/cli
+
+---
+
+can we set the upstream the external-agents repo, not the fork?
+
+---
+
+where are all these changes?
+
+---
+
+great, I did push the branch upstream, create a PR from that branch
+
+---
+
+can I push to origin? To fork repo?
+
+---
+
+okey, this is the PR https://github.com/entireio/external-agents/pull/64 pleae, add proper title follow pattern and a description with overall grok implementation. Add also this is a follow up with contributor PR.
+
+---
+
+what you found about excesive redaction rules that broke resume sessions from grok transcripts I'm pretty sure we are facing the same issue with codex agent. Can you check it quickly now that you've got all the context to reproduce it? codex implemetation is at entire/cli is a built in agent, so using pure entire cli would be enought to install that agent hooks
+
+---
+
+can you check entireio/cli code to see where we are taking that key out?
+
+---
+
+on the other hand, grok does not suffer from the same issue that lead entire to strip out that field from codex, are we sure that grok restore session would work if that field is not redacted ?
+
+---
+
+great, give a short sentence what is going on with that field on codex impl
+
+---
+
+we did that because that field was massive, making it a problem to keep those files into the git history. Would that also happen with grok agent? Eval how big those files can get becuase of that field.
+
+---
+
+Can you stress grok session? I want to know what whould be the worst possible scenario if we end up adding that field.
+
+---
+
+yes, close the issue with these numbers and let's plan this strip change
+
+---
+
+no
+
+---
+
+the PR has comments from bugbot. Let's address them
