@@ -1,0 +1,45 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "a21914f27ec3",
+  "session_id": "65493502-2e77-4b70-88b3-762b93ce715f",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-31T11:44:09.534172Z",
+  "branch": "fix/grok-gaps",
+  "checkpoints_count": 3,
+  "save_step_count": 1,
+  "files_touched": [
+    "agents/entire-agent-grok/AGENT.md",
+    "agents/entire-agent-grok/internal/grok/compact.go",
+    "agents/entire-agent-grok/internal/grok/native_transcript.go",
+    "agents/entire-agent-grok/internal/grok/native_transcript_test.go",
+    "agents/entire-agent-grok/internal/grok/paths.go",
+    "agents/entire-agent-grok/internal/grok/transcript.go",
+    "agents/entire-agent-grok/internal/grok/types.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5[1m]",
+  "turn_id": "4067d5900dd4",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 94,
+    "cache_creation_tokens": 153965,
+    "cache_read_tokens": 6771068,
+    "output_tokens": 46699,
+    "api_call_count": 47
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-31T11:44:09.494646Z",
+    "agent_lines": 186,
+    "agent_removed": 434,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 186,
+    "total_lines_changed": 620,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}

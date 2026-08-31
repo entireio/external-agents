@@ -1,0 +1,9 @@
+rewiew this PR https://github.com/entireio/external-agents/pull/64
+
+---
+
+fix 1-7 and restore 8,9 and 10 with that is in main, we don't want to modify it on this PR
+
+---
+
+commit all the changes
