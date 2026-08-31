@@ -1,0 +1,24 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "f7cf005fee58",
+  "strategy": "manual-commit",
+  "branch": "fix/grok-gaps",
+  "checkpoints_count": 3,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/f7/cf005fee58/0/metadata.json",
+      "transcript": "/f7/cf005fee58/0/full.jsonl",
+      "compact_transcript": "/f7/cf005fee58/0/transcript.jsonl",
+      "content_hash": "/f7/cf005fee58/0/content_hash.txt",
+      "prompt": "/f7/cf005fee58/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 92,
+    "cache_creation_tokens": 153382,
+    "cache_read_tokens": 6588646,
+    "output_tokens": 45500,
+    "api_call_count": 46
+  }
+}
