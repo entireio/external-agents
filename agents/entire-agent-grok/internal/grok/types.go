@@ -15,7 +15,6 @@ const (
 	// compact transcript records.
 	roleUser      = "user"
 	roleAssistant = "assistant"
-	roleSystem    = "system"
 	roleReasoning = "reasoning"
 
 	// encryptedContentKey is Grok's opaque reasoning payload. Stripped before
@@ -151,38 +150,4 @@ type grokHookInputRaw struct {
 	LLMRequest           struct {
 		Model string `json:"model"`
 	} `json:"llm_request,omitempty"`
-}
-
-type sidecarRecord struct {
-	V                    int             `json:"v"`
-	Agent                string          `json:"agent"`
-	Event                string          `json:"event"`
-	SessionID            string          `json:"session_id"`
-	TS                   string          `json:"ts"`
-	CWD                  string          `json:"cwd,omitempty"`
-	NativeTranscriptPath string          `json:"native_transcript_path,omitempty"`
-	Prompt               string          `json:"prompt,omitempty"`
-	Model                string          `json:"model,omitempty"`
-	Reason               string          `json:"reason,omitempty"`
-	Source               string          `json:"source,omitempty"`
-	PermissionMode       string          `json:"permission_mode,omitempty"`
-	StopHookActive       bool            `json:"stop_hook_active,omitempty"`
-	Trigger              string          `json:"trigger,omitempty"`
-	NotificationType     string          `json:"notification_type,omitempty"`
-	Message              string          `json:"message,omitempty"`
-	AgentID              string          `json:"agent_id,omitempty"`
-	AgentType            string          `json:"agent_type,omitempty"`
-	AgentTranscriptPath  string          `json:"agent_transcript_path,omitempty"`
-	ToolName             string          `json:"tool_name,omitempty"`
-	ToolUseID            string          `json:"tool_use_id,omitempty"`
-	ToolInput            json.RawMessage `json:"tool_input,omitempty"`
-	ToolResponse         json.RawMessage `json:"tool_response,omitempty"`
-	Error                string          `json:"error,omitempty"`
-	ErrorType            string          `json:"error_type,omitempty"`
-	ErrorDetails         string          `json:"error_details,omitempty"`
-	IsInterrupt          bool            `json:"is_interrupt,omitempty"`
-	IsTimeout            bool            `json:"is_timeout,omitempty"`
-	LastAssistantMessage string          `json:"last_assistant_message,omitempty"`
-	CustomInstructions   string          `json:"custom_instructions,omitempty"`
-	CompactSummary       string          `json:"compact_summary,omitempty"`
 }

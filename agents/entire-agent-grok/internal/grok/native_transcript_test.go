@@ -29,9 +29,9 @@ const realTranscript = `{"type":"system","content":"You are Grok."}
 
 func compactLines(t *testing.T, data []byte) []compactLine {
 	t.Helper()
-	out, err := compactTranscriptBytes(data)
+	out, err := compactChatHistoryBytes(data)
 	if err != nil {
-		t.Fatalf("compactTranscriptBytes: %v", err)
+		t.Fatalf("compactChatHistoryBytes: %v", err)
 	}
 	var lines []compactLine
 	for _, raw := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -103,7 +103,7 @@ func TestCompactAttachesToolResults(t *testing.T) {
 // The reasoning summary is useful context; encrypted_content is opaque and is
 // the field redaction corrupts, so it must never reach the compacted output.
 func TestCompactKeepsReasoningSummaryButNotEncryptedContent(t *testing.T) {
-	out, err := compactTranscriptBytes([]byte(realTranscript))
+	out, err := compactChatHistoryBytes([]byte(realTranscript))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestCompactToleratesTruncatedLines(t *testing.T) {
 	}
 	for name, data := range cases {
 		t.Run(name, func(t *testing.T) {
-			if _, err := compactTranscriptBytes(data); err != nil {
+			if _, err := compactChatHistoryBytes(data); err != nil {
 				t.Fatalf("expected tolerant parse, got %v", err)
 			}
 		})
@@ -137,7 +137,7 @@ func TestCompactToleratesTruncatedLines(t *testing.T) {
 // leaving its result orphaned. The output must still carry the tool output.
 func TestCompactEmitsOrphanedToolResult(t *testing.T) {
 	orphan := []byte(`{"type":"tool_result","tool_call_id":"t1","content":"wrote hello.txt"}` + "\n")
-	out, err := compactTranscriptBytes(orphan)
+	out, err := compactChatHistoryBytes(orphan)
 	if err != nil {
 		t.Fatalf("orphaned tool_result should still compact: %v", err)
 	}
@@ -146,23 +146,83 @@ func TestCompactEmitsOrphanedToolResult(t *testing.T) {
 	}
 }
 
-// A byte-level match on `"type":"user"` misses a serializer that emits
-// `"type": "user"`, silently routing a chat history into the sidecar parser.
-func TestCompactDispatchIgnoresJSONSpacing(t *testing.T) {
+// A byte-level match on `"type":"user"` missed a serializer that emits
+// `"type": "user"`. Compaction is now content-driven with no dispatch at all,
+// so spacing cannot route a chat history anywhere else.
+func TestCompactIgnoresJSONSpacing(t *testing.T) {
 	spaced := strings.ReplaceAll(realTranscript, `"type":"`, `"type": "`)
-	if !looksLikeChatHistory([]byte(spaced)) {
-		t.Fatal("spaced chat history not recognized")
-	}
-	if _, err := compactTranscriptBytes([]byte(spaced)); err != nil {
+	out, err := compactChatHistoryBytes([]byte(spaced))
+	if err != nil {
 		t.Fatalf("spaced chat history failed to compact: %v", err)
+	}
+	if !strings.Contains(string(out), "Create hello.txt") {
+		t.Fatal("spaced chat history lost its user prompt")
 	}
 }
 
-// Entire sidecar records carry "event" and must not be mistaken for a chat history.
-func TestCompactDispatchRejectsSidecarRecords(t *testing.T) {
-	sidecar := []byte(`{"v":1,"agent":"grok","event":"UserPromptSubmit","prompt":"hi"}` + "\n")
-	if looksLikeChatHistory(sidecar) {
-		t.Fatal("sidecar records must not route to the chat-history parser")
+// The analyzers used to pick their parser from the file name, so the same bytes
+// under a name other than chat_history.jsonl — Entire's own stored copy, say —
+// silently reported no prompts, no files and no summary.
+func TestAnalyzersDoNotDependOnTheFileName(t *testing.T) {
+	agent := New()
+	path := filepath.Join(t.TempDir(), "stored-copy.jsonl")
+	if err := os.WriteFile(path, []byte(realTranscript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	position, err := agent.GetTranscriptPosition(path)
+	if err != nil || position != 8 {
+		t.Fatalf("position = %d, %v; want 8", position, err)
+	}
+	prompts, err := agent.ExtractPrompts(path, 0)
+	if err != nil || len(prompts) != 1 || prompts[0] != "Create hello.txt" {
+		t.Fatalf("prompts = %#v, %v", prompts, err)
+	}
+	files, _, err := agent.ExtractModifiedFiles(path, 0)
+	if err != nil || len(files) != 1 || files[0] != "hello.txt" {
+		t.Fatalf("modified files = %#v, %v", files, err)
+	}
+	summary, ok, err := agent.ExtractSummary(path)
+	if err != nil || !ok || summary != "Created hello.txt" {
+		t.Fatalf("summary = %q, %v, %v", summary, ok, err)
+	}
+}
+
+// prompt_index used to be judged over the scoped slice. A checkpoint scoped past
+// the only real prompt then looked like a Grok build that does not emit the tag,
+// fell back to the loose heuristic, and let injected context through as a prompt.
+func TestScopedPromptsStillRejectInjectedContext(t *testing.T) {
+	const transcript = `{"type":"user","prompt_index":0,"content":[{"type":"text","text":"<user_query>\nfirst\n</user_query>"}]}
+{"type":"assistant","content":"ok"}
+{"type":"user","content":[{"type":"text","text":"<project_context>\nREADME.md is large\n</project_context>"}]}
+`
+	messages, err := readChatHistoryMessagesFromBytes([]byte(transcript))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prompts := promptsFromChatHistory(messages, 2); len(prompts) != 0 {
+		t.Fatalf("scoped prompts = %#v, want none", prompts)
+	}
+	if prompts := promptsFromChatHistory(messages, 0); len(prompts) != 1 || prompts[0] != "first" {
+		t.Fatalf("unscoped prompts = %#v", prompts)
+	}
+}
+
+// The sanitized copy is written back into Grok's own transcript on restore, so
+// every field other than encrypted_content must survive byte-for-byte. Decoding
+// through map[string]any silently rounded integers past 2^53 to a float64.
+func TestSanitizePreservesOtherFieldsExactly(t *testing.T) {
+	line := `{"type":"reasoning","seq":9007199254740993,"encrypted_content":"AAA=","model_id":"grok-4.6"}`
+	out := string(sanitizeTranscriptForStorage([]byte(line)))
+	if strings.Contains(out, encryptedContentKey) {
+		t.Fatalf("encrypted_content survived: %s", out)
+	}
+	if !strings.Contains(out, "9007199254740993") {
+		t.Fatalf("large integer was rewritten: %s", out)
+	}
+	// A half-flushed final line must not be presented as a complete one.
+	if strings.HasSuffix(out, "\n") {
+		t.Fatalf("sanitizer added a trailing newline: %q", out)
 	}
 }
 
@@ -212,6 +272,47 @@ func TestWriteSessionCreatesResumableSummary(t *testing.T) {
 	}
 	if summary.ChatFormatVersion != 1 {
 		t.Fatalf("chat_format_version = %d", summary.ChatFormatVersion)
+	}
+}
+
+// The session group name is canonicalized (EvalSymlinks) but info.cwd was not,
+// so the two named different directories wherever the repo path runs through a
+// symlink — every macOS temp dir, and any repo reached through one.
+func TestWriteSessionCanonicalizesCWD(t *testing.T) {
+	testGrokHome(t)
+	agent := New()
+
+	real, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	sessionID := "01a0428c-8bcf-7000-8a5b-13ba3773a892"
+	ref := nativeTranscriptPath(link, sessionID)
+	if err := agent.WriteSession(protocol.AgentSessionJSON{
+		SessionID: sessionID, RepoPath: link, SessionRef: ref,
+		NativeData: []byte(realTranscript),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var summary grokSessionSummary
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(ref), "summary.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &summary); err != nil {
+		t.Fatal(err)
+	}
+	if summary.Info.CWD != real {
+		t.Fatalf("info.cwd = %q, want the canonical %q", summary.Info.CWD, real)
+	}
+	if summary.GitRootDir != real+"/" {
+		t.Fatalf("git_root_dir = %q, want %q", summary.GitRootDir, real+"/")
 	}
 }
 

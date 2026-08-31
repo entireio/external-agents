@@ -1,7 +1,6 @@
 package grok
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -9,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -93,7 +91,7 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	}
 	sessionDir := filepath.Dir(session.SessionRef)
 	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
-		return err
+		return fmt.Errorf("create grok session dir %s: %w", sessionDir, err)
 	}
 	if err := os.WriteFile(session.SessionRef, session.NativeData, 0o600); err != nil {
 		return err
@@ -124,10 +122,9 @@ func writeSessionSummary(sessionDir string, session protocol.AgentSessionJSON) e
 	if sessionID == "" {
 		sessionID = filepath.Base(sessionDir)
 	}
-	cwd := strings.TrimSpace(session.RepoPath)
-	if cwd == "" {
-		cwd = protocol.RepoRoot()
-	}
+	// Canonicalize the way the session group name is canonicalized, or the two
+	// disagree wherever the repo path runs through a symlink (macOS /var).
+	cwd := resolveRepoPath(session.RepoPath)
 	timestamp := normalizedSummaryTime(session.StartTime)
 	count := countTranscriptLines(session.NativeData)
 
@@ -209,123 +206,53 @@ func (a *Agent) ReassembleTranscript(chunks [][]byte) ([]byte, error) {
 	return bytes.Join(chunks, nil), nil
 }
 
+// The analyzers below all parse a Grok chat_history.jsonl, whatever the file is
+// called. They used to pick a parser from the file name, so the same bytes under
+// any other name — a copy Entire had stored elsewhere — reported no prompts, no
+// files and no summary instead of failing.
 func (a *Agent) GetTranscriptPosition(path string) (int, error) {
-	if isNativeTranscript(path) {
-		position, err := chatHistoryPosition(path)
-		if errors.Is(err, os.ErrNotExist) {
-			return 0, nil
-		}
-		return position, err
-	}
-	records, err := readTranscriptEntries(path)
+	messages, err := readChatHistoryMessages(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return 0, nil
 	}
 	if err != nil {
 		return 0, err
 	}
-	return len(records), nil
+	return len(messages), nil
 }
 
 func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, error) {
-	if isNativeTranscript(path) {
-		messages, err := readChatHistoryMessages(path)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, 0, nil
-		}
-		if err != nil {
-			return nil, 0, err
-		}
-		if offset < 0 {
-			offset = 0
-		}
-		if offset > len(messages) {
-			offset = len(messages)
-		}
-		return modifiedFilesFromChatHistory(messages, offset), len(messages), nil
-	}
-	records, err := readTranscriptEntries(path)
+	messages, err := readChatHistoryMessages(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, 0, nil
 	}
 	if err != nil {
 		return nil, 0, err
 	}
-	if offset < 0 {
-		offset = 0
-	}
-	if offset > len(records) {
-		offset = len(records)
-	}
-	files := modifiedFilesFromRecords(records[offset:])
-	return files, len(records), nil
+	return modifiedFilesFromChatHistory(messages, offset), len(messages), nil
 }
 
 func (a *Agent) ExtractPrompts(path string, offset int) ([]string, error) {
-	if isNativeTranscript(path) {
-		messages, err := readChatHistoryMessages(path)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		return promptsFromChatHistory(messages, offset), nil
-	}
-	records, err := readTranscriptEntries(path)
+	messages, err := readChatHistoryMessages(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	if offset < 0 {
-		offset = 0
-	}
-	if offset > len(records) {
-		offset = len(records)
-	}
-	var prompts []string
-	for _, record := range records[offset:] {
-		if record.Event == "UserPromptSubmit" && strings.TrimSpace(record.Prompt) != "" {
-			prompts = append(prompts, record.Prompt)
-		}
-	}
-	return prompts, nil
+	return promptsFromChatHistory(messages, offset), nil
 }
 
 func (a *Agent) ExtractSummary(path string) (string, bool, error) {
-	if isNativeTranscript(path) {
-		messages, err := readChatHistoryMessages(path)
-		if errors.Is(err, os.ErrNotExist) {
-			return "", false, nil
-		}
-		if err != nil {
-			return "", false, err
-		}
-		summary, ok := summaryFromChatHistory(messages)
-		return summary, ok, nil
-	}
-	records, err := readTranscriptEntries(path)
+	messages, err := readChatHistoryMessages(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", false, nil
 	}
 	if err != nil {
 		return "", false, err
 	}
-	for i := len(records) - 1; i >= 0; i-- {
-		record := records[i]
-		if strings.TrimSpace(record.LastAssistantMessage) != "" {
-			return record.LastAssistantMessage, true, nil
-		}
-		if strings.TrimSpace(record.ErrorDetails) != "" {
-			return record.ErrorDetails, true, nil
-		}
-		if strings.TrimSpace(record.CompactSummary) != "" {
-			return record.CompactSummary, true, nil
-		}
-	}
-	return "", false, nil
+	summary, ok := summaryFromChatHistory(messages)
+	return summary, ok, nil
 }
 
 func (a *Agent) sessionIDAndRef(input *protocol.HookInputJSON) (string, string) {
@@ -396,51 +323,6 @@ func safeFilename(name string) string {
 	return out
 }
 
-func readSidecarRecords(path string) ([]sidecarRecord, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-
-	var records []sidecarRecord
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		var record sidecarRecord
-		if err := json.Unmarshal([]byte(line), &record); err != nil {
-			return nil, err
-		}
-		records = append(records, record)
-	}
-	return records, scanner.Err()
-}
-
-func modifiedFilesFromRecords(records []sidecarRecord) []string {
-	seen := map[string]struct{}{}
-	for _, record := range records {
-		if !isFileModificationTool(record.ToolName) {
-			continue
-		}
-		for _, path := range pathsFromToolInput(record.ToolInput, record.ToolName) {
-			normalized := strings.TrimSpace(path)
-			if normalized == "" {
-				continue
-			}
-			seen[normalized] = struct{}{}
-		}
-	}
-	files := make([]string, 0, len(seen))
-	for file := range seen {
-		files = append(files, file)
-	}
-	sort.Strings(files)
-	return files
-}
-
 func isFileModificationTool(name string) bool {
 	if _, ok := fileModificationTools[name]; ok {
 		return true
@@ -451,22 +333,6 @@ func isFileModificationTool(name string) bool {
 		strings.Contains(lower, "replace") ||
 		strings.Contains(lower, "shell") ||
 		strings.Contains(lower, "bash")
-}
-
-func pathsFromToolInput(raw json.RawMessage, toolName string) []string {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return nil
-	}
-	var value map[string]any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return nil
-	}
-	var paths []string
-	collectPathValues(value, &paths)
-	if command, ok := value["command"].(string); ok && isShellTool(toolName) {
-		paths = append(paths, pathsFromShellCommand(command)...)
-	}
-	return paths
 }
 
 func collectPathValues(value any, paths *[]string) {

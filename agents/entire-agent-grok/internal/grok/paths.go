@@ -90,8 +90,12 @@ func isUnreservedCWDByte(c byte) bool {
 // Below the length limit the group is named after the encoded path. Above it,
 // Grok uses "<last-path-segment>-<hash>", and the hash is not something we can
 // reproduce, so the group is located by reading the .cwd marker Grok leaves in
-// each hashed group. If no marker matches, fall back to the encoded name so the
-// caller still gets a usable path for a session that does not exist yet.
+// each hashed group.
+//
+// If no marker matches — a repo Grok has never opened — the encoded name is
+// returned so discovery has something to report, but it is over the limit and
+// cannot be created: a write through it fails with ENAMETOOLONG, which
+// WriteSession reports with the offending directory named.
 func nativeSessionDir(repoPath string) string {
 	resolved := resolveRepoPath(repoPath)
 	root := filepath.Join(grokHome(), "sessions")

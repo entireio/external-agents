@@ -87,14 +87,6 @@ func scanChatHistory(r io.Reader) ([]chatHistoryMessage, error) {
 	return messages, scanner.Err()
 }
 
-func chatHistoryPosition(path string) (int, error) {
-	messages, err := readChatHistoryMessages(path)
-	if err != nil {
-		return 0, err
-	}
-	return len(messages), nil
-}
-
 func promptsFromChatHistory(messages []chatHistoryMessage, offset int) []string {
 	if offset < 0 {
 		offset = 0
@@ -102,10 +94,13 @@ func promptsFromChatHistory(messages []chatHistoryMessage, offset int) []string 
 	if offset > len(messages) {
 		offset = len(messages)
 	}
-	scoped := messages[offset:]
-	marked := hasPromptIndex(scoped)
+	// Judge prompt_index over the whole transcript, not the scoped slice. A slice
+	// that happens to contain no genuine prompt would otherwise look like a Grok
+	// build that does not emit the tag and fall back to the loose heuristic,
+	// letting injected context through as user prompts.
+	marked := hasPromptIndex(messages)
 	var prompts []string
-	for _, message := range scoped {
+	for _, message := range messages[offset:] {
 		if !isPromptCandidate(message, marked) {
 			continue
 		}
@@ -221,18 +216,29 @@ func extractUserQuery(text string) string {
 	if match := userQueryPattern.FindStringSubmatch(text); len(match) > 1 {
 		return strings.TrimSpace(match[1])
 	}
-	// Grok injects context into the user role. Without prompt_index to go on,
-	// drop the wrappers it uses so they don't surface as user prompts.
-	for _, marker := range []string{"<user_info>", "<rules>", "<system-reminder>"} {
-		if strings.Contains(text, marker) {
-			return ""
-		}
-	}
+	// Grok injects context into the user role wrapped in a tag of its own
+	// (<user_info>, <rules>, <system-reminder>, ...). Without prompt_index to go
+	// on, treat any such wrapper as injected rather than matching a fixed list,
+	// which only ever covered the wrappers that had been observed.
 	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
+	if trimmed == "" || isWrappedContext(trimmed) {
 		return ""
 	}
 	return trimmed
+}
+
+// isWrappedContext reports whether text opens with an XML-ish wrapper tag, the
+// shape Grok uses for context it injects into the user role. Only consulted on
+// the fallback path, where no prompt_index is available to be exact.
+func isWrappedContext(text string) bool {
+	if !strings.HasPrefix(text, "<") {
+		return false
+	}
+	end := strings.IndexAny(text, " \t\n>")
+	if end <= 1 || text[end] != '>' {
+		return false
+	}
+	return !strings.EqualFold(text[1:end], "user_query")
 }
 
 func assistantText(message chatHistoryMessage) (string, bool) {
@@ -265,68 +271,10 @@ func pathsFromToolArguments(toolName, raw string) []string {
 	return paths
 }
 
-func isNativeTranscript(path string) bool {
-	return strings.HasSuffix(path, nativeTranscriptFile)
-}
-
-func readTranscriptEntries(path string) ([]sidecarRecord, error) {
-	if !isNativeTranscript(path) {
-		return readSidecarRecords(path)
-	}
-	messages, err := readChatHistoryMessages(path)
-	if err != nil {
-		return nil, err
-	}
-	marked := hasPromptIndex(messages)
-	records := make([]sidecarRecord, 0, len(messages))
-	for _, message := range messages {
-		record := sidecarRecord{Agent: AgentName}
-		switch message.Type {
-		case roleUser:
-			if !isPromptCandidate(message, marked) {
-				continue
-			}
-			record.Event = "UserPromptSubmit"
-			for _, text := range messageTextParts(message.Content) {
-				if prompt := extractUserQuery(text); prompt != "" {
-					record.Prompt = prompt
-					break
-				}
-			}
-			if record.Prompt == "" {
-				continue
-			}
-		case roleAssistant:
-			if text, ok := assistantText(message); ok {
-				record.Event = "Stop"
-				record.LastAssistantMessage = text
-			}
-			for _, call := range message.ToolCalls {
-				toolRecord := sidecarRecord{
-					Agent:     AgentName,
-					Event:     "PostToolUse",
-					ToolName:  call.Name,
-					ToolUseID: call.ID,
-				}
-				if len(strings.TrimSpace(call.Arguments)) > 0 {
-					toolRecord.ToolInput = json.RawMessage(call.Arguments)
-				}
-				records = append(records, toolRecord)
-			}
-			if record.Event != "" {
-				records = append(records, record)
-			}
-			continue
-		default:
-			continue
-		}
-		if record.Event != "" {
-			records = append(records, record)
-		}
-	}
-	return records, nil
-}
-
+// compactChatHistoryBytes condenses a Grok chat_history.jsonl, the only
+// transcript format this adapter produces or consumes. It reads the bytes it is
+// given and never inspects a file name, so a slice Entire has scoped or copied
+// elsewhere compacts exactly like the file in Grok's session directory.
 func compactChatHistoryBytes(data []byte) ([]byte, error) {
 	messages, err := readChatHistoryMessagesFromBytes(data)
 	if err != nil {
@@ -488,19 +436,14 @@ func sanitizeTranscriptForStorage(data []byte) []byte {
 		return data
 	}
 
-	var out bytes.Buffer
-	out.Grow(len(data))
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
-	for scanner.Scan() {
-		out.Write(sanitizeTranscriptLine(scanner.Bytes()))
-		out.WriteByte('\n')
+	// Split rather than scan: this preserves whether the transcript ended with a
+	// newline. Appending one to a half-flushed final line would present a partial
+	// record as a complete one.
+	lines := bytes.Split(data, []byte("\n"))
+	for i, line := range lines {
+		lines[i] = sanitizeTranscriptLine(line)
 	}
-	if scanner.Err() != nil {
-		// Prefer the unsanitized transcript over a truncated one.
-		return data
-	}
-	return out.Bytes()
+	return bytes.Join(lines, []byte("\n"))
 }
 
 // sanitizeTranscriptLine strips encryptedContentKey from a single reasoning line,
@@ -515,11 +458,15 @@ func sanitizeTranscriptLine(line []byte) []byte {
 	if len(trimmed) == 0 || !bytes.Contains(trimmed, []byte(encryptedContentKey)) {
 		return line
 	}
-	var message map[string]any
+	// Decode into raw values, not map[string]any: every other field is re-encoded
+	// verbatim, so key order is kept and no integer is round-tripped through a
+	// float64. The result is written back into Grok's own transcript on restore.
+	var message map[string]json.RawMessage
 	if err := json.Unmarshal(trimmed, &message); err != nil {
 		return line
 	}
-	if messageType, _ := message[roleTypeKey].(string); messageType != roleReasoning {
+	var messageType string
+	if err := json.Unmarshal(message[roleTypeKey], &messageType); err != nil || messageType != roleReasoning {
 		return line
 	}
 	if _, ok := message[encryptedContentKey]; !ok {

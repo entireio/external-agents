@@ -1,11 +1,9 @@
 package grok
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"os"
 
 	"github.com/entireio/external-agents/agents/entire-agent-grok/internal/protocol"
@@ -50,140 +48,11 @@ func (a *Agent) CompactTranscript(sessionRef string) (protocol.CompactTranscript
 	if err != nil {
 		return protocol.CompactTranscriptResponse{}, err
 	}
-	compacted, err := compactTranscriptBytes(data)
+	compacted, err := compactChatHistoryBytes(data)
 	if err != nil {
 		return protocol.CompactTranscriptResponse{}, err
 	}
 	return protocol.CompactTranscriptResponse{Transcript: base64.StdEncoding.EncodeToString(compacted)}, nil
-}
-
-func compactTranscriptBytes(data []byte) ([]byte, error) {
-	if looksLikeChatHistory(data) {
-		return compactChatHistoryBytes(data)
-	}
-	records := parseSidecarRecords(data)
-	var buf bytes.Buffer
-	for _, record := range records {
-		switch record.Event {
-		case "UserPromptSubmit":
-			if record.Prompt == "" {
-				continue
-			}
-			if err := writeCompactLine(&buf, compactLine{
-				V:          1,
-				Agent:      AgentName,
-				CLIVersion: compactCLIVersion,
-				Type:       roleUser,
-				TS:         record.TS,
-				Content:    []compactUserTextBlock{{Text: record.Prompt}},
-			}); err != nil {
-				return nil, err
-			}
-		case "PostToolUse", "PostToolUseFailure":
-			block := compactToolUseBlock{
-				Type:  "tool_use",
-				ID:    record.ToolUseID,
-				Name:  record.ToolName,
-				Input: decodeRawObject(record.ToolInput),
-			}
-			if len(record.ToolResponse) > 0 {
-				block.Result = &compactToolResult{Output: string(record.ToolResponse), Status: "success"}
-			}
-			if record.Error != "" || record.ErrorDetails != "" {
-				block.Result = &compactToolResult{Output: record.Error + " " + record.ErrorDetails, Status: "error"}
-			}
-			if err := writeCompactLine(&buf, compactLine{
-				V:          1,
-				Agent:      AgentName,
-				CLIVersion: compactCLIVersion,
-				Type:       roleAssistant,
-				TS:         record.TS,
-				ID:         record.ToolUseID,
-				Content:    []any{block},
-			}); err != nil {
-				return nil, err
-			}
-		case "Stop", "StopFailure":
-			text := record.LastAssistantMessage
-			if text == "" {
-				text = record.ErrorDetails
-			}
-			if text == "" {
-				continue
-			}
-			if err := writeCompactLine(&buf, compactLine{
-				V:          1,
-				Agent:      AgentName,
-				CLIVersion: compactCLIVersion,
-				Type:       roleAssistant,
-				TS:         record.TS,
-				Content:    []compactAssistantTextBlock{{Type: "text", Text: text}},
-			}); err != nil {
-				return nil, err
-			}
-		}
-	}
-	if buf.Len() == 0 {
-		return nil, errors.New("compact transcript produced no output")
-	}
-	return buf.Bytes(), nil
-}
-
-// chatHistoryTypes are the line types only a Grok chat_history.jsonl carries.
-// Entire's own sidecar records use an "event" field instead of "type".
-var chatHistoryTypes = map[string]bool{
-	roleUser: true, roleAssistant: true, roleSystem: true,
-	"reasoning": true, "tool_result": true,
-}
-
-// looksLikeChatHistory decides which parser to use by decoding line types rather
-// than substring-matching the raw bytes. A byte match is whitespace-sensitive
-// (`"type": "user"` with a space would miss) and can be fooled by a checkpoint
-// slice whose lines happen not to contain the literal it looks for.
-func looksLikeChatHistory(data []byte) bool {
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
-	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-		var probe struct {
-			Type  string `json:"type"`
-			Event string `json:"event"`
-		}
-		if err := json.Unmarshal(line, &probe); err != nil {
-			continue
-		}
-		if probe.Event != "" {
-			return false
-		}
-		if chatHistoryTypes[probe.Type] {
-			return true
-		}
-	}
-	return false
-}
-
-// parseSidecarRecords parses Entire's own sidecar JSONL, skipping any line it
-// cannot decode so a truncated slice does not fail the whole transcript.
-func parseSidecarRecords(data []byte) []sidecarRecord {
-	lines := bytes.Split(data, []byte("\n"))
-	records := make([]sidecarRecord, 0, len(lines))
-	for _, line := range lines {
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-		var record sidecarRecord
-		if err := json.Unmarshal(line, &record); err != nil {
-			// Tolerate a truncated first/last line from checkpoint scoping or a
-			// concurrent write, the same way the chat-history scanner does.
-			continue
-		}
-		records = append(records, record)
-	}
-	return records
 }
 
 func writeCompactLine(buf *bytes.Buffer, line compactLine) error {

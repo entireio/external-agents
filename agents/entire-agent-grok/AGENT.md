@@ -25,11 +25,11 @@ Grok Build exposes command hooks in `.grok/hooks/*.json` and stores sessions und
 | `install-hooks` | `.grok/hooks/entire.json` | Read-modify-write command hooks while preserving user hook entries |
 | `are-hooks-installed` | `.grok/hooks/entire.json` | Requires all Entire Grok hooks |
 | `uninstall-hooks` | `.grok/hooks/entire.json` | Removes only Entire hook entries |
-| `format-resume-command` | Grok CLI | `grok --continue` |
+| `format-resume-command` | Grok CLI | `grok --resume <session-id>`; `--continue` only when no id is known |
 
 ## Hook Events
 
-Installed hooks: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `Stop`, `StopFailure`, `SessionEnd`, `PreCompact`, `PostCompact`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `PermissionDenied`, `SubagentStart`, `SubagentStop`.
+Installed hooks: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `Stop`, `StopCancelled`, `StopFailure`, `SessionEnd`, `PreCompact`, `PostCompact`, `PostToolUse`, `PostToolUseFailure`, `Notification`, `PermissionDenied`, `SubagentStart`, `SubagentStop`.
 
 ## Lifecycle Testing
 
