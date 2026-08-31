@@ -1,0 +1,89 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "fa6e17aa43af",
+  "session_id": "e98f0d90-96bc-4043-bd54-be07e5768a12",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-31T11:21:00.793007Z",
+  "branch": "fix/grok-gaps",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "agents/entire-agent-grok/internal/grok/agent.go",
+    "agents/entire-agent-grok/internal/grok/native_transcript_test.go",
+    "agents/entire-agent-grok/internal/grok/paths.go",
+    "agents/entire-agent-grok/internal/grok/transcript.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5",
+  "turn_id": "b7a68984f0f9",
+  "checkpoint_transcript_start": 1831,
+  "transcript_lines_at_start": 1831,
+  "compact_transcript_start": 354,
+  "token_usage": {
+    "input_tokens": 36,
+    "cache_creation_tokens": 29416,
+    "cache_read_tokens": 7672414,
+    "output_tokens": 14213,
+    "api_call_count": 18
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_019okz24n7UKmZXVU86UH32p",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "unslop"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "bfd1d86fab5c",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 444,
+        "end": 445,
+        "entry_ids": [
+          "16b62a94-8327-4270-95b6-a56376b5fa44"
+        ],
+        "tool_use_id": "toolu_019okz24n7UKmZXVU86UH32p"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_019okz24n7UKmZXVU86UH32p"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: unslop",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-31T11:21:00.664774Z",
+    "agent_lines": 1303,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1303,
+    "total_lines_changed": 1303,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 22
+      }
+    }
+  ]
+}
