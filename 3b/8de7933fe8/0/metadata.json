@@ -1,0 +1,70 @@
+{
+  "cli_version": "dev",
+  "checkpoint_id": "3b8de7933fe8",
+  "session_id": "e98f0d90-96bc-4043-bd54-be07e5768a12",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-31T11:05:59.281492Z",
+  "branch": "fix/grok-gaps",
+  "checkpoints_count": 5,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-opus-5",
+  "turn_id": "bfd1d86fab5c",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 628,
+    "cache_creation_tokens": 1266520,
+    "cache_read_tokens": 72653930,
+    "output_tokens": 182265,
+    "api_call_count": 314
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_019okz24n7UKmZXVU86UH32p",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "unslop"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "bfd1d86fab5c",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 444,
+        "end": 445,
+        "entry_ids": [
+          "16b62a94-8327-4270-95b6-a56376b5fa44"
+        ],
+        "tool_use_id": "toolu_019okz24n7UKmZXVU86UH32p"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_019okz24n7UKmZXVU86UH32p"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: unslop",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 22,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 22
+      }
+    }
+  ]
+}
