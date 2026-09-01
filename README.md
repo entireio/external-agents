@@ -19,6 +19,7 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 | [Kiro](agents/entire-agent-kiro/) | `agents/entire-agent-kiro/` | Implemented — hooks + transcript analysis |
 | [Amp](agents/entire-agent-amp/) | `agents/entire-agent-amp/` | Implemented — hooks + transcript analysis + token calculation + compact transcripts |
 | [Qwen Code](agents/entire-agent-qwen/) | `agents/entire-agent-qwen/` | Implemented — hooks + transcript analysis + compact transcripts |
+| [Grok Build](agents/entire-agent-grok/) | `agents/entire-agent-grok/` | Implemented — hooks + transcript analysis + compact transcripts |
 | [Oh My Pi](agents/entire-agent-omp/) | `agents/entire-agent-omp/` | Implemented — hooks + transcript analysis + compact transcripts |
 | [Kilo](agents/entire-agent-kilo/) | `agents/entire-agent-kilo/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
 
@@ -51,6 +52,24 @@ qwen -p "Create hello.txt with hello world" --yolo
 ```
 
 The adapter installs Qwen command hooks in `.qwen/settings.json`. The stable Entire sidecar transcript lives in a repo-scoped OS temp directory, with a small `.entire/tmp/<session>.json` marker for Entire session discovery. Qwen Code must execute actual tools for checkpoints; local model backends that only print XML-style tool tags as text will not fire Qwen `PostToolUse` hooks.
+
+### Grok Build
+
+Grok support targets the Grok Build CLI:
+
+```bash
+cd agents/entire-agent-grok
+mise run build
+cp entire-agent-grok ~/.local/bin/
+
+cd /path/to/your/repo
+entire enable --agent grok --telemetry=false
+grok "Create hello.txt with hello world"
+```
+
+The adapter installs Grok command hooks in `.grok/hooks/entire.json` and reads native transcripts from `~/.grok/sessions/<encoded-cwd>/<session-id>/chat_history.jsonl`. Project hooks require folder trust (`/hooks-trust` or `--trust`) before they execute, and until the folder is trusted Grok skips them silently, so nothing is captured.
+
+Restored sessions can be resumed with `grok --resume <session-id>`, but not at full fidelity: Grok's `encrypted_content` reasoning state is stripped before storage, so a resumed session replays the conversation without its prior reasoning context. Sessions captured before this behaviour shipped cannot be resumed at all. See the [agent README](agents/entire-agent-grok/README.md#session-restore-and-resume).
 
 ## Building a New External Agent
 
