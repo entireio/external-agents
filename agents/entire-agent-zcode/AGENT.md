@@ -112,7 +112,7 @@
 | transcript_preparer | true | Transcripts must be exported from SQLite before reading (temp hook transcript is deleted) |
 | token_calculator | true | Per-message token usage stored in `message.data.tokens` |
 | text_generator | false | No headless CLI to invoke the model |
-| hook_response_writer | true | UserPromptSubmit `additionalContext` output schema documented |
+| hook_response_writer | false | UserPromptSubmit `additionalContext` output documented but not implemented in v1 |
 | subagent_aware_extractor | false | Deferred: DB supports it via `parent_id`, but subagent-dir contract doesn't map cleanly in v1 |
 
 ## Gaps & Limitations
