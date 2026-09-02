@@ -66,7 +66,12 @@ func (a *Agent) PrepareTranscript(sessionRef string) error {
 	}
 
 	if _, err := os.Stat(sessionRef); os.IsNotExist(err) {
-		return writeStubTranscript(sessionRef)
+		// Devin has not flushed the canonical ATIF file yet. Try to build one
+		// from the live SQLite session store; if that fails, fall back to a
+		// minimal stub so the checkpoint can proceed.
+		if err := a.materializeLiveTranscript(sessionRef); err != nil {
+			return writeStubTranscript(sessionRef)
+		}
 	}
 	return nil // Stale file left in place: best-effort
 }

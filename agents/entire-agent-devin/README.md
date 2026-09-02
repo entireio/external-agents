@@ -12,10 +12,10 @@ and token usage from Devin CLI sessions.
 - **Transcript analysis** — parses Devin's canonical ATIF transcript
   (`~/.local/share/devin/cli/transcripts/<session_id>.json`): step positions,
   modified files from `write`/`edit`/`notebook_edit` tool calls, user prompts
-- **Transcript preparer** — Devin writes its transcript when a session run
-  ends, so the preparer polls for the post-Stop flush and materializes a
-  minimal ATIF stub for mid-session checkpoints (the complete transcript is
-  captured by the first condensation after the session ends)
+- **Transcript preparer** — polls for the canonical ATIF file; if Devin has
+  not flushed it yet, reads `~/.local/share/devin/cli/sessions.db`
+  (`message_nodes`) and materializes a live ATIF transcript, falling back to
+  a minimal stub only when both sources are unavailable
 - **Token calculation** — per-step `metrics` (prompt/completion/cached
   tokens; fresh input = prompt − cached)
 - **Compact transcripts** — converts ATIF steps (messages, tool calls, and
@@ -48,8 +48,10 @@ word-pairs like `snowy-efraasia`).
 - Devin resumes conversations from its own SQLite store, so `entire rewind`
   restores the transcript file but not Devin's conversation memory;
   cross-machine resume requires the session to exist locally.
-- Checkpoints condensed mid-session carry a stub or previous-run transcript;
-  the first condensation after the session run ends captures the complete one.
+- Checkpoints condensed mid-session now read Devin's live SQLite session
+  store before falling back to a stub. The fallback is only used when the
+  local `devin` CLI is not logged in or the session is not in the local
+  `sessions.db`.
 - Devin loads `.claude/settings.json` hooks by default. If Entire is enabled
   for Claude Code in the same repo, Devin sessions will also fire the
   claude-code hooks; set `read_config_from.claude` to `false` in

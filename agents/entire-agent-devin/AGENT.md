@@ -77,27 +77,34 @@ same repo, or set `read_config_from.claude=false` in `.devin/config.json`.
 ## Session storage and transcripts
 
 - Live session store: SQLite at `~/.local/share/devin/cli/sessions.db`
-  (message-node forest). Not read by this integration.
+  (message-node forest). `PrepareTranscript` now reads `message_nodes`
+  directly and materializes a live ATIF transcript before falling back to a
+  stub, so mid-session checkpoints include real conversation history while
+  the session is still running. This requires the `devin` CLI to be logged
+  in and writing sessions to the same local store.
 - Canonical transcript: **ATIF** (`schema_version: "ATIF-v1.7"`) JSON written
   to `~/.local/share/devin/cli/transcripts/<session_id>.json`
   (`%APPDATA%\devin\cli\transcripts` on Windows; `$XDG_DATA_HOME` honored).
   The directory is flat — not per-project. `devin --export [PATH]` writes the
-  identical document.
-- **Flush timing (important):** the transcript file is written on session
-  exit, not per turn. In print mode it is written between the `Stop` and
-  `SessionEnd` hooks (Devin awaits Stop hooks before proceeding — a Stop
-  hook that waits ~2s observes the file landing right after it gives up).
-  In interactive mode it is only written when the session ends (`/exit`),
-  verified via pty-driven multi-turn run. The framework hard-requires the
-  transcript file to exist at TurnEnd, so `PrepareTranscript` polls briefly
-  and then MATERIALIZES a minimal valid ATIF stub when the file is still
-  missing (the sanctioned OpenCode pattern — lazily created transcripts).
-  Devin overwrites the file with the complete transcript at session exit,
-  and the eager condensation at SessionEnd (endSessionNow) captures that
-  full version. Mid-session checkpoints may therefore carry a stub or a
-  previous run's transcript — the documented graceful degradation for v1.
+  identical document. The live SQLite materializer and the canonical file
+  use the same schema and file location, so subsequent checkpoint reads are
+  indifferent to which one produced the transcript.
+- **Flush timing (important):** the canonical transcript file is written on
+  session exit, not per turn. In print mode it is written between the `Stop`
+  and `SessionEnd` hooks. In interactive mode it is only written when the
+  session ends (`/exit`). The framework hard-requires a transcript file at
+  TurnEnd, so `PrepareTranscript` first polls briefly for the canonical file,
+  then reads `sessions.db` and materializes the conversation from
+  `message_nodes`, and only writes a stub if both sources are unavailable.
+  Devin overwrites the file with the complete canonical transcript at
+  session exit, and the eager condensation at SessionEnd captures that full
+  version. Mid-session checkpoints therefore receive live data; if the
+  SQLite store is empty or inaccessible, the checkpoint falls back to a stub.
 - Resumed sessions append to the same transcript file (verified: 11 steps →
   14 steps after `devin -r`), so every checkpoint stores the full history.
+  The SQLite main-chain reader walks `parent_node_id` from
+  `sessions.main_chain_id`, so resumed and branched conversations still
+  produce a linear ATIF step sequence.
 
 ## ATIF format (verified)
 
