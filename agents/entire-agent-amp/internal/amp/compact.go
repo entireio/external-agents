@@ -64,17 +64,17 @@ func (a *Agent) CompactTranscript(sessionRef string) (protocol.CompactTranscript
 }
 
 func compactTranscriptBytes(data []byte) ([]byte, error) {
-	thread, err := parseAmpThread(data)
+	messages, err := decodeTranscript(data)
 	if err != nil {
 		return nil, err
 	}
-	if len(thread.Messages) == 0 {
+	if len(messages) == 0 {
 		return nil, errors.New("compact transcript produced no output")
 	}
 
 	cliVersion := compactCLIVersion()
 	var buf bytes.Buffer
-	for _, msg := range thread.Messages {
+	for _, msg := range messages {
 		switch msg.Role {
 		case ThreadMessageRoleUser:
 			content := compactUserContent(msg.Content)
@@ -92,7 +92,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 				return nil, err
 			}
 		case ThreadMessageRoleAssistant:
-			content := compactAssistantContent(msg.Content, thread.Messages)
+			content := compactAssistantContent(msg.Content, messages)
 			if len(content) == 0 {
 				continue
 			}

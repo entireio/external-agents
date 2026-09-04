@@ -8,7 +8,7 @@ import (
 
 func TestCompactTranscriptBytes(t *testing.T) {
 	t.Setenv("ENTIRE_CLI_VERSION", "9.9.9")
-	data, err := compactTranscriptBytes([]byte(testPreparedTranscriptJSON))
+	data, err := compactTranscriptBytes([]byte(testPreparedTranscriptJSONL))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,8 @@ func TestCompactTranscriptBytes_UnpreparedJSONL(t *testing.T) {
 	}
 }
 
-func TestCompactTranscriptBytes_PreparedJSON(t *testing.T) {
+// Compaction of a pre-JSONL session file still works.
+func TestCompactTranscriptBytes_LegacyThreadExport(t *testing.T) {
 	t.Setenv("ENTIRE_CLI_VERSION", "9.9.9")
 	data, err := compactTranscriptBytes([]byte(testPreparedTranscriptJSON))
 	if err != nil {

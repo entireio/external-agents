@@ -40,10 +40,14 @@ func TestLifecycle_AmpPrepareTranscriptProtocol(t *testing.T) {
 
 	runAgent(t, binPath, env, nil, "prepare-transcript", "--session-ref", sessionRef)
 	prepared := readFile(t, sessionRef)
-	assert.JSONEq(t, ampE2EThreadJSON, string(prepared))
+
+	// Entire scopes an external agent's transcript by LINE offset before
+	// compacting it, so the stored transcript must be one message per line —
+	// not the single JSON document `amp threads export` emits.
+	assertJSONLTranscript(t, prepared, 3)
 
 	readTranscript := runAgent(t, binPath, env, nil, "read-transcript", "--session-ref", sessionRef)
-	assert.JSONEq(t, ampE2EThreadJSON, string(readTranscript))
+	assert.Equal(t, string(prepared), string(readTranscript))
 
 	readSession := runAgent(t, binPath, env, []byte(`{"hook_type":"stop","session_ref":"`+sessionRef+`"}`), "read-session")
 	var session struct {
@@ -74,17 +78,73 @@ func TestLifecycle_AmpPrepareTranscriptProtocol(t *testing.T) {
 	tokens := runAgent(t, binPath, env, prepared, "calculate-tokens", "--offset", "0")
 	assert.JSONEq(t, `{"input_tokens":100,"cache_creation_tokens":3,"cache_read_tokens":7,"output_tokens":25,"api_call_count":1}`, string(tokens))
 
+	// A mid-session checkpoint hands compact-transcript a line-scoped slice
+	// with no thread header. It must still be valid and still compact.
+	scopedRef := filepath.Join(repoRoot, ".entire", "tmp", "amp", "T-e2e-amp-scoped.json")
+	require.NoError(t, os.WriteFile(scopedRef, sliceFromLine(prepared, 1), 0o600))
+	assertJSONLTranscript(t, readFile(t, scopedRef), 2)
+	scopedCompact := runAgent(t, binPath, env, nil, "compact-transcript", "--session-ref", scopedRef)
+	var scopedResp struct {
+		Transcript string `json:"transcript"`
+	}
+	require.NoError(t, json.Unmarshal(scopedCompact, &scopedResp))
+	scopedDecoded, err := base64.StdEncoding.DecodeString(scopedResp.Transcript)
+	require.NoError(t, err)
+	assert.NotEmpty(t, scopedDecoded)
+	assert.Contains(t, string(scopedDecoded), `"input_tokens":100`)
+	assert.NotContains(t, string(scopedDecoded), "Create hello.txt")
+
 	compact := runAgent(t, binPath, env, nil, "compact-transcript", "--session-ref", sessionRef)
 	var compactResp struct {
 		Transcript string `json:"transcript"`
 	}
 	require.NoError(t, json.Unmarshal(compact, &compactResp))
-	decoded, err := base64.StdEncoding.DecodeString(compactResp.Transcript)
-	require.NoError(t, err)
+	decoded, decodeErr := base64.StdEncoding.DecodeString(compactResp.Transcript)
+	require.NoError(t, decodeErr)
 	assert.Contains(t, string(decoded), `"agent":"amp"`)
 	assert.Contains(t, string(decoded), `"type":"assistant"`)
 	assert.Contains(t, string(decoded), `"input_tokens":100`)
 	assert.Contains(t, string(decoded), `"result":{"output":"ok","status":"success"}`)
+}
+
+// assertJSONLTranscript asserts that data is exactly wantLines newline-
+// terminated lines, each an independently parseable Amp message.
+func assertJSONLTranscript(t *testing.T, data []byte, wantLines int) {
+	t.Helper()
+	require.Equal(t, wantLines, bytes.Count(data, []byte{'\n'}), "transcript is not one message per line: %s", data)
+	for _, line := range bytes.Split(bytes.TrimRight(data, "\n"), []byte{'\n'}) {
+		var msg struct {
+			ThreadID string            `json:"threadID"`
+			Role     string            `json:"role"`
+			Content  []json.RawMessage `json:"content"`
+		}
+		require.NoError(t, json.Unmarshal(line, &msg), "line is not valid JSON: %s", line)
+		require.Equal(t, "T-e2e-amp", msg.ThreadID, "line lost its thread id: %s", line)
+		require.NotEmpty(t, msg.Role, "line has no role: %s", line)
+	}
+}
+
+// sliceFromLine mirrors Entire's transcript.SliceFromLine
+// (cmd/entire/cli/transcript/parse.go:114), the scoping every non-built-in
+// agent transcript goes through.
+func sliceFromLine(content []byte, startLine int) []byte {
+	if len(content) == 0 || startLine <= 0 {
+		return content
+	}
+	count, offset := 0, 0
+	for i, b := range content {
+		if b == '\n' {
+			count++
+			if count == startLine {
+				offset = i + 1
+				break
+			}
+		}
+	}
+	if count < startLine || offset >= len(content) {
+		return nil
+	}
+	return content[offset:]
 }
 
 func writeFakeAmp(t *testing.T, dir string) {

@@ -14,24 +14,37 @@ const testTranscriptJSONL = `{"type":"agent.start","thread_id":"T-123","message"
 {"type":"agent.end","thread_id":"T-123","status":"done","modified_files":["hello.txt"],"timestamp":"2026-05-07T12:00:03Z","messages":[{"role":"user","id":1,"content":[{"type":"text","text":"Create hello.txt"}]},{"role":"assistant","id":"a1","content":[{"type":"tool_use","id":"tool1","name":"edit_file","input":{"path":"hello.txt"}},{"type":"text","text":"Created hello.txt"}]},{"role":"user","id":2,"content":[{"type":"tool_result","toolUseID":"tool1","status":"done","output":"ok"}]}]}
 `
 
+// testPreparedTranscriptJSON is Amp's native `amp threads export` output: one
+// JSON document. It is an ingestion format only — never what Entire stores.
 const testPreparedTranscriptJSON = `{"v":1,"id":"T-123","created":1778155200000,"updatedAt":"2026-05-07T12:00:05Z","messages":[{"role":"user","messageId":1,"meta":{"sentAt":1778155200000},"content":[{"type":"text","text":"Create hello.txt"}]},{"role":"assistant","messageId":"a1","meta":{"sentAt":1778155201000},"usage":{"model":"claude","timestamp":"2026-05-07T12:00:01Z","inputTokens":100,"outputTokens":25,"cacheReadInputTokens":7,"cacheCreationInputTokens":3},"content":[{"type":"tool_use","id":"tool1","name":"edit_file","input":{"path":"hello.txt"}},{"type":"text","text":"Created hello.txt"}]},{"role":"user","messageId":2,"meta":{"sentAt":1778155202000},"content":[{"type":"tool_result","toolUseID":"tool1","run":{"status":"done","trackFiles":["hello.txt"],"result":{"output":"ok"}}}]}]}`
 
+// testPreparedTranscriptJSONL is what the agent stores at session_ref after
+// materializing the export above: one message per line, thread id stamped on
+// each, so Entire's line-based scoping lands on message boundaries.
+//
+// Each line also carries the Entire-facing projection ("type", "timestamp",
+// "message"). The native fields stay where Amp puts them; the projection is
+// what Entire's generic compactJSONL actually reads content from
+// (compact.go:617 parseMessage). Without it every compacted line came out with
+// an empty content array.
+const testPreparedTranscriptJSONL = `{"threadID":"T-123","meta":{"sentAt":1778155200000},"role":"user","content":[{"type":"text","text":"Create hello.txt"}],"messageId":1,"type":"user","timestamp":"2026-05-07T12:00:00Z","message":{"role":"user","id":"1","content":[{"type":"text","text":"Create hello.txt"}]}}
+{"threadID":"T-123","meta":{"sentAt":1778155201000},"role":"assistant","content":[{"type":"tool_use","id":"tool1","name":"edit_file","input":{"path":"hello.txt"}},{"type":"text","text":"Created hello.txt"}],"messageId":"a1","usage":{"model":"claude","timestamp":"2026-05-07T12:00:01Z","inputTokens":100,"outputTokens":25,"maxInputTokens":0,"totalInputTokens":0,"cacheReadInputTokens":7,"cacheCreationInputTokens":3},"type":"assistant","timestamp":"2026-05-07T12:00:01Z","message":{"role":"assistant","id":"a1","content":[{"type":"tool_use","id":"tool1","name":"edit_file","input":{"path":"hello.txt"}},{"type":"text","text":"Created hello.txt"}],"usage":{"input_tokens":100,"output_tokens":25}}}
+{"threadID":"T-123","meta":{"sentAt":1778155202000},"role":"user","content":[{"type":"tool_result","toolUseID":"tool1","run":{"status":"done","result":{"output":"ok"},"trackFiles":["hello.txt"]}}],"messageId":2,"type":"user","timestamp":"2026-05-07T12:00:02Z","message":{"role":"user","id":"2","content":[{"type":"tool_result","tool_use_id":"tool1","content":"ok"}]}}
+`
+
 type fakeCommandRunner struct {
-	threadID   string
-	outputPath string
-	err        error
+	threadID string
+	err      error
 }
 
-func (r *fakeCommandRunner) ExportThread(_ context.Context, threadID string, outputPath string) (string, error) {
+// ExportThread returns Amp's native single-document export, exactly as the real
+// `amp threads export` does. Storing it as JSONL is the agent's job.
+func (r *fakeCommandRunner) ExportThread(_ context.Context, threadID string) ([]byte, error) {
 	r.threadID = threadID
-	r.outputPath = outputPath
 	if r.err != nil {
-		return "", r.err
+		return nil, r.err
 	}
-	if err := os.WriteFile(outputPath, []byte(testPreparedTranscriptJSON), 0o600); err != nil {
-		return "", err
-	}
-	return outputPath, nil
+	return []byte(testPreparedTranscriptJSON), nil
 }
 
 func writeTestTranscript(t *testing.T) string {
@@ -43,7 +56,20 @@ func writeTestTranscript(t *testing.T) string {
 	return path
 }
 
+// writePreparedTranscript writes the stored JSONL layout — what a session_ref
+// actually holds once prepare-transcript has run.
 func writePreparedTranscript(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "amp.jsonl")
+	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSONL), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// writeLegacyThreadExport writes a session file in the pre-JSONL single
+// document layout, to keep the back-compat read path covered.
+func writeLegacyThreadExport(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "amp.json")
 	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSON), 0o600); err != nil {
@@ -60,12 +86,9 @@ func TestExtractModifiedFiles(t *testing.T) {
 	}
 }
 
-func TestExtractModifiedFiles_PreparedJSON(t *testing.T) {
+func TestExtractModifiedFiles_PreparedJSONL(t *testing.T) {
 	agent := New()
-	path := filepath.Join(t.TempDir(), "amp.json")
-	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSON), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	path := writePreparedTranscript(t)
 	files, pos, err := agent.ExtractModifiedFiles(path, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -229,12 +252,9 @@ func TestExtractPrompts(t *testing.T) {
 	}
 }
 
-func TestExtractPrompts_PreparedJSON(t *testing.T) {
+func TestExtractPrompts_PreparedJSONL(t *testing.T) {
 	agent := New()
-	path := filepath.Join(t.TempDir(), "amp.json")
-	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSON), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	path := writePreparedTranscript(t)
 	prompts, err := agent.ExtractPrompts(path, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -258,12 +278,9 @@ func TestExtractSummary(t *testing.T) {
 	}
 }
 
-func TestExtractSummary_PreparedJSON(t *testing.T) {
+func TestExtractSummary_PreparedJSONL(t *testing.T) {
 	agent := New()
-	path := filepath.Join(t.TempDir(), "amp.json")
-	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSON), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	path := writePreparedTranscript(t)
 	summary, has, err := agent.ExtractSummary(path)
 	if err != nil {
 		t.Fatal(err)
@@ -282,12 +299,9 @@ func TestReadSession(t *testing.T) {
 	}
 }
 
-func TestReadSession_PreparedJSON(t *testing.T) {
+func TestReadSession_PreparedJSONL(t *testing.T) {
 	t.Setenv("ENTIRE_REPO_ROOT", t.TempDir())
-	path := filepath.Join(t.TempDir(), "amp.json")
-	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSON), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	path := writePreparedTranscript(t)
 	agent := New()
 	session, err := agent.ReadSession(&protocol.HookInputJSON{SessionRef: path})
 	if err != nil {
@@ -322,16 +336,16 @@ func TestReadSession_PlaceholderTranscript(t *testing.T) {
 	}
 }
 
-func TestCalculateTokens_PreparedJSON(t *testing.T) {
+func TestCalculateTokens_PreparedJSONL(t *testing.T) {
 	agent := New()
-	usage, err := agent.CalculateTokens([]byte(testPreparedTranscriptJSON), 0)
+	usage, err := agent.CalculateTokens([]byte(testPreparedTranscriptJSONL), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if usage.InputTokens != 100 || usage.OutputTokens != 25 || usage.CacheReadTokens != 7 || usage.CacheCreationTokens != 3 || usage.APICallCount != 1 {
 		t.Fatalf("usage = %+v", usage)
 	}
-	usage, err = agent.CalculateTokens([]byte(testPreparedTranscriptJSON), 2)
+	usage, err = agent.CalculateTokens([]byte(testPreparedTranscriptJSONL), 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,14 +386,11 @@ func TestPrepareTranscript(t *testing.T) {
 	if runner.threadID != "T-123" {
 		t.Fatalf("threadID = %q", runner.threadID)
 	}
-	if runner.outputPath != path {
-		t.Fatalf("outputPath = %q", runner.outputPath)
-	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) != testPreparedTranscriptJSON {
+	if string(data) != testPreparedTranscriptJSONL {
 		t.Fatalf("prepared data = %s", data)
 	}
 }
@@ -464,5 +475,21 @@ func TestWriteSession(t *testing.T) {
 	}
 	if string(data) != "x" {
 		t.Fatalf("data = %q", data)
+	}
+}
+
+// A session file still in the pre-JSONL single-document layout keeps reading,
+// with the same session id and modified files it had before.
+func TestReadSession_LegacyThreadExport(t *testing.T) {
+	t.Setenv("ENTIRE_REPO_ROOT", t.TempDir())
+	session, err := New().ReadSession(&protocol.HookInputJSON{SessionRef: writeLegacyThreadExport(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.SessionID != "T-123" || session.AgentName != "amp" {
+		t.Fatalf("session = %+v", session)
+	}
+	if len(session.ModifiedFiles) != 1 || session.ModifiedFiles[0] != "hello.txt" {
+		t.Fatalf("modified files = %v", session.ModifiedFiles)
 	}
 }
