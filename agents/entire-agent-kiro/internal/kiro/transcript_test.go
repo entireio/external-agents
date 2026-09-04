@@ -196,10 +196,7 @@ func TestEnsureCachedTranscriptWritesSQLiteTranscript(t *testing.T) {
 		t.Fatalf("read cached transcript: %v", err)
 	}
 
-	var result kiroTranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached transcript: %v", err)
-	}
+	result := mustParseStored(t, data)
 	if result.ConversationID != "cli-session" || len(result.History) != 2 || result.CLIVersion != "3.4.5" {
 		t.Fatalf("cached transcript conv=%q history=%d cli_version=%q, want cli-session/2/3.4.5", result.ConversationID, len(result.History), result.CLIVersion)
 	}
@@ -224,10 +221,7 @@ func TestEnsureCachedTranscriptWorksWithoutSQLite3BinaryOnPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read cached transcript: %v", err)
 	}
-	var result kiroTranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached transcript: %v", err)
-	}
+	result := mustParseStored(t, data)
 	if result.ConversationID != "native-session" || len(result.History) != 2 {
 		t.Fatalf("cached transcript conv=%q history=%d, want native-session/2", result.ConversationID, len(result.History))
 	}
@@ -273,11 +267,8 @@ func TestEnsureIDETranscriptCopiesLatestWorkspaceSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read cached IDE transcript: %v", err)
 	}
-	var result kiroIDETranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached IDE transcript: %v", err)
-	}
-	if result.CLIVersion != "4.5.6" || len(result.History) != 1 || result.History[0].Message.Content == nil {
+	result := mustParseStored(t, data)
+	if result.CLIVersion != "4.5.6" || len(result.History) != 1 || len(result.History[0].Assistant) == 0 {
 		t.Fatalf("cached IDE transcript = %+v", result)
 	}
 }
@@ -524,10 +515,7 @@ func TestParseHookStopPrefersSQLiteTranscript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read cached transcript: %v", err)
 	}
-	var result kiroTranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached transcript: %v", err)
-	}
+	result := mustParseStored(t, data)
 	if result.ConversationID != "cli-session" || len(result.History) != 1 {
 		t.Fatalf("cached transcript conv=%q history=%d, want cli-session/1", result.ConversationID, len(result.History))
 	}
@@ -568,10 +556,7 @@ func TestParseHookStopFallsBackToIDETranscript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read cached transcript: %v", err)
 	}
-	var result kiroIDETranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached IDE transcript: %v", err)
-	}
+	result := mustParseStored(t, data)
 	if result.CLIVersion != "4.5.6" || len(result.History) != 1 {
 		t.Fatalf("cached IDE transcript = %+v", result)
 	}
@@ -1028,10 +1013,7 @@ func TestEnsureCachedTranscriptTrimsWithOffset(t *testing.T) {
 		t.Fatalf("read cached transcript: %v", err)
 	}
 
-	var result kiroTranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached transcript: %v", err)
-	}
+	result := mustParseStored(t, data)
 
 	if len(result.History) != 4 {
 		t.Fatalf("history length = %d, want 4 (entries 4-7)", len(result.History))
@@ -1076,10 +1058,7 @@ func TestEnsureCachedTranscriptFirstCapture(t *testing.T) {
 		t.Fatalf("read cached transcript: %v", err)
 	}
 
-	var result kiroTranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached transcript: %v", err)
-	}
+	result := mustParseStored(t, data)
 
 	if len(result.History) != 4 {
 		t.Fatalf("history length = %d, want 4 (full transcript)", len(result.History))
@@ -1121,10 +1100,7 @@ func TestEnsureCachedTranscriptConversationIDChange(t *testing.T) {
 		t.Fatalf("read cached transcript: %v", err)
 	}
 
-	var result kiroTranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached transcript: %v", err)
-	}
+	result := mustParseStored(t, data)
 
 	// Full transcript (no trimming) since the new conversation gets its own
 	// per-key offset file independent of the old-conv bucket.
@@ -1174,10 +1150,7 @@ func TestEnsureCachedTranscriptOffsetExceedsLength(t *testing.T) {
 		t.Fatalf("read cached transcript: %v", err)
 	}
 
-	var result kiroTranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached transcript: %v", err)
-	}
+	result := mustParseStored(t, data)
 
 	// Full transcript (no trimming) since offset exceeds length.
 	if len(result.History) != 3 {
@@ -1221,10 +1194,7 @@ func TestEnsureCachedTranscriptNoNewEntriesReturnsFull(t *testing.T) {
 		t.Fatalf("read cached transcript: %v", err)
 	}
 
-	var result kiroTranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached transcript: %v", err)
-	}
+	result := mustParseStored(t, data)
 
 	// Full transcript returned (no trimming since offset == total).
 	if len(result.History) != 4 {
@@ -1472,9 +1442,8 @@ func TestEnsureIDETranscriptMergesToolCalls(t *testing.T) {
 	}
 
 	// Should be in CLI format with tool calls merged
-	var result kiroTranscript
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("parse cached transcript: %v", err)
+	if result := mustParseStored(t, data); len(result.History) == 0 {
+		t.Fatal("cached transcript has no history entries")
 	}
 
 	// Extract modified files should find the tool call
