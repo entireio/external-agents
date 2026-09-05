@@ -14,7 +14,7 @@ ZCode's documented hook system (user-level `~/.zcode/cli/config.json`).
 |-----------|--------|
 | `hooks` | ✅ SessionStart / UserPromptSubmit / Stop (+ compaction via `source=compact`) |
 | `transcript_analyzer` | ✅ position, modified files, prompts, summary |
-| `transcript_preparer` | ✅ exports sessions from SQLite to `<repo>/.entire/tmp/zcode/<id>.jsonl` |
+| `transcript_preparer` | ✅ exports sessions from SQLite to `~/.zcode/entire/sessions/<id>.jsonl` |
 | `token_calculator` | ✅ sums per-message input/output/cache usage |
 | `text_generator` | ❌ no headless model invocation |
 | `hook_response_writer` | ❌ not implemented in v1 |
@@ -46,7 +46,9 @@ being available for transcript export.
   session after `entire enable --agent zcode`.
 - `format-resume-command` returns plain `zcode`; resuming a specific session
   happens through the app's session list.
-- `write-session` stores Entire's snapshot under `.entire/tmp/`; ZCode's own
-  database is never written to.
+- `write-session` stores Entire's snapshot under `~/.zcode/entire/sessions/`;
+  ZCode's own database is never written to. The session dir lives outside the
+  repo (under ZCode's home) so transcript ownership isn't misattributed to
+  other external agents whose session dirs root at `.entire/tmp`.
 
 See [AGENT.md](AGENT.md) for the full research notes and protocol mapping.

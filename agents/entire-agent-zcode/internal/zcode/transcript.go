@@ -175,7 +175,7 @@ func (a *Agent) loadMessages(ctx context.Context, sessionID, sessionRef string) 
 }
 
 // PrepareTranscript materializes the JSONL export for a session. sessionRef
-// is the transcript path (<session_dir>/zcode/<id>.jsonl). Never clobbers an
+// is the transcript path (<session_dir>/<id>.jsonl). Never clobbers an
 // existing transcript with an empty export — a store that is momentarily
 // unreadable must not destroy the last good transcript.
 func (a *Agent) PrepareTranscript(sessionRef string) error {

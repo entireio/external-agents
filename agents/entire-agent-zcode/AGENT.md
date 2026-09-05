@@ -63,7 +63,7 @@
 - Other storage: `~/.zcode/cli/rollout/model-io-sess_<id>.jsonl` (raw LLM request/response log), `~/.zcode/cli/exec/sess_<id>/` (tool exec logs) — supplementary only
 
 ## Transcript
-- Location (effective): exported by our binary from SQLite into `<repo>/.entire/tmp/<session_id>.jsonl` (via `prepare-transcript`); raw transcript bytes read from that file
+- Location (effective): exported by our binary from SQLite into `~/.zcode/entire/sessions/<session_id>.jsonl` (via `prepare-transcript`); raw transcript bytes read from that file
 - Format: JSONL, one message object per line (our export format: `{role, text, tool_name, tool_input, tool_output, tokens{...}, time}` filtered to `transcriptVisibility: "visible"`)
 - User prompt field: message with `role=user` + `semantics.kind="user_prompt"` + first text part
 - Modified files field: `part.data.type="tool"` with `tool` ∈ {Write, Edit, ApplyPatch} → `state.input.file_path`/`path`
@@ -83,7 +83,7 @@
 | `info` | — | Static metadata | Required |
 | `detect` | binary + DB | `exec.LookPath("zcode")` or `~/.zcode/cli/db` exists | Required |
 | `get-session-id` | hook stdin `session_id` | Read HookInput / raw payload | Required |
-| `get-session-dir` | — | `<repo>/.entire/tmp` (protocol default) | Required |
+| `get-session-dir` | — | `~/.zcode/entire/sessions` (outside the repo: Entire attributes transcripts by session-dir prefix, and `.entire/tmp` is claimed by other external agents like kilo/amp) | Required |
 | `resolve-session-file` | — | `<session_dir>/<session_id>.jsonl` (our export) | Required |
 | `read-session` | SQLite | Query session+message+part, build AgentSession; native_data = session row JSON | Required |
 | `write-session` | sidecar | Persist AgentSession JSON snapshot to `<session_dir>/<id>.json` (never writes to ZCode's DB — resume-restore is GUI-driven) | Required (partial fidelity) |
