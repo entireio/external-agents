@@ -18,11 +18,13 @@ go run ./cmd/codex-flight-recorder \
   --files agents/entire-agent-kilo/internal/kilo/hooks.go
 ```
 
-For optional historical evidence, pass a reviewed JSON array with `files_touched`, `test_result`, `retries`, `revert_count`, and `summary` fields:
+For optional historical evidence, pass either a reviewed JSON array with `files_touched`, `test_result`, `retries`, `revert_count`, and `summary` fields, or a JSONL lifecycle/transcript export:
 
 ```bash
 go run ./cmd/codex-flight-recorder --repo ../.. --task "..." --history history-export.json
 ```
+
+The JSONL Curveball format normalizes `session_started`, `file_changed`, `tool_result`, `checkpoint_created`, and `session_ended` into the same historical risk pipeline as the reviewed array. Unknown event types are listed as ignored instead of failing the run. A stream without `session_ended` is retained as `PARTIAL` evidence and emits a verification warning. JSONL `checkpoint_created` records are historical context only: the native Entire/Codex hooks remain responsible for creating real checkpoints.
 
 Use `--format json` for a UI, CI, or Databricks consumer. The command reports unavailable Entire/Graph/history sources as warnings; it never substitutes example data.
 

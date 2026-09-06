@@ -2,6 +2,8 @@
 package briefing
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -44,11 +46,13 @@ type GraphEvidence struct {
 type HistoryEvidence struct {
 	Available       bool     `json:"available"`
 	Source          string   `json:"source,omitempty"`
+	Status          string   `json:"status,omitempty"`
 	MatchedSessions int      `json:"matched_sessions"`
 	FailedSessions  int      `json:"failed_sessions"`
 	Retries         int      `json:"retries"`
 	Reverts         int      `json:"reverts"`
 	MaxRiskScore    float64  `json:"max_risk_score"`
+	IgnoredEvents   []string `json:"ignored_events,omitempty"`
 	Findings        []string `json:"findings,omitempty"`
 }
 
@@ -69,6 +73,37 @@ type historyRecord struct {
 	RevertCount int      `json:"revert_count"`
 	RiskScore   float64  `json:"risk_score"`
 	Summary     string   `json:"summary"`
+}
+
+type parsedHistory struct {
+	Records       []historyRecord
+	Partial       bool
+	IgnoredEvents []string
+}
+
+type lifecycleEvent struct {
+	Event         string          `json:"event"`
+	SessionID     string          `json:"session_id"`
+	Repository    string          `json:"repository"`
+	Branch        string          `json:"branch"`
+	Path          string          `json:"path"`
+	Summary       string          `json:"summary"`
+	Intent        string          `json:"intent"`
+	OpenQuestions []string        `json:"open_questions"`
+	Status        string          `json:"status"`
+	Output        json.RawMessage `json:"output"`
+	Agent         struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	} `json:"agent"`
+}
+
+type lifecycleSession struct {
+	record       historyRecord
+	ended        bool
+	failedTools  int
+	failedSeen   bool
+	startFinding string
 }
 
 func Build(r Runner, request Request) (Briefing, error) {
@@ -194,17 +229,26 @@ func (b *Briefing) loadHistory(path, source string) {
 		b.Warnings = append(b.Warnings, "Historical analytics file is unavailable: "+err.Error())
 		return
 	}
-	var records []historyRecord
-	if err := json.Unmarshal(data, &records); err != nil {
+	parsed, err := parseHistory(data)
+	if err != nil {
 		b.Warnings = append(b.Warnings, "Historical analytics file is invalid: "+err.Error())
 		return
 	}
 	b.History.Available = true
+	b.History.Status = "COMPLETE"
+	if parsed.Partial {
+		b.History.Status = "PARTIAL"
+		b.Warnings = append(b.Warnings, "Historical JSONL evidence is PARTIAL because it ends before session_ended; it requires verification")
+	}
+	b.History.IgnoredEvents = parsed.IgnoredEvents
+	if len(parsed.IgnoredEvents) > 0 {
+		b.Warnings = append(b.Warnings, "Historical JSONL ignored unknown event types: "+strings.Join(parsed.IgnoredEvents, ", "))
+	}
 	b.History.Source = source
 	if b.History.Source == "" {
 		b.History.Source = "local development-history export (verify provenance before use)"
 	}
-	for _, record := range records {
+	for _, record := range parsed.Records {
 		if !overlaps(record.Files, b.AffectedFiles) {
 			continue
 		}
@@ -222,6 +266,167 @@ func (b *Briefing) loadHistory(path, source string) {
 		}
 	}
 	b.History.Findings = unique(b.History.Findings)
+}
+
+// parseHistory keeps the reviewed JSON-array format intact while accepting
+// line-delimited lifecycle exports and normalizing both to historyRecord.
+func parseHistory(data []byte) (parsedHistory, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return parsedHistory{}, fmt.Errorf("history file is empty")
+	}
+	if trimmed[0] == '[' {
+		var records []historyRecord
+		if err := json.Unmarshal(trimmed, &records); err != nil {
+			return parsedHistory{}, err
+		}
+		return parsedHistory{Records: records}, nil
+	}
+	return parseLifecycleJSONL(trimmed)
+}
+
+func parseLifecycleJSONL(data []byte) (parsedHistory, error) {
+	sessions := map[string]*lifecycleSession{}
+	ignored := map[string]int{}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for line := 1; scanner.Scan(); line++ {
+		raw := bytes.TrimSpace(scanner.Bytes())
+		if len(raw) == 0 {
+			continue
+		}
+		var event lifecycleEvent
+		if err := json.Unmarshal(raw, &event); err != nil {
+			return parsedHistory{}, fmt.Errorf("parse JSONL line %d: %w", line, err)
+		}
+		if event.Event == "" {
+			ignored["(missing event)"]++
+			continue
+		}
+		if !knownLifecycleEvent(event.Event) {
+			ignored[event.Event]++
+			continue
+		}
+		if event.SessionID == "" {
+			continue
+		}
+		session := sessions[event.SessionID]
+		if session == nil {
+			session = &lifecycleSession{record: historyRecord{SessionID: event.SessionID}}
+			sessions[event.SessionID] = session
+		}
+		switch event.Event {
+		case "session_started":
+			session.startFinding = sessionStartedFinding(event)
+		case "file_changed":
+			session.record.Files = append(session.record.Files, event.Path)
+			if event.Summary != "" {
+				session.record.Summary = appendFinding(session.record.Summary, event.Summary)
+			}
+		case "tool_result":
+			var output struct {
+				ExitCode *int   `json:"exit_code"`
+				Summary  string `json:"summary"`
+			}
+			if json.Unmarshal(event.Output, &output) == nil && output.ExitCode != nil {
+				if *output.ExitCode != 0 {
+					session.failedTools++
+					session.failedSeen = true
+					if output.Summary != "" {
+						session.record.Summary = appendFinding(session.record.Summary, "Tool failure: "+output.Summary)
+					}
+				} else if session.failedSeen {
+					session.record.Retries++
+				}
+			}
+		case "checkpoint_created":
+			if event.Summary != "" {
+				session.record.Summary = appendFinding(session.record.Summary, "Historical checkpoint: "+event.Summary)
+			}
+			if event.Intent != "" {
+				session.record.Summary = appendFinding(session.record.Summary, "Intent: "+event.Intent)
+			}
+			for _, question := range event.OpenQuestions {
+				session.record.Summary = appendFinding(session.record.Summary, "Open question: "+question)
+			}
+		case "session_ended":
+			session.ended = true
+			if !strings.EqualFold(event.Status, "completed") && event.Status != "" {
+				session.record.TestResult = "failed"
+				session.record.Summary = appendFinding(session.record.Summary, "Session ended with status: "+event.Status)
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return parsedHistory{}, fmt.Errorf("scan JSONL: %w", err)
+	}
+	result := parsedHistory{IgnoredEvents: ignoredEventLabels(ignored)}
+	for _, id := range sortedSessionIDs(sessions) {
+		session := sessions[id]
+		session.record.Files = unique(session.record.Files)
+		if session.startFinding != "" {
+			session.record.Summary = appendFinding(session.startFinding, session.record.Summary)
+		}
+		if session.failedTools > 0 {
+			session.record.TestResult = "failed"
+		}
+		if !session.ended {
+			result.Partial = true
+		}
+		result.Records = append(result.Records, session.record)
+	}
+	return result, nil
+}
+
+func knownLifecycleEvent(event string) bool {
+	switch event {
+	case "session_started", "user_prompt", "agent_response", "tool_call", "tool_result", "file_read", "file_changed", "usage", "checkpoint_created", "session_ended":
+		return true
+	default:
+		return false
+	}
+}
+
+func sessionStartedFinding(event lifecycleEvent) string {
+	parts := []string{"Session started"}
+	if event.Agent.Name != "" {
+		parts = append(parts, "agent "+event.Agent.Name+" "+event.Agent.Version)
+	}
+	if event.Repository != "" {
+		parts = append(parts, event.Repository)
+	}
+	if event.Branch != "" {
+		parts = append(parts, "branch "+event.Branch)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func appendFinding(existing, finding string) string {
+	if finding == "" {
+		return existing
+	}
+	if existing == "" {
+		return finding
+	}
+	return existing + " | " + finding
+}
+
+func sortedSessionIDs(sessions map[string]*lifecycleSession) []string {
+	ids := make([]string, 0, len(sessions))
+	for id := range sessions {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func ignoredEventLabels(events map[string]int) []string {
+	labels := make([]string, 0, len(events))
+	for event, count := range events {
+		labels = append(labels, fmt.Sprintf("%s (%d)", event, count))
+	}
+	sort.Strings(labels)
+	return labels
 }
 
 func recommendTests(r Runner, repo string, files []string) []string {

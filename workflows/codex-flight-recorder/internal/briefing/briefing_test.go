@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -84,4 +85,84 @@ func TestBuildRequiresTask(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected task validation error")
 	}
+}
+
+func TestParseHistoryKeepsReviewedJSONArrayCompatible(t *testing.T) {
+	parsed, err := parseHistory([]byte(`[{"session_id":"reviewed-1","files_touched":["payments/service.go"],"test_result":"failed","retries":2,"revert_count":1,"risk_score":0.8,"summary":"Reviewed export."}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Partial || len(parsed.IgnoredEvents) != 0 || len(parsed.Records) != 1 {
+		t.Fatalf("parsed = %#v", parsed)
+	}
+	record := parsed.Records[0]
+	if record.SessionID != "reviewed-1" || record.Retries != 2 || record.RevertCount != 1 || record.RiskScore != 0.8 {
+		t.Fatalf("record = %#v", record)
+	}
+}
+
+func TestParseHistoryNormalizesTrack3JSONL(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "track-3-agent-session.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := parseHistory(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Partial || len(parsed.Records) != 1 || len(parsed.IgnoredEvents) != 0 {
+		t.Fatalf("parsed = %#v", parsed)
+	}
+	record := parsed.Records[0]
+	if record.SessionID != "btw-track3-demo-001" || record.TestResult != "failed" || record.Retries != 1 {
+		t.Fatalf("record = %#v", record)
+	}
+	if len(record.Files) != 2 || !strings.Contains(record.Summary, "Historical checkpoint") || !strings.Contains(record.Summary, "Open question") {
+		t.Fatalf("record = %#v", record)
+	}
+}
+
+func TestLoadHistoryReportsUnknownJSONLEvents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "unknown.jsonl")
+	data := "{\"event\":\"session_started\",\"session_id\":\"s-1\"}\n" +
+		"{\"event\":\"future_event\",\"session_id\":\"s-1\"}\n" +
+		"{\"event\":\"file_changed\",\"session_id\":\"s-1\",\"path\":\"payments/service.go\"}\n" +
+		"{\"event\":\"session_ended\",\"session_id\":\"s-1\",\"status\":\"completed\"}\n"
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b := Briefing{AffectedFiles: []string{"payments/service.go"}}
+	b.loadHistory(path, "test JSONL")
+	if len(b.History.IgnoredEvents) != 1 || b.History.IgnoredEvents[0] != "future_event (1)" {
+		t.Fatalf("ignored events = %#v", b.History.IgnoredEvents)
+	}
+	if !containsWarning(b.Warnings, "ignored unknown event types") {
+		t.Fatalf("warnings = %#v", b.Warnings)
+	}
+}
+
+func TestLoadHistoryLabelsIncompleteJSONLPartial(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "partial.jsonl")
+	data := "{\"event\":\"session_started\",\"session_id\":\"s-1\"}\n" +
+		"{\"event\":\"file_changed\",\"session_id\":\"s-1\",\"path\":\"payments/service.go\",\"summary\":\"Changed service.\"}\n"
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b := Briefing{AffectedFiles: []string{"payments/service.go"}}
+	b.loadHistory(path, "test JSONL")
+	if b.History.Status != "PARTIAL" || b.History.MatchedSessions != 1 {
+		t.Fatalf("history = %#v", b.History)
+	}
+	if !containsWarning(b.Warnings, "requires verification") {
+		t.Fatalf("warnings = %#v", b.Warnings)
+	}
+}
+
+func containsWarning(warnings []string, fragment string) bool {
+	for _, warning := range warnings {
+		if strings.Contains(warning, fragment) {
+			return true
+		}
+	}
+	return false
 }
