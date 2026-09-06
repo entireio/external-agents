@@ -39,7 +39,7 @@ func TestBuildCombinesEntireGraphAndReviewedHistory(t *testing.T) {
 		"entire graph":      []byte(`{"results":[{"file_path":"payments/service.go","focus_line":10,"symbol_name":"Charge"},{"file_path":"payments/webhook.go","focus_line":12,"symbol_name":"Verify"}]}`),
 		"git ls-files":      []byte("payments/service_test.go\npayments/webhook_test.go\nother/other_test.go\n"),
 	}, errors: map[string]error{}}
-	b, err := Build(runner, Request{Repo: dir, Task: "replace payment gateway", HistoryPath: history})
+	b, err := Build(runner, Request{Repo: dir, Task: "replace payment gateway", Files: []string{"payments/service.go"}, HistoryPath: history})
 	if err != nil {
 		t.Fatal(err)
 	}

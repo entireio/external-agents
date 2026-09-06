@@ -121,20 +121,27 @@ func (b *Briefing) loadGraph(r Runner, request Request) {
 	for _, file := range request.Files {
 		requestedFiles[file] = true
 	}
+	hasRequestedFiles := len(requestedFiles) > 0
 	for _, hit := range result.Results {
 		if hit.FilePath != "" && isRepositoryFile(request.Repo, hit.FilePath) {
 			b.AffectedFiles = append(b.AffectedFiles, hit.FilePath)
 			if hit.SymbolName != "" {
 				b.Graph.Symbols = append(b.Graph.Symbols, hit.SymbolName)
 			}
-			if hit.FocusLine > 0 && (impactTarget == "" || requestedFiles[hit.FilePath]) {
+			if hit.FocusLine > 0 && (!hasRequestedFiles || requestedFiles[hit.FilePath]) && (impactTarget == "" || requestedFiles[hit.FilePath]) {
 				impactTarget = fmt.Sprintf("%s:%d", hit.FilePath, hit.FocusLine)
 			}
 		}
 	}
 	b.AffectedFiles = unique(b.AffectedFiles)
 	b.Graph.Symbols = unique(b.Graph.Symbols)
+	if hasRequestedFiles && impactTarget == "" {
+		impactTarget = b.lookupRequestedImpactTarget(r, request.Repo, requestedFiles)
+	}
 	if impactTarget == "" {
+		if hasRequestedFiles {
+			b.Warnings = append(b.Warnings, "Entire Graph found no resolvable symbol in the explicitly requested files; no unrelated impact result was used")
+		}
 		return
 	}
 	impact, err := r.Run(request.Repo, "entire", "graph", "impact", "--repo", request.Repo, "--symbol", impactTarget, "--format", "json", "--limit", "10")
@@ -144,6 +151,27 @@ func (b *Briefing) loadGraph(r Runner, request Request) {
 	}
 	b.Graph.ImpactAvailable = true
 	b.Graph.ImpactSummary = truncate(strings.TrimSpace(string(impact)), 700)
+}
+
+func (b *Briefing) lookupRequestedImpactTarget(r Runner, repo string, requestedFiles map[string]bool) string {
+	files := make([]string, 0, len(requestedFiles))
+	for file := range requestedFiles {
+		files = append(files, file)
+	}
+	out, err := r.Run(repo, "entire", "graph", "search", "--repo", repo, "--profile", "full", "--query", strings.Join(files, " "))
+	if err != nil {
+		return ""
+	}
+	var result graphSearch
+	if json.Unmarshal(out, &result) != nil {
+		return ""
+	}
+	for _, hit := range result.Results {
+		if requestedFiles[hit.FilePath] && hit.FocusLine > 0 && isRepositoryFile(repo, hit.FilePath) {
+			return fmt.Sprintf("%s:%d", hit.FilePath, hit.FocusLine)
+		}
+	}
+	return ""
 }
 
 func isRepositoryFile(repo, graphPath string) bool {
