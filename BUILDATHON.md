@@ -301,11 +301,12 @@ one, so the lakehouse never presents incomplete evidence as authoritative.
   not a semantic classifier — next step: an LLM-graded checkpoint classifier.
 - **Model is trained on synthetic seed data**; treat scores as directional until
   real historical PR outcomes are available.
-- **Model Serving is deployed and READY** (`release-gate-risk`, Unity Catalog
-  model `release_gate.gold.risk_model`); the plugin scores via the **heuristic
-  (primary, graded)** with the endpoint as a fallback. Finalizing the served
-  pyfunc's input schema so `--use-endpoint` returns graded probabilities is a
-  next step; the heuristic makes the gate reliable regardless.
+- **Model Serving returns graded probabilities.** The `release-gate-risk`
+  endpoint (Unity Catalog model `release_gate.gold.risk_model`, pyfunc v3 with a
+  DataFrame signature) serves a graded P(incident); `entire release-gate score
+  --use-endpoint` returns `model=served:release-gate-risk` with a real 0–1 score.
+  The deterministic heuristic remains the default and the fallback, so the gate
+  stays reliable if the endpoint is scaled to zero or unavailable.
 - **Copilot CLI hooks do not auto-capture** sessions in non-interactive mode, so
   checkpoints are created by attaching the driving session — reliable, but a step
   we perform explicitly.
