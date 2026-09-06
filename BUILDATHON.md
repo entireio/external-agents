@@ -18,6 +18,14 @@ Track 3 — Bring Entire to a New Agent or Workflow. Codex is already natively s
 
 The implementation is in `workflows/codex-flight-recorder`. It intentionally uses no invented telemetry: an unavailable checkpoint, Graph, or history source becomes a visible warning.
 
+## Initial checkpoint context
+
+- **Implemented architecture:** a standalone Go workflow gathers Entire checkpoint and Graph evidence with an optional, reviewed history export, then produces a Before You Code briefing; native Codex hooks retain the post-change session and checkpoint.
+- **Completed P0/P1 work:** P0 delivered the briefing command, evidence model, Graph impact lookup, and unit coverage. P1 prioritised explicitly requested files for impact analysis and added a visibly labelled synthetic-history demo with caller-supplied provenance.
+- **Verification performed:** the workflow has focused unit tests for combined evidence, unavailable sources, and required task input; its pre-change briefing was run against this documentation change.
+- **Known limitations:** checkpoint/history availability depends on the local environment; history is a reviewed JSON input, Graph-derived test suggestions are path heuristics, and the demo data is synthetic.
+- **Curveball recovery:** when checkpoints, Graph, or history are unavailable, invalid, or do not resolve the requested file, surface the warning, avoid substituting example data or unrelated impact, verify the cited source/tests directly, and proceed only with the evidence that is available.
+
 ## Setup, run, and test
 
 ```bash
