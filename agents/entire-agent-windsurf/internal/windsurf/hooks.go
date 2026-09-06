@@ -74,6 +74,9 @@ func ParseLifecycleEvent(hookName string, input []byte) (*LifecycleEvent, error)
 	if hookName == HookNamePreUserPrompt {
 		inputEvent.Prompt = toolInfoString(payload.ToolInfo, "user_prompt")
 	}
+	if hookName == HookNamePostCascadeResponse {
+		inputEvent.ResponseMessage = toolInfoString(payload.ToolInfo, "response")
+	}
 	if hookName == HookNamePostCascadeResponseWithTranscript {
 		inputEvent.SessionRef = toolInfoString(payload.ToolInfo, "transcript_path")
 	}

@@ -21,6 +21,7 @@ func TestParseHookFixtures(t *testing.T) {
 			if test.eventType == 0 { if event != nil { t.Fatalf("code write event = %#v, want nil", event) }; return }
 			if event == nil || event.Type != test.eventType || event.SessionID != "trajectory-123" || event.Metadata["execution_id"] != "execution-456" { t.Fatalf("event = %#v", event) }
 			if test.hook == HookNamePostCascadeResponseWithTranscript && event.SessionRef != "/home/user/.windsurf/transcripts/trajectory-123.jsonl" { t.Fatalf("session ref = %q", event.SessionRef) }
+			if test.hook == HookNamePostCascadeResponse && event.ResponseMessage != "done" { t.Fatalf("response message = %q", event.ResponseMessage) }
 		})
 	}
 }

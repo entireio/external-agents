@@ -66,6 +66,7 @@ type EventJSON struct {
 	SessionID string            `json:"session_id"`
 	SessionRef string            `json:"session_ref,omitempty"`
 	Prompt    string            `json:"prompt,omitempty"`
+	ResponseMessage string       `json:"response_message,omitempty"`
 	Timestamp string            `json:"timestamp,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
 }

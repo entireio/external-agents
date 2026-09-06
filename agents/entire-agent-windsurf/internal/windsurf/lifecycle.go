@@ -11,6 +11,7 @@ type LifecycleEvent struct {
 	Timestamp    string
 	SessionRef   string
 	Prompt       string
+	ResponseMessage string
 	Metadata     map[string]string
 }
 
@@ -32,6 +33,7 @@ func NormalizeEvent(eventType int, input LifecycleEvent) *protocol.EventJSON {
 	}
 	return &protocol.EventJSON{
 		Type: eventType, SessionID: input.TrajectoryID, SessionRef: input.SessionRef,
-		Prompt: input.Prompt, Timestamp: input.Timestamp, Metadata: metadata,
+		Prompt: input.Prompt, ResponseMessage: input.ResponseMessage,
+		Timestamp: input.Timestamp, Metadata: metadata,
 	}
 }

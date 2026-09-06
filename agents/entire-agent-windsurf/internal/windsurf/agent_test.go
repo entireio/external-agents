@@ -53,6 +53,13 @@ func TestReadSessionRejectsMissingTranscript(t *testing.T) {
 	if err == nil { t.Fatal("missing transcript accepted") }
 }
 
+func TestReadSessionPassesThroughNativeCascadeTranscript(t *testing.T) {
+	path := filepath.Join("testdata", "cascade_transcript.jsonl")
+	session, err := New().ReadSession(&protocol.HookInputJSON{SessionID: "trajectory-123", SessionRef: path})
+	if err != nil { t.Fatal(err) }
+	if session.SessionID != "trajectory-123" || session.SessionRef != path || len(session.NativeData) == 0 { t.Fatalf("session = %#v", session) }
+}
+
 func TestNormalizeEvent(t *testing.T) {
 	event := NormalizeEvent(2, LifecycleEvent{Name: "pre_user_prompt", TrajectoryID: "trajectory-1", ExecutionID: "execution-1", Prompt: "hello", Timestamp: "2026-01-01T00:00:00Z"})
 	if event == nil || event.Type != 2 || event.SessionID != "trajectory-1" || event.Metadata["execution_id"] != "execution-1" { t.Fatalf("event = %#v", event) }
