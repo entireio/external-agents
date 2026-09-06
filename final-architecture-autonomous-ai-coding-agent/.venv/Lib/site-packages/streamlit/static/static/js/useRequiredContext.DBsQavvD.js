@@ -1,0 +1,1 @@
+import{o as e}from"./rolldown-runtime.C0FnF6B9.js";import{r as t}from"./emotion-is-prop-valid.esm.CuYlOKOk.js";var n=e(t(),1),r=e=>{let t=(0,n.useContext)(e);if(t==null)throw Error(`useRequiredContext: ${e.displayName??`context`} not found`);return t};export{r as t};

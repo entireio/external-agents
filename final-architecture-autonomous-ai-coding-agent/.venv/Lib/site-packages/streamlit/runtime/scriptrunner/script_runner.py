@@ -1,0 +1,966 @@
+# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022-2026)
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import annotations
+
+import gc
+import sys
+import threading
+import types
+from contextlib import contextmanager
+from enum import Enum
+from timeit import default_timer as timer
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
+
+from streamlit import config, runtime, util
+from streamlit.errors import FragmentStorageKeyError
+from streamlit.logger import get_logger
+from streamlit.proto.ClientState_pb2 import ClientState
+from streamlit.proto.ForwardMsg_pb2 import ForwardMsg
+from streamlit.runtime.metrics_util import (
+    create_page_profile_message,
+    format_uncaught_exception,
+    to_microseconds,
+)
+from streamlit.runtime.pages_manager import PagesManager
+from streamlit.runtime.scriptrunner.exec_code import (
+    exec_func_with_error_handling,
+    modified_sys_path,
+)
+from streamlit.runtime.scriptrunner_utils.exceptions import (
+    RerunException,
+    StopException,
+)
+from streamlit.runtime.scriptrunner_utils.script_requests import (
+    RerunData,
+    ScriptRequests,
+    ScriptRequestType,
+)
+from streamlit.runtime.scriptrunner_utils.script_run_context import (
+    ScriptRunContext,
+    UserInfoType,
+    add_script_run_ctx,
+    get_script_run_ctx,
+)
+from streamlit.runtime.state import (
+    SCRIPT_RUN_WITHOUT_ERRORS_KEY,
+    SafeSessionState,
+    SessionState,
+)
+from streamlit.signal_util import Signal
+from streamlit.source_util import page_sort_key
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator
+
+    from streamlit.runtime.fragment import FragmentStorage
+    from streamlit.runtime.parallel_coordinator import ParallelFragmentCoordinator
+    from streamlit.runtime.scriptrunner.script_cache import ScriptCache
+    from streamlit.runtime.scriptrunner_utils.script_run_context import (
+        OnScriptErrorHandler,
+    )
+    from streamlit.runtime.uploaded_file_manager import UploadedFileManager
+    from streamlit.watcher.local_sources_watcher import LocalSourcesWatcher
+
+_LOGGER: Final = get_logger(__name__)
+
+
+class ScriptRunnerEvent(Enum):
+    # "Control" events. These are emitted when the ScriptRunner's state changes.
+
+    # The script started running.
+    SCRIPT_STARTED = "SCRIPT_STARTED"
+
+    # The script run stopped because of a compile error.
+    SCRIPT_STOPPED_WITH_COMPILE_ERROR = "SCRIPT_STOPPED_WITH_COMPILE_ERROR"
+
+    # The script run stopped because it ran to completion, or was
+    # interrupted by the user.
+    SCRIPT_STOPPED_WITH_SUCCESS = "SCRIPT_STOPPED_WITH_SUCCESS"
+
+    # The script run stopped in order to start a script run with newer widget state.
+    SCRIPT_STOPPED_FOR_RERUN = "SCRIPT_STOPPED_FOR_RERUN"
+
+    # The script run corresponding to a fragment ran to completion, or was interrupted
+    # by the user.
+    FRAGMENT_STOPPED_WITH_SUCCESS = "FRAGMENT_STOPPED_WITH_SUCCESS"
+
+    # The ScriptRunner is done processing the ScriptEventQueue and
+    # is shut down.
+    SHUTDOWN = "SHUTDOWN"
+
+    # "Data" events. These are emitted when the ScriptRunner's script has
+    # data to send to the frontend.
+
+    # The script has a ForwardMsg to send to the frontend.
+    ENQUEUE_FORWARD_MSG = "ENQUEUE_FORWARD_MSG"
+
+
+"""
+Note [Threading]
+There are two kinds of threads in Streamlit, the main thread and script threads.
+The main thread is started by invoking the Streamlit CLI, and bootstraps the
+framework and runs the Uvicorn webserver.
+A script thread is created by a ScriptRunner when it starts. The script thread
+is where the ScriptRunner executes, including running the user script itself,
+processing messages to/from the frontend, and all the Streamlit library function
+calls in the user script.
+It is possible for the user script to spawn its own threads, which could call
+Streamlit functions. We restrict the ScriptRunner's execution control to the
+script thread. Calling Streamlit functions from other threads is unlikely to
+work correctly due to lack of ScriptRunContext, so we may add a guard against
+it in the future.
+"""
+
+
+# For projects that have a pages folder, we assume that this is a script that
+# is designed to leverage our original v1 version of multi-page apps. This
+# function will be called to run the script in lieu of the main script. This
+# function simulates the v1 setup using the modern v2 commands (st.navigation)
+def _mpa_v1(main_script_path: str) -> None:
+    from pathlib import Path
+
+    from streamlit.commands.navigation import PageType, _navigation
+    from streamlit.navigation.page import _create_page
+
+    # Select the folder that should be used for the pages:
+    resolved_main_script_path: Final = Path(main_script_path).resolve()
+    pages_folder: Final = resolved_main_script_path.parent / "pages"
+
+    # Read out the my_pages folder and create a page for every script:
+    pages = sorted(
+        [
+            page
+            for page in pages_folder.glob("*.py")
+            if page.name.endswith(".py")
+            and not page.name.startswith(".")
+            and page.name != "__init__.py"
+        ],
+        key=page_sort_key,
+    )
+
+    # Use this script as the main page and
+    main_page = _create_page(resolved_main_script_path, default=True)
+    all_pages = [main_page] + [_create_page(pages_folder / page.name) for page in pages]
+    # Initialize the navigation with all the pages:
+    position: Literal["sidebar", "hidden", "top"] = (
+        "hidden"
+        if config.get_option("client.showSidebarNavigation") is False
+        else "sidebar"
+    )
+    page = _navigation(
+        cast("list[PageType]", all_pages),
+        position=position,
+        expanded=False,
+    )
+
+    page.run()
+
+
+class ScriptRunner:
+    def __init__(
+        self,
+        session_id: str,
+        main_script_path: str,
+        session_state: SessionState,
+        uploaded_file_mgr: UploadedFileManager,
+        script_cache: ScriptCache,
+        initial_rerun_data: RerunData,
+        user_info: UserInfoType,
+        fragment_storage: FragmentStorage,
+        pages_manager: PagesManager,
+        on_script_error: OnScriptErrorHandler | None = None,
+        local_sources_watcher: LocalSourcesWatcher | None = None,
+    ) -> None:
+        """Initialize the ScriptRunner.
+
+        (The ScriptRunner won't start executing until start() is called.)
+
+        Parameters
+        ----------
+        session_id
+            The AppSession's id.
+
+        main_script_path
+            Path to our main app script.
+
+        session_state
+            The AppSession's SessionState instance.
+
+        uploaded_file_mgr
+            The File manager to store the data uploaded by the file_uploader widget.
+
+        script_cache
+            A ScriptCache instance.
+
+        initial_rerun_data
+            RerunData to initialize this ScriptRunner with.
+
+        user_info
+            A dict that contains information about the current user. For now,
+            it only contains the user's email address.
+
+            {
+                "email": "example@example.com"
+            }
+
+            Information about the current user is optionally provided when a
+            websocket connection is initialized via the "X-Streamlit-User" header.
+
+        fragment_storage
+            The AppSession's FragmentStorage instance.
+
+        on_script_error
+            Callback to invoke when an uncaught exception occurs in user script code.
+            Returns True to suppress the default exception display, or False/None
+            to show the exception normally.
+
+        local_sources_watcher
+            The session's file watcher, if any.  Its ``on_script_run`` hook is
+            called at the start of each script run (on the script thread)
+            before any user code executes.
+        """
+        self._session_id = session_id
+        self._main_script_path = main_script_path
+        self._session_state = SafeSessionState(
+            session_state, yield_callback=self._maybe_handle_execution_control_request
+        )
+        self._uploaded_file_mgr = uploaded_file_mgr
+        self._script_cache = script_cache
+        self._user_info = user_info
+        self._fragment_storage = fragment_storage
+        self._on_script_error = on_script_error
+
+        self._pages_manager = pages_manager
+        self._local_sources_watcher = local_sources_watcher
+        self._requests = ScriptRequests()
+        self._requests.request_rerun(initial_rerun_data)
+
+        # Emitted synchronously when a ScriptRunnerEvent occurs, usually on the
+        # script or fragment-worker thread rather than the thread that created
+        # this ScriptRunner. Receivers are called as
+        # receiver(sender, event=..., **payload); events not listed below carry
+        # no payload:
+        # - ENQUEUE_FORWARD_MSG: forward_msg
+        # - SCRIPT_STOPPED_WITH_COMPILE_ERROR: exception
+        # - SHUTDOWN: client_state
+        # - SCRIPT_STARTED: page_script_hash, fragment_ids_this_run, pages
+        self.on_event = Signal()
+
+        # Set to true while we're executing. Used by
+        # _maybe_handle_execution_control_request.
+        self._execing = False
+
+        # This is initialized in the start() method
+        self._script_thread: threading.Thread | None = None
+
+        # Coordinator blocking the script thread in join(); other threads poke
+        # notify_yield_waiters() when rerun/stop is enqueued during that window.
+        # Lock-protected so this is safe under free-threaded Python (PEP 703).
+        self._join_wake_lock = threading.Lock()
+        self._join_wake_coordinator: ParallelFragmentCoordinator | None = None
+
+    def __repr__(self) -> str:
+        return util.repr_(self)
+
+    def request_stop(self) -> None:
+        """Request that the ScriptRunner stop running its script and
+        shut down. The ScriptRunner will handle this request when it reaches
+        an interrupt point.
+
+        Safe to call from any thread.
+        """
+        self._requests.request_stop()
+        self._wake_parallel_join_barrier_if_waiting()
+
+    def request_rerun(self, rerun_data: RerunData) -> bool:
+        """Request that the ScriptRunner interrupt its currently-running
+        script and restart it.
+
+        If the ScriptRunner has been stopped, this request can't be honored:
+        return False.
+
+        Otherwise, record the request and return True. The ScriptRunner will
+        handle the rerun request as soon as it reaches an interrupt point.
+
+        Safe to call from any thread.
+        """
+        rv = self._requests.request_rerun(rerun_data)
+        self._wake_parallel_join_barrier_if_waiting()
+        return rv
+
+    def _wake_parallel_join_barrier_if_waiting(self) -> None:
+        """If the script thread is blocked in ParallelFragmentCoordinator.join(), wake it.
+
+        Rerun/stop requests can arrive on other threads; join() sleeps on a
+        Condition bounded by poll_interval unless notified.
+        """
+        with self._join_wake_lock:
+            coord = self._join_wake_coordinator
+        if coord is not None:
+            coord.notify_yield_waiters()
+
+    def start(self) -> None:
+        """Start a new thread to process the ScriptEventQueue.
+
+        This must be called only once.
+
+        """
+        if self._script_thread is not None:
+            raise RuntimeError("ScriptRunner was already started")
+
+        self._script_thread = threading.Thread(
+            target=self._run_script_thread,
+            name="ScriptRunner.scriptThread",
+        )
+        self._script_thread.start()
+
+    def _get_script_run_ctx(self) -> ScriptRunContext:
+        """Get the ScriptRunContext for the current thread.
+
+        Returns
+        -------
+        ScriptRunContext
+            The ScriptRunContext for the current thread.
+
+        Raises
+        ------
+        AssertionError
+            If called outside of a ScriptRunner thread.
+        RuntimeError
+            If there is no ScriptRunContext for the current thread.
+
+        """
+        if not self._is_in_script_thread():
+            raise RuntimeError(
+                "ScriptRunner._get_script_run_ctx must be called from the script thread."
+            )
+
+        ctx = get_script_run_ctx()
+        if ctx is None:
+            # This should never be possible on the script_runner thread.
+            raise RuntimeError(
+                "ScriptRunner thread has a null ScriptRunContext. "
+                "Something has gone very wrong!"
+            )
+        return ctx
+
+    def _run_script_thread(self) -> None:
+        """The entry point for the script thread.
+
+        Processes the ScriptRequestQueue, which will at least contain the RERUN
+        request that will trigger the first script-run.
+
+        When the ScriptRequestQueue is empty, or when a SHUTDOWN request is
+        dequeued, this function will exit and its thread will terminate.
+        """
+        if not self._is_in_script_thread():
+            raise RuntimeError(
+                "ScriptRunner._run_script_thread must be called from the script thread."
+            )
+
+        _LOGGER.debug("Beginning script thread")
+
+        # Create and attach the thread's ScriptRunContext
+        ctx = ScriptRunContext(
+            session_id=self._session_id,
+            _enqueue=self._enqueue_forward_msg,
+            script_requests=self._requests,
+            query_string="",
+            session_state=self._session_state,
+            uploaded_file_mgr=self._uploaded_file_mgr,
+            main_script_path=self._main_script_path,
+            user_info=self._user_info,
+            gather_usage_stats=bool(config.get_option("browser.gatherUsageStats")),
+            fragment_storage=self._fragment_storage,
+            pages_manager=self._pages_manager,
+            context_info=None,
+            on_script_error=self._on_script_error,
+        )
+        add_script_run_ctx(threading.current_thread(), ctx)
+
+        request = self._requests.on_scriptrunner_ready()
+        while request.type == ScriptRequestType.RERUN:
+            # When the script thread starts, we'll have a pending rerun
+            # request that we'll handle immediately. When the script finishes,
+            # it's possible that another request has come in that we need to
+            # handle, which is why we call _run_script in a loop.
+            self._run_script(request.rerun_data)
+            request = self._requests.on_scriptrunner_ready()
+
+        if request.type != ScriptRequestType.STOP:  # pragma: no cover - defensive
+            raise RuntimeError(
+                f"Unrecognized ScriptRequestType: {request.type}. This should never happen."
+            )
+
+        # Send a SHUTDOWN event before exiting, so some state can be saved
+        # for use in a future script run when not triggered by the client.
+        client_state = ClientState()
+        client_state.query_string = ctx.query_string
+        client_state.page_script_hash = ctx.page_script_hash
+        if ctx.context_info:
+            client_state.context_info.CopyFrom(ctx.context_info)
+        self.on_event.send(
+            self, event=ScriptRunnerEvent.SHUTDOWN, client_state=client_state
+        )
+
+    def _is_in_script_thread(self) -> bool:
+        """True if the calling function is running in the script thread."""
+        return self._script_thread == threading.current_thread()
+
+    def _enqueue_forward_msg(self, msg: ForwardMsg) -> None:
+        """Enqueue a ForwardMsg to our browser queue.
+        This private function is called by ScriptRunContext only.
+
+        It may be called from the script thread OR the main thread.
+        """
+        # Whenever we enqueue a ForwardMsg, we also handle any pending
+        # execution control request. This means that a script can be
+        # cleanly interrupted and stopped inside most `st.foo` calls.
+        self._maybe_handle_execution_control_request()
+
+        # Pass the message to our associated AppSession.
+        self.on_event.send(
+            self, event=ScriptRunnerEvent.ENQUEUE_FORWARD_MSG, forward_msg=msg
+        )
+
+    def _maybe_handle_execution_control_request(self) -> None:
+        """Check our current ScriptRequestState to see if we have a
+        pending STOP or RERUN request.
+
+        This function is called every time the app script enqueues a
+        ForwardMsg, which means that most `st.foo` commands - which generally
+        involve sending a ForwardMsg to the frontend - act as implicit
+        yield points in the script's execution.
+        """
+        if not self._is_in_script_thread():
+            # We can only handle execution_control_request if we're on the
+            # script execution thread. However, this function also runs from
+            # parallel fragment worker threads, since deltas enqueued there
+            # flow through _enqueue_forward_msg. On a worker thread we can't
+            # service script-level rerun/stop requests, but we do check the
+            # coordinator so a cooperatively-cancelled worker raises at its
+            # next yield point.
+            ctx = get_script_run_ctx(suppress_warning=True)
+            if (
+                ctx is not None
+                and ctx.parallel_coordinator is not None
+                and ctx.parallel_coordinator.should_stop()
+            ):
+                raise StopException()
+            return
+
+        if not self._execing:
+            # If the _execing flag is not set, we're not actually inside
+            # an exec() call. This happens when our script exec() completes,
+            # we change our state to STOPPED, and a statechange-listener
+            # enqueues a new ForwardEvent
+            return
+
+        # Re-raise any worker-stored exception before consulting _requests.
+        # Worker-initiated cancellation takes precedence because it
+        # captured user intent in-band.
+        ctx = get_script_run_ctx(suppress_warning=True)
+        if ctx is not None and ctx.parallel_coordinator is not None:
+            worker_exc = ctx.parallel_coordinator.worker_exception
+            if worker_exc is not None:
+                raise worker_exc
+
+        request = self._requests.on_scriptrunner_yield()
+        if request is None:
+            # No RERUN or STOP request.
+            return
+
+        if request.type == ScriptRequestType.RERUN:
+            raise RerunException(request.rerun_data)
+
+        if request.type != ScriptRequestType.STOP:  # pragma: no cover - defensive
+            raise RuntimeError(
+                f"Unrecognized ScriptRequestType: {request.type}. This should never happen."
+            )
+        raise StopException()
+
+    @contextmanager
+    def _set_execing_flag(self) -> Generator[None, None, None]:
+        """A context for setting the ScriptRunner._execing flag.
+
+        Used by _maybe_handle_execution_control_request to ensure that
+        we only handle requests while we're inside an exec() call
+        """
+        if self._execing:
+            raise RuntimeError("Nested set_execing_flag call")
+        self._execing = True
+        try:
+            yield
+        finally:
+            self._execing = False
+
+    def _run_script(self, rerun_data: RerunData) -> None:
+        """Run our script.
+
+        Parameters
+        ----------
+        rerun_data: RerunData
+            The RerunData to use.
+
+        """
+
+        if not self._is_in_script_thread():
+            raise RuntimeError(
+                "ScriptRunner._run_script must be called from the script thread."
+            )
+
+        # An explicit loop instead of recursion to avoid stack overflows
+        while True:
+            if self._local_sources_watcher is not None:
+                self._local_sources_watcher.on_script_run()
+
+            _LOGGER.debug("Running script")
+            start_time: float = timer()
+            prep_time: float = 0  # This will be overwritten once preparations are done.
+
+            if not rerun_data.fragment_id_queue:
+                # Don't clear session refs for media files if we're running a fragment.
+                # Otherwise, we're likely to remove files that still have corresponding
+                # download buttons/links to them present in the app, which will result
+                # in a 404 should the user click on them.
+                runtime.get_instance().media_file_mgr.clear_session_refs()
+                # Same reasoning for lazy dataframe sources: on a fragment rerun
+                # we keep references so sources outside the fragment stay valid.
+                runtime.get_instance().dataframe_source_mgr.clear_session_refs()
+            else:
+                # Fragment reruns redraw only the queued fragments. Drop refs
+                # owned by those fragments before they run so removed lazy
+                # dataframes are pruned, while sources in untouched fragments
+                # and the app body remain available.
+                runtime.get_instance().dataframe_source_mgr.clear_session_refs(
+                    fragment_ids=rerun_data.fragment_id_queue
+                )
+
+            self._pages_manager.set_script_intent(
+                rerun_data.page_script_hash, rerun_data.page_name
+            )
+            active_script = self._pages_manager.get_initial_active_script(
+                rerun_data.page_script_hash
+            )
+            main_page_info = self._pages_manager.get_main_page()
+
+            page_script_hash = (
+                active_script["page_script_hash"]
+                if active_script is not None
+                else main_page_info["page_script_hash"]
+            )
+
+            ctx = self._get_script_run_ctx()
+            # Clear widget state on page change. This normally happens implicitly
+            # in the script run cleanup steps, but doing it explicitly ensures
+            # it happens even if a script run was interrupted.
+            previous_page_script_hash = ctx.page_script_hash
+            if previous_page_script_hash != page_script_hash:
+                # Page changed, enforce reset widget state where possible.
+                # This enforcement matters when a new script thread is started
+                # before the previous script run is completed (from user
+                # interaction). Use the widget ids from the rerun data to
+                # maintain some widget state, as the rerun data should
+                # contain the latest widget ids from the frontend.
+                widget_ids: frozenset[str] = frozenset()
+
+                if (
+                    rerun_data.widget_states is not None
+                    and rerun_data.widget_states.widgets is not None
+                ):
+                    widget_ids = frozenset(
+                        w.id for w in rerun_data.widget_states.widgets
+                    )
+
+                # For MPA page transitions: filter query params BEFORE cleanup.
+                # This uses existing bindings to remove params from other pages,
+                # ensuring st.query_params is accurate when the new page runs.
+                # (st.query_params in user code will reflect the correct params for the new page)
+                main_script_hash = self._pages_manager.main_script_hash
+                valid_script_hashes = {main_script_hash, page_script_hash}
+                with self._session_state.query_params() as qp:
+                    qp.populate_from_query_string(
+                        rerun_data.query_string, valid_script_hashes
+                    )
+                    # Set initial params from FILTERED state for widget seeding.
+                    # This prevents stale params from previous pages from seeding
+                    # widgets on the new page if keys collide.
+                    qp.set_initial_query_params_from_current()
+
+                # Now safe to do normal cleanup - filtering already done
+                self._session_state.on_script_finished(widget_ids)
+
+            fragment_ids_this_run: list[str] | None = None
+            if rerun_data.fragment_id_queue:
+                fragment_ids_this_run = self._fragment_storage.order_fragment_ids(
+                    rerun_data.fragment_id_queue
+                )
+
+            ctx.reset(
+                query_string=rerun_data.query_string,
+                page_script_hash=page_script_hash,
+                fragment_ids_this_run=fragment_ids_this_run,
+                cached_message_hashes=rerun_data.cached_message_hashes,
+                context_info=rerun_data.context_info,
+                yield_check=self._maybe_handle_execution_control_request,
+            )
+            with self._join_wake_lock:
+                self._join_wake_coordinator = ctx.parallel_coordinator
+
+            self.on_event.send(
+                self,
+                event=ScriptRunnerEvent.SCRIPT_STARTED,
+                page_script_hash=page_script_hash,
+                fragment_ids_this_run=fragment_ids_this_run,
+                pages=self._pages_manager.get_pages(),
+            )
+
+            # Compile the script. Any errors thrown here will be surfaced
+            # to the user via a modal dialog in the frontend, and won't result
+            # in their previous script elements disappearing.
+            try:
+                if active_script is not None:
+                    script_path = active_script["script_path"]
+                else:
+                    # page must not be found
+                    script_path = main_page_info["script_path"]
+
+                    # At this point, we know that either
+                    #   * the script corresponding to the hash requested no longer
+                    #     exists, or
+                    #   * we were not able to find a script with the requested page
+                    #     name.
+                    # In both of these cases, we want to send a page_not_found
+                    # message to the frontend.
+                    msg = ForwardMsg()
+                    msg.page_not_found.page_name = rerun_data.page_name
+                    ctx.enqueue(msg)
+
+                code = self._script_cache.get_bytecode(script_path)
+
+            except Exception as ex:
+                # We got a compile error. Send an error event and bail immediately.
+                _LOGGER.exception("Script compilation error", exc_info=ex)
+                self._session_state[SCRIPT_RUN_WITHOUT_ERRORS_KEY] = False
+                with self._join_wake_lock:
+                    self._join_wake_coordinator = None
+                self.on_event.send(
+                    self,
+                    event=ScriptRunnerEvent.SCRIPT_STOPPED_WITH_COMPILE_ERROR,
+                    exception=ex,
+                )
+                return
+
+            # If we get here, we've successfully compiled our script. The next step
+            # is to run it. Errors thrown during execution will be shown to the
+            # user as ExceptionElements.
+
+            # Create fake module. This gives us a name global namespace to
+            # execute the code in.
+            module = self._new_module("__main__")
+
+            # Install the fake module as the __main__ module. This allows
+            # the pickle module to work inside the user's code, since it now
+            # can know the module where the pickled objects stem from.
+            # IMPORTANT: This means we can't use "if __name__ == '__main__'" in
+            # our code, as it will point to the wrong module!!!
+            sys.modules["__main__"] = module
+
+            # Add special variables to the module's globals dict.
+            # Note: The following is a requirement for the CodeHasher to
+            # work correctly. The CodeHasher is scoped to
+            # files contained in the directory of __main__.__file__, which we
+            # assume is the main script directory.
+            module.__dict__["__file__"] = script_path
+
+            def code_to_exec(
+                code: str = code,
+                module: types.ModuleType = module,
+                ctx: ScriptRunContext = ctx,
+                rerun_data: RerunData = rerun_data,
+                fragment_ids_this_run: list[str] | None = fragment_ids_this_run,
+            ) -> None:
+                with (
+                    modified_sys_path(self._main_script_path),
+                    self._set_execing_flag(),
+                ):
+                    # Run callbacks for widgets whose values have changed.
+                    if rerun_data.widget_states is not None:
+                        self._session_state.on_script_will_rerun(
+                            rerun_data.widget_states,
+                            suppress_callbacks=rerun_data.suppress_callbacks,
+                        )
+                        # Check for pending rerun/stop requests while
+                        # has_script_started is still False so on_script_finished
+                        # preserves this run's widget values.  On the normal path a
+                        # callback may have queued st.rerun(); on the suppressed path
+                        # an external request (e.g. new client interaction) may have
+                        # arrived during state application.
+                        self._maybe_handle_execution_control_request()
+
+                    ctx.on_script_start()
+
+                    if fragment_ids_this_run:
+                        # Skip queued descendants whose ancestor already ran in
+                        # this pass — the ancestor re-renders them inline, so
+                        # running them again would duplicate their widgets and
+                        # raise StreamlitDuplicateElementId (for example, when
+                        # a parent and child both use ``run_every`` and their
+                        # auto-reruns coalesce; see #10719).
+                        executed_fragment_ids: set[str] = set()
+
+                        for fragment_id in fragment_ids_this_run:
+                            if self._fragment_storage.has_ancestor_in(
+                                fragment_id, executed_fragment_ids
+                            ):
+                                continue
+
+                            registration_sequence_before = (
+                                self._fragment_storage.registration_sequence()
+                            )
+                            try:
+                                wrapped_fragment = self._fragment_storage.lookup(
+                                    fragment_id
+                                )
+                            except FragmentStorageKeyError:
+                                # This can happen if the fragment_id is removed from the
+                                # storage before the script runner gets to it. In this
+                                # case, the fragment is simply skipped.
+                                # Also, only log an error if the fragment is not an
+                                # auto_rerun to avoid noise. If it is an auto_rerun, we
+                                # might have a race condition where the fragment_id is
+                                # removed but the webapp sends a rerun request before
+                                # the removal information has reached the web app
+                                # (see https://github.com/streamlit/streamlit/issues/9080).
+                                if not rerun_data.is_auto_rerun:
+                                    _LOGGER.warning(
+                                        "Couldn't find fragment with id %s."
+                                        " This can happen if the fragment does not"
+                                        " exist anymore when this request is processed,"
+                                        " for example because a full app rerun happened"
+                                        " that did not register the fragment."
+                                        " Usually this doesn't happen or no action is"
+                                        " required, so its mainly for debugging.",
+                                        fragment_id,
+                                    )
+                                continue
+
+                            # We record this before the call so a fragment
+                            # that raises still suppresses its queued
+                            # descendants: it owns their containers either way,
+                            # and rerunning them here would render them outside
+                            # the parent that just failed.
+                            executed_fragment_ids.add(fragment_id)
+
+                            try:
+                                wrapped_fragment()
+                            except (RerunException, StopException):
+                                # The wrapped_fragment function is executed
+                                # inside of a exec_func_with_error_handling call, so
+                                # there is a correct handler for these exceptions.
+                                raise
+                            except Exception:  # noqa: S110
+                                # Ignore exceptions raised by fragments here as we don't
+                                # want to stop the execution of other fragments. The
+                                # error itself is already rendered within the wrapped
+                                # fragment.
+                                pass
+                            finally:
+                                # Cleanup always uses what was actually re-registered
+                                # during this attempt, regardless of how the fragment
+                                # exited (normal return, RerunException, StopException,
+                                # or a swallowed user exception). Children that the
+                                # fragment did not get a chance to re-register will be
+                                # dropped here and re-created on the next rerun.
+                                registered_ids = (
+                                    self._fragment_storage.ids_registered_after(
+                                        registration_sequence_before
+                                    )
+                                )
+                                removed_fragment_ids = (
+                                    self._fragment_storage.clear_stale_descendants(
+                                        fragment_id,
+                                        registered_ids,
+                                    )
+                                )
+                                # Tell the frontend to cancel auto-rerun timers for
+                                # fragments that were evicted (e.g. a nested
+                                # ``run_every`` child that is no longer rendered), so
+                                # they don't keep sending stale rerun requests.
+                                if removed_fragment_ids:
+                                    stop_msg = ForwardMsg()
+                                    stop_msg.stop_auto_rerun.fragment_ids.extend(
+                                        removed_fragment_ids
+                                    )
+                                    ctx.enqueue(stop_msg)
+
+                    else:
+                        # Drop wrappers from the previous run before the main
+                        # script recreates its outside containers as new DG
+                        # objects. Clearing here (rather than after the script
+                        # body) lets the wrappers created during this run survive
+                        # for the fragment reruns that follow it.
+                        self._fragment_storage.clear_outside_wrappers()
+
+                        # Expect parallel_coordinator to be initialized;
+                        # cast makes this clear to the type checker.
+                        coordinator = cast(
+                            "ParallelFragmentCoordinator",
+                            ctx.parallel_coordinator,
+                        )
+                        try:
+                            if PagesManager.uses_pages_directory:
+                                _mpa_v1(self._main_script_path)
+                            else:
+                                exec(code, module.__dict__)  # noqa: S102
+                            coordinator.join()
+                        except BaseException:
+                            # Always drain so in-flight worker fragments
+                            # don't outlive the script run, regardless of
+                            # whether the escape was a script-control
+                            # exception, an uncaught user error, or an
+                            # interrupt.
+                            coordinator.drain()
+                            raise
+                        self._fragment_storage.clear(
+                            new_fragment_ids=ctx.shared.new_fragment_ids.snapshot()
+                        )
+
+                    self._session_state.maybe_check_serializable()
+                    # check for control requests, e.g. rerun requests have arrived
+                    self._maybe_handle_execution_control_request()
+
+            prep_time = timer() - start_time
+            (
+                _,
+                run_without_errors,
+                rerun_exception_data,
+                premature_stop,
+                uncaught_exception,
+            ) = exec_func_with_error_handling(code_to_exec, ctx)
+            # setting the session state here triggers a yield-callback call
+            # which reads self._requests and checks for rerun data
+            self._session_state[SCRIPT_RUN_WITHOUT_ERRORS_KEY] = run_without_errors
+
+            if rerun_exception_data:
+                # The handling for when a full script run or a fragment is stopped early
+                # is the same, so we only have one ScriptRunnerEvent for this scenario.
+                finished_event = ScriptRunnerEvent.SCRIPT_STOPPED_FOR_RERUN
+            elif rerun_data.fragment_id_queue:
+                finished_event = ScriptRunnerEvent.FRAGMENT_STOPPED_WITH_SUCCESS
+            else:
+                finished_event = ScriptRunnerEvent.SCRIPT_STOPPED_WITH_SUCCESS
+
+            if ctx.gather_usage_stats:
+                try:
+                    # Create and send page profile information
+                    ctx.enqueue(
+                        create_page_profile_message(
+                            commands=ctx.shared.tracked_commands,
+                            exec_time=to_microseconds(timer() - start_time),
+                            prep_time=to_microseconds(prep_time),
+                            uncaught_exception=(
+                                format_uncaught_exception(uncaught_exception)
+                                if uncaught_exception
+                                else None
+                            ),
+                        )
+                    )
+                except Exception as ex:
+                    # Always capture all exceptions since we want to make sure that
+                    # the telemetry never causes any issues.
+                    _LOGGER.debug("Failed to create page profile", exc_info=ex)
+            self._on_script_finished(ctx, finished_event, premature_stop)
+
+            # # Use _log_if_error() to make sure we never ever ever stop running the
+            # # script without meaning to.
+            _log_if_error(_clean_problem_modules)
+
+            if rerun_exception_data is not None:
+                rerun_data = rerun_exception_data
+            else:
+                break
+
+    def _on_script_finished(
+        self, ctx: ScriptRunContext, event: ScriptRunnerEvent, premature_stop: bool
+    ) -> None:
+        """Called when our script finishes executing, even if it finished
+        early with an exception. We perform post-run cleanup here.
+        """
+        with self._join_wake_lock:
+            self._join_wake_coordinator = None
+
+        # Tell session_state to update itself in response
+        if not premature_stop:
+            self._session_state.on_script_finished(
+                ctx.shared.widget_ids_this_run.snapshot(),
+                remove_stale_widgets=ctx.has_script_started,
+            )
+
+        # Signal that the script has finished. (We use SCRIPT_STOPPED_WITH_SUCCESS
+        # even if we were stopped with an exception.)
+        self.on_event.send(self, event=event)
+
+        # Both cleanups below assume the body re-registered whatever is still in use, so
+        # a run that never reached its body would make everything look orphaned. The
+        # session refs were already cleared before this run, so deleting now would take
+        # files the app still displays with it. The next run that renders collects them.
+        if ctx.has_script_started:
+            # Remove orphaned files now that the script has run and files in use
+            # are marked as active.
+            runtime.get_instance().media_file_mgr.remove_orphaned_files()
+
+            # Prune lazy dataframe sources that were not re-registered this run.
+            runtime.get_instance().dataframe_source_mgr.remove_orphaned_sources()
+
+        # Force garbage collection to run, to help avoid memory use building up
+        # This is usually not an issue, but sometimes GC takes time to kick in and
+        # causes apps to go over resource limits, and forcing it to run between
+        # script runs is low cost, since we aren't doing much work anyway.
+        if config.get_option("runner.postScriptGC"):
+            gc.collect(2)
+
+    def _new_module(self, name: str) -> types.ModuleType:
+        """Create a new module with the given name."""
+        return types.ModuleType(name)
+
+
+def _clean_problem_modules() -> None:
+    """Some modules are stateful, so we have to clear their state."""
+
+    if "keras" in sys.modules:
+        try:
+            keras = sys.modules["keras"]
+            cast("Any", keras).backend.clear_session()
+        except Exception:  # noqa: S110
+            # We don't want to crash the app if we can't clear the Keras session.
+            pass
+
+    if "matplotlib.pyplot" in sys.modules:
+        try:
+            plt = sys.modules["matplotlib.pyplot"]
+            cast("Any", plt).close("all")
+        except Exception:  # noqa: S110
+            # We don't want to crash the app if we can't close matplotlib
+            pass
+
+
+# The reason this is not a decorator is because we want to make it clear at the
+# calling location that this function is being used.
+def _log_if_error(fn: Callable[[], None]) -> None:
+    try:
+        fn()
+    except Exception as e:
+        _LOGGER.warning(e)
