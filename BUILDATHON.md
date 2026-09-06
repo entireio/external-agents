@@ -129,16 +129,24 @@ implementation.
 
 Checkpoints are captured by attaching the driving Copilot CLI session to each
 milestone commit (`entire session attach … -a copilot-cli`) and are synced to
-the Entire mirror.
+the Entire mirror. The four required milestones:
 
-- **Checkpoint 1 — Initial architecture** (`01M1TGFPESE5NSHXPWD2M1DYWV`): repo
-  skeleton, evidence-bundle schema, and Entire+Graph setup; proves the intended
-  design and the decisions/rejected options behind it.
-- **Checkpoint 2 — Pre-noon stable** (`01M1TJZM9XDX6J992D523TRQS8`): as-built
-  architecture and reconstruction notes; proves a fresh session can resume the
-  project cold.
-- **Checkpoint 3 — Curveball response** (_pending noon_).
-- **Checkpoint 4 — Final implementation & verification** (_pending_).
+- **Initial understanding & architecture** — fork checkpoint `f23050d26bfc`
+  (commit `a6bd301`): the native `entire release-gate` plugin design; companion
+  repo `01M1TGFPESE5NSHXPWD2M1DYWV` has the original skeleton + schema.
+- **Pre-noon / pre-curveball stable** — `release-gate/docs/architecture/02-pre-noon-stable.md`
+  (fork commit `1249061`) with as-built architecture + reconstruction notes;
+  companion checkpoint `01M1TJZM9XDX6J992D523TRQS8` proves a fresh session can
+  resume the project cold.
+- **Curveball response** — fork checkpoint `afab2f277342` (commit `ae1cc09`):
+  dual-format lifecycle-event ingestion; proves the process absorbed a real
+  format change at the parse boundary without duplication.
+- **Final implementation & verification** — fork checkpoint `8a8dcab6352c`
+  (commit `9252372`): final semantic-diff + full verification (16 tests, live
+  Databricks, serving endpoint).
+
+The companion clone `Yashas14/Buildathon_TriNexus` holds the full commit-by-commit
+build history behind this consolidated fork submission.
 
 ## Setup, run and test instructions
 
