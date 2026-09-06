@@ -1,80 +1,109 @@
-# BTW Buildathon — Track 3 Submission
+# CodeTriage
 
-> Template filled for **CodeTriage**, a custom Entire external agent that uses Entire Graph context to enforce ESI commit gating.
+## One-sentence summary
+CodeTriage is an Entire-integrated pre-commit gatekeeper that calculates graph-based blast radius to automatically block dangerous, high-impact AI refactors before they are committed.
 
-## Team
+## Problem, intended user and why it matters
+AI coding agents can autonomously make cascading changes that break critical dependencies. A one-line edit in a shared module can fan out through reverse dependents that no single diff makes obvious. For staff engineers and DevOps teams, CodeTriage is a deterministic safety net: if an agent’s commit has a dangerous blast radius, Entire must refuse it before the change lands.
 
-| Field | Value |
-| --- | --- |
-| Project | CodeTriage |
-| Track | Track 3 — Entire external agent / graph-aware tooling |
-| Repository | https://github.com/HotaroOreki-art/CodeTriage |
-| Agent binary | `entire-agent-codetriage` |
+## Selected Entire track and why Entire is essential
+Track 3 (custom Entire external agent / graph-aware tooling). The Entire external-agent protocol (`start`, `stop`, `commit`) is essential because it intercepts the AI lifecycle at the commit-intent phase. Entire invokes `entire-agent-codetriage parse-hook --hook commit`, we parse the session transcript (Entire JSON or AcmeCode JSONL), seed a reverse-dependency BFS, and return a first-class protocol rejection (`metadata.decision=block`, exit 1) instead of an out-of-band script.
 
-## Problem
-
-AI coding agents can land a one-line change that ripples through auth, billing, or shared utilities. Entire already checkpoints *what* an agent did. Teams still need a deterministic answer to: **how dangerous is this commit, and should it be allowed?**
-
-## Solution
-
-CodeTriage is a pre-commit CLI gatekeeper implemented as an Entire external agent:
-
-1. Entire invokes the `commit` hook through the public external-agent protocol.
-2. The agent lists files the session is modifying.
-3. It walks Entire Graph **reverse dependencies** with a level-tracked BFS.
-4. It computes an Emergency Severity Index (ESI).
-5. ESI Level 1 (depth >= 3 **or** impacted files >= 10) **blocks the commit** and returns a protocol rejection.
-6. Databricks MLflow records ESI level, impacted count, depth, and blocked status.
-
-## Architecture (Track 3)
+## Architecture and main workflow
+Python CLI binary `entire-agent-codetriage` under `agents/entire-agent-codetriage/`.
 
 ```
-Entire CLI  →  entire-agent-codetriage
-                 ├─ start / stop / commit hooks
-                 ├─ Entire Graph reverse-dependency BFS
-                 ├─ ESI Level 1 commit gate
-                 └─ mlflow SDK telemetry (.env credentials)
+AI agent write/edit/commit
+        │
+        ▼
+Entire CLI  ── parse-hook --hook commit ──►  entire-agent-codetriage
+                                               │
+                                               ├─ unified transcript adapter (Entire JSON + AcmeCode JSONL)
+                                               ├─ identify_modified_files
+                                               ├─ reverse-dependency BFS (blast_radius.py)
+                                               ├─ ESI classification
+                                               ├─ Databricks MLflow telemetry (optional)
+                                               └─ allow or reject (protocol + native Git hook)
 ```
 
-Details: [`docs/checkpoints/checkpoint_1.md`](docs/checkpoints/checkpoint_1.md)
+- **Parser:** `transcript.py` normalizes both formats into `modified_files` / `session_id`.
+- **ESI:** Level 1 (CRITICAL) when **depth ≥ 3** or **impacted files ≥ 10**.
+- **Block:** stdout Event with `metadata.decision=block` and `response_message`; non-zero exit so Entire rejects the commit.
+- **Native Git hook:** `install-hooks` writes **`.git/hooks/pre-commit`** (not `pre-commit-codetriage`) so Git actually fires the gate.
 
-## Entire integration
+## Entire Graph findings and verification
+Before any curveball code, we ran Entire Graph impact analysis on the parser and lifecycle surface (`entire graph search` then `entire graph impact --repo . --symbol identify_modified_files` / `parse_hook` / `write_session` / `evaluate_commit` / `_write_git_commit_hook`).
 
-| Requirement | How we meet it |
-| --- | --- |
-| External agent protocol | All required subcommands + hooks capability |
-| Hook names | `start`, `stop`, `commit` |
-| Graph context | `entire graph edges/snapshot` NDJSON, file-level reverse BFS |
-| Lifecycle discovery | `agents/entire-agent-codetriage/mise.toml` (`build`, `test`) |
-| Rejection | Event `metadata.decision=block` + non-zero `parse-hook` exit |
+Finding: transcript parsing was tightly coupled to a single Entire JSON object. Callers of `identify_modified_files` feed `evaluate_commit` → `parse_hook` → `_cmd_parse_hook`. Checkpoint writers (`write_session`, `chunk_transcript`) and ESI math (`compute_blast_radius` / `classify_esi`) were **not** on the change list.
 
-## Databricks / MLflow
+We adapted only the parser seam with a unified adapter. `blast_radius.py` was not edited. Verification: `pytest` — 26 passed, including original Entire JSON, AcmeCode JSONL `file_changed` events, unknown events, truncated JSONL, ESI Level 1 on JSONL seeds, and install-to-`.git/hooks/pre-commit`.
 
-| Variable | Purpose |
-| --- | --- |
-| `DATABRICKS_HOST` | Workspace URL |
-| `DATABRICKS_TOKEN` | PAT |
-| `MLFLOW_TRACKING_URI` | Usually `databricks` |
-| `MLFLOW_EXPERIMENT_NAME` | Default `codetriage-esi` |
+## Noon Curveball: what changed and how we adapted
+**Invalidated assumption:** the agent would only ever send standard Entire lifecycle JSON.
 
-Loaded from `.env` via `python-dotenv`. Offline runs disable telemetry automatically.
+**What arrived:** a heterogeneous AcmeCode JSONL transcript (one JSON object per line) plus the original format.
 
-## Demo script
+**Adaptation:**
+- Unified adapter in `transcript.py` used by `parse_hook` and `identify_modified_files`.
+- Extract paths from `file_changed` events; do not fork ESI or checkpoint writers.
+- Unknown JSON events and non-objects are skipped without crashing.
+- Truncated/incomplete JSONL keeps valid lines and returns a partial Event instead of discarding the session.
+- Git hook install path fixed to `.git/hooks/pre-commit`.
+
+## Checkpoint links and what each checkpoint proves
+Entire dashboard opens from a commit URL: `https://entire.io/gh/<org>/<repo>/commit/<sha>` ([review in Entire.io](https://docs.entire.io/guides/checkpoints/review-in-entire-io)).
+
+* **Pre-Noon Checkpoint** `4c368a9084a0` on commit [`2fa8b976dbb3bd797e72d2e3a449f1db8196284f`](https://entire.io/gh/HotaroOreki-art/CodeTriage/commit/2fa8b976dbb3bd797e72d2e3a449f1db8196284f) — proves ESI BFS and Level 1 gating existed before the curveball. Write-up: [`docs/checkpoints/checkpoint_1.md`](docs/checkpoints/checkpoint_1.md). Git: `4ddeb66` (pre-noon agent) then `2fa8b97` (hooks so checkpoints sync).
+* **Final Curveball Checkpoint** `c9d4534d5d2d` on commit [`2e543a6317ceb07fa02f4a472b7225316ba0c9ac`](https://entire.io/gh/HotaroOreki-art/CodeTriage/commit/2e543a6317ceb07fa02f4a472b7225316ba0c9ac) — proves JSONL dual-format parsing, truncated-transcript resilience, `.git/hooks/pre-commit` install, and Windows MLflow encoding fix. Write-up: [`docs/checkpoints/checkpoint_final_curveball.md`](docs/checkpoints/checkpoint_final_curveball.md).
+
+Repo dashboard: [https://entire.io/gh/HotaroOreki-art/CodeTriage](https://entire.io/gh/HotaroOreki-art/CodeTriage)
+
+## Setup, run and test instructions
+Requires Python 3.10+ and the Entire CLI on `PATH` for live graph/lifecycle checks.
 
 ```bash
 cd agents/entire-agent-codetriage
-mise run build
-mise run test
-# optional: external-agents-tests verify ./entire-agent-codetriage
-
-# In a target repo with external_agents enabled:
-entire enable --agent codetriage --telemetry=false
-# Trigger a high-radius commit — Entire receives a Level 1 rejection
+python -m pip install -r requirements.txt
+python -m pytest -q          # 26 tests; no Databricks required
+# optional:
+mise run build && mise run test
+# optional protocol suite:
+external-agents-tests verify ./entire-agent-codetriage
 ```
 
-## What judges should look at
+Enable in a repo (binary on `PATH`, `external_agents: true` in untracked `.entire/settings.local.json`):
 
-1. `agents/entire-agent-codetriage/src/entire_agent_codetriage/blast_radius.py` — ESI rules
-2. `agents/entire-agent-codetriage/src/entire_agent_codetriage/hooks.py` — commit rejection
-3. `agents/entire-agent-codetriage/src/entire_agent_codetriage/telemetry.py` — MLflow
-4. This file + Checkpoint 1 for the Track 3 write-up
+```bash
+entire enable --agent codetriage --telemetry=false
+entire-agent-codetriage install-hooks
+# confirms .git/hooks/pre-commit calls:
+#   exec entire-agent-codetriage parse-hook --hook commit
+```
+
+Manually trigger the gate (ESI Level 1 rejection):
+
+```bash
+# fixture graph with a 3-hop reverse chain
+printf '%s\n' '{"reverse_dependencies":{"core.py":["a.py"],"a.py":["b.py"],"b.py":["c.py"]}}' > .codetriage/graph.json
+echo '{"session_id":"demo","modified_files":["core.py"]}' | entire-agent-codetriage parse-hook --hook commit
+# expect exit 1, metadata.decision=block, "ESI Level 1"
+```
+
+Telemetry: copy `agents/entire-agent-codetriage/.env.example` to `.env` and set `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `MLFLOW_TRACKING_URI=databricks`. **If `.env` is missing, telemetry is skipped and the gate still runs (offline/CI default).** Never commit `.env`.
+
+## Databricks use, data sources and limitations
+Opting in for Best Use of Databricks. `telemetry.py` uses the official MLflow SDK against Databricks tracking. Each commit evaluation logs:
+
+| Field | Kind |
+| --- | --- |
+| `esi_level` | param + metric |
+| `impacted_count` | metric |
+| `depth` | metric |
+| `blocked` | param + metric |
+
+**Data source:** CodeTriage ESI results only (no production user data). Experiment: `/Shared/codetriage-esi` in workspace `https://dbc-8e7e7ac8-4519.cloud.databricks.com` (verified live run, then Windows stdout encoding was fixed so MLflow emoji URLs do not abort the log).
+
+**Limits:** Fails open for telemetry — a Databricks outage, Free Edition quota, or missing credentials **does not block** the commit gate. Secrets stay in gitignored `.env`; this repository contains **no** `dapi` tokens. A screenshot file is not committed (credentials must not leak via images); judges can use the experiment UI above after workspace access.
+
+## Known limitations and next steps
+Currently file-level reverse BFS, not symbol-level AST resolution. Empty Git-hook stdin still maps to protocol `null` (Entire supplies the payload when it invokes `parse-hook`). Next toward production: symbol-level dependents, and a Slack (or similar) human-in-the-loop override when ESI Level 1 fires.
