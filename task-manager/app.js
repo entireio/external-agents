@@ -1,13 +1,29 @@
 const storageKey = "simple-task-manager-tasks";
+const themeStorageKey = "simple-task-manager-theme";
 const taskForm = document.querySelector("#task-form");
 const taskInput = document.querySelector("#new-task");
 const taskList = document.querySelector("#task-list");
 const taskCount = document.querySelector("#task-count");
 const emptyState = document.querySelector("#empty-state");
 const filterButtons = document.querySelectorAll(".filter");
+const themeToggle = document.querySelector("#theme-toggle");
 
 let tasks = loadTasks();
 let currentFilter = "all";
+
+function loadTheme() {
+  const storedTheme = localStorage.getItem(themeStorageKey);
+  return storedTheme === "dark" || storedTheme === "light" ? storedTheme : "light";
+}
+
+function setTheme(theme) {
+  const isDark = theme === "dark";
+  document.documentElement.dataset.theme = theme;
+  themeToggle.textContent = isDark ? "Light mode" : "Dark mode";
+  themeToggle.setAttribute("aria-pressed", String(isDark));
+  themeToggle.setAttribute("aria-label", `Switch to ${isDark ? "light" : "dark"} mode`);
+  localStorage.setItem(themeStorageKey, theme);
+}
 
 function loadTasks() {
   try {
@@ -101,4 +117,9 @@ filterButtons.forEach((button) => {
   });
 });
 
+themeToggle.addEventListener("click", () => {
+  setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+});
+
+setTheme(loadTheme());
 render();
