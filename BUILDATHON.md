@@ -120,8 +120,13 @@ the Entire mirror.
 
 ## Setup, run and test instructions
 
+> **Repository layout:** this is a fork of `entireio/external-agents` (the Track 3
+> designated repo). The Release Gate implementation lives under **`release-gate/`**;
+> run the commands below from that directory.
+
 ```bash
 # From a clean checkout (Python 3.12):
+cd release-gate
 pip install -r requirements.txt
 
 # Install Release Gate as a native Entire CLI plugin:
