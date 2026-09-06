@@ -26,7 +26,7 @@ func (a *Agent) Info() protocol.InfoResponse {
 		Description:     "Windsurf Cascade external-agent adapter",
 		IsPreview:       true,
 		ProtectedDirs:   []string{".windsurf"},
-		HookNames:       []string{HookNamePreUserPrompt, HookNamePostWriteCode, HookNamePostCascadeResponse},
+		HookNames:       []string{HookNamePreUserPrompt, HookNamePostWriteCode, HookNamePostCascadeResponse, HookNamePostCascadeResponseWithTranscript},
 		Capabilities:    protocol.DeclaredCapabilities{Hooks: true},
 	}
 }

@@ -12,6 +12,7 @@ func TestParseHookFixtures(t *testing.T) {
 		{HookNamePreUserPrompt, "pre_user_prompt.json", 2},
 		{HookNamePostWriteCode, "post_write_code.json", 0},
 		{HookNamePostCascadeResponse, "post_cascade_response.json", 3},
+		{HookNamePostCascadeResponseWithTranscript, "post_cascade_response_with_transcript.json", 3},
 	}
 	for _, test := range tests {
 		t.Run(test.hook, func(t *testing.T) {
@@ -19,8 +20,15 @@ func TestParseHookFixtures(t *testing.T) {
 			event, err := New().ParseHook(test.hook, data); if err != nil { t.Fatal(err) }
 			if test.eventType == 0 { if event != nil { t.Fatalf("code write event = %#v, want nil", event) }; return }
 			if event == nil || event.Type != test.eventType || event.SessionID != "trajectory-123" || event.Metadata["execution_id"] != "execution-456" { t.Fatalf("event = %#v", event) }
+			if test.hook == HookNamePostCascadeResponseWithTranscript && event.SessionRef != "/home/user/.windsurf/transcripts/trajectory-123.jsonl" { t.Fatalf("session ref = %q", event.SessionRef) }
 		})
 	}
+}
+
+func TestTranscriptHookRequiresTranscriptPath(t *testing.T) {
+	input := []byte(`{"agent_action_name":"post_cascade_response_with_transcript","trajectory_id":"trajectory-123","execution_id":"execution-456","tool_info":{"unknown":true}}`)
+	event, err := New().ParseHook(HookNamePostCascadeResponseWithTranscript, input)
+	if err != nil || event != nil { t.Fatalf("event=%#v err=%v", event, err) }
 }
 
 func TestPostWriteLifecyclePreservesRawContext(t *testing.T) {
@@ -43,7 +51,7 @@ func TestInstallAndUninstallHooksPreservesConfiguration(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil { t.Fatal(err) }
 	if err := os.WriteFile(path, []byte(`{"custom":true,"hooks":{"post_write_code":[{"command":"user hook"}],"other":[{"command":"keep"}]}}`), 0o600); err != nil { t.Fatal(err) }
 	agent := New()
-	count, err := agent.InstallHooks(false, false); if err != nil || count != 3 { t.Fatalf("install count=%d err=%v", count, err) }
+	count, err := agent.InstallHooks(false, false); if err != nil || count != 4 { t.Fatalf("install count=%d err=%v", count, err) }
 	if !agent.AreHooksInstalled() { t.Fatal("hooks not installed") }
 	if count, err = agent.InstallHooks(false, false); err != nil || count != 0 { t.Fatalf("second install count=%d err=%v", count, err) }
 	if err := agent.UninstallHooks(); err != nil { t.Fatal(err) }

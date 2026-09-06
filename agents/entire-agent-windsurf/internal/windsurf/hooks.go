@@ -16,10 +16,11 @@ const (
 	HookNamePreUserPrompt       = "pre_user_prompt"
 	HookNamePostWriteCode       = "post_write_code"
 	HookNamePostCascadeResponse = "post_cascade_response"
+	HookNamePostCascadeResponseWithTranscript = "post_cascade_response_with_transcript"
 	hooksRelativePath           = ".windsurf/hooks.json"
 )
 
-var hookNames = []string{HookNamePreUserPrompt, HookNamePostWriteCode, HookNamePostCascadeResponse}
+var hookNames = []string{HookNamePreUserPrompt, HookNamePostWriteCode, HookNamePostCascadeResponse, HookNamePostCascadeResponseWithTranscript}
 
 // cascadeHookPayload is the documented common Cascade hook payload. ToolInfo
 // stays raw so Member 3 can consume event-specific context without this layer
@@ -40,6 +41,10 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		return NormalizeEvent(2, *inputEvent), nil
 	}
 	if hookName == HookNamePostCascadeResponse { return NormalizeEvent(3, *inputEvent), nil }
+	if hookName == HookNamePostCascadeResponseWithTranscript {
+		if strings.TrimSpace(inputEvent.SessionRef) == "" { return nil, nil }
+		return NormalizeEvent(3, *inputEvent), nil
+	}
 	// The v1 Entire protocol has no code-write event. The exported lifecycle
 	// parser preserves this event for Member 3 without falsely ending a turn.
 	return nil, nil
@@ -68,6 +73,9 @@ func ParseLifecycleEvent(hookName string, input []byte) (*LifecycleEvent, error)
 	if len(bytes.TrimSpace(payload.ToolInfo)) != 0 { inputEvent.Metadata["windsurf_tool_info"] = string(payload.ToolInfo) }
 	if hookName == HookNamePreUserPrompt {
 		inputEvent.Prompt = toolInfoString(payload.ToolInfo, "user_prompt")
+	}
+	if hookName == HookNamePostCascadeResponseWithTranscript {
+		inputEvent.SessionRef = toolInfoString(payload.ToolInfo, "transcript_path")
 	}
 	return inputEvent, nil
 }
