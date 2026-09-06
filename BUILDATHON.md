@@ -1,5 +1,12 @@
 # CodeTriage
 
+| Field | URL |
+| --- | --- |
+| **Entire** | https://entire.io/gh/HotaroOreki-art/CodeTriage |
+| **GitHub branch** | https://github.com/HotaroOreki-art/CodeTriage/tree/CodeTriage |
+| **Databricks experiment** | https://dbc-8e7e7ac8-4519.cloud.databricks.com/ml/experiments/396325419651879 |
+| **Latest MLflow run** | https://dbc-8e7e7ac8-4519.cloud.databricks.com/ml/experiments/396325419651879/runs/3ea08ae7499b4b16abf738b229755699 |
+
 ## One-sentence summary
 CodeTriage is an Entire-integrated pre-commit gatekeeper that calculates graph-based blast radius to automatically block dangerous, high-impact AI refactors before they are committed.
 
@@ -101,9 +108,37 @@ Opting in for Best Use of Databricks. `telemetry.py` uses the official MLflow SD
 | `depth` | metric |
 | `blocked` | param + metric |
 
-**Data source:** CodeTriage ESI results only (no production user data). Experiment: `/Shared/codetriage-esi` in workspace `https://dbc-8e7e7ac8-4519.cloud.databricks.com` (verified live run, then Windows stdout encoding was fixed so MLflow emoji URLs do not abort the log).
+**Data source:** CodeTriage ESI results only (no production user data). Experiment: `/Shared/codetriage-esi` (`396325419651879`) in workspace `https://dbc-8e7e7ac8-4519.cloud.databricks.com`. Latest finished run: [`3ea08ae7499b4b16abf738b229755699`](https://dbc-8e7e7ac8-4519.cloud.databricks.com/ml/experiments/396325419651879/runs/3ea08ae7499b4b16abf738b229755699) (`codetriage-commit-gate`, 3.9s, 4 metrics / 3 parameters).
 
-**Limits:** Fails open for telemetry — a Databricks outage, Free Edition quota, or missing credentials **does not block** the commit gate. Secrets stay in gitignored `.env`; this repository contains **no** `dapi` tokens. A screenshot file is not committed (credentials must not leak via images); judges can use the experiment UI above after workspace access.
+**Limits:** Fails open for telemetry — a Databricks outage, Free Edition quota, or missing credentials **does not block** the commit gate. Secrets stay in gitignored `.env`; this repository contains **no** `dapi` tokens.
+
+### Verification Evidence & Telemetry Snapshots
+
+The accompanying screenshots verify end-to-end execution, graph analysis, and Databricks telemetry tracking across the evaluation lifecycle:
+
+* **Workspace & Experiment Setup:** Shows the active `/Shared/codetriage-esi` MLflow experiment configured inside the Databricks Free Edition workspace, demonstrating secure authentication without leaked credentials.
+
+  ![Workspace and experiment setup](docs/buildathon/01-workspace-experiment.png)
+
+* **Blast Radius Metrics & Run Parameters:** Captures the live decision payload for evaluated commits, verifying parameter logging for `esi_level = 1`, reverse-dependency traversal `depth = 3`, and the active `blocked = true` intervention.
+
+  ![Run history with blast-radius metrics and parameters](docs/buildathon/02-run-history-metrics.png)
+
+  ![Single-run metrics and parameters](docs/buildathon/06-run-metrics-parameters.png)
+
+* **Comparative Run History:** Displays consecutive `codetriage-commit-gate` lifecycle runs across multiple commits, demonstrating consistent latency, repeatability, and status tracking.
+
+  ![Comparative charts for blocked, depth, and esi_level](docs/buildathon/03-charts-blocked-depth-esi.png)
+
+* **Graph Dependency Traversal:** Visualizes the BFS dependency blast radius and edge counts evaluated prior to commit approval or rejection (`depth` and `impacted_count` logged from `blast_radius.py`).
+
+  ![impacted_count across comparative runs](docs/buildathon/04-chart-impacted-count.png)
+
+* **Curveball Adaptation Runs:** Proves parsing and metric extraction remained stable across both standard Entire payloads and streaming AcmeCode JSONL sessions (allow path `esi_level = 5` / `blocked = 0` vs Level 1 block `esi_level = 1` / `depth = 3`).
+
+* **Pre-Commit Gate Interception:** Confirms native `.git/hooks/pre-commit` execution where high-risk changes were successfully halted before code merged into the tree (blocked runs in the history above).
+
+  ![Latest finished MLflow run overview](docs/buildathon/05-latest-run-overview.png)
 
 ## Known limitations and next steps
 Currently file-level reverse BFS, not symbol-level AST resolution. Empty Git-hook stdin still maps to protocol `null` (Entire supplies the payload when it invokes `parse-hook`). Next toward production: symbol-level dependents, and a Slack (or similar) human-in-the-loop override when ESI Level 1 fires.
