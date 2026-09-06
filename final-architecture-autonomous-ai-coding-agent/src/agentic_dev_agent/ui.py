@@ -16,7 +16,7 @@ DEFAULT_REQUEST = "Create a FastAPI health check endpoint with tests"
 def main() -> None:
     st.set_page_config(
         page_title="DODO AI Coding Agent",
-        page_icon="</>",
+        page_icon=":material/code:",
         layout="wide",
         initial_sidebar_state="expanded",
     )
@@ -122,6 +122,8 @@ def _summary(state: Any) -> None:
     c.metric("Validation", f"{tests_passed} pass / {tests_failed} fail")
     d.metric("Review", "Approved" if review and review.approved else "Needs work")
     st.caption(f"LLM provider: `{state.provider_name}`")
+    if state.provider_name == "local-deterministic":
+        st.warning("OpenAI is not configured for this run; generated output is local deterministic demo data.")
 
     if review and review.approved:
         st.success(review.summary)

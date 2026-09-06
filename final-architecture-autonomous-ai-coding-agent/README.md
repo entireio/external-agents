@@ -32,6 +32,50 @@ To allow the agent to create files in the target repository:
 agentic-dev --repo C:\path\to\repo --request "Create a FastAPI app with tests" --apply
 ```
 
+## API Endpoints
+
+### Health Check
+
+The FastAPI application exposes a health check endpoint.
+
+- **GET /health**
+  - **Response:** 200 OK
+  - **Content:** `{ "status": "healthy" }`
+  - **Usage:** Use to verify the agent API service is up and reachable.
+
+Example:
+
+```bash
+curl http://localhost:8000/health
+# {"status": "healthy"}
+```
+
+### Portfolio Website
+
+A modern portfolio website for a generative AI developer is served at:
+
+- **GET /portfolio**
+  - **Response:** 200 OK (HTML page with profile, skills, selected projects, and a contact form)
+- **Static assets:** Loaded under `/portfolio-static/portfolio.css` (CSS) and `/portfolio-static/portfolio.js` (JS)
+
+#### Access the Portfolio
+
+Run the FastAPI app (e.g. with `uvicorn src.agentic_dev_agent.__init__:app`), then visit:
+
+- [http://localhost:8000/portfolio](http://localhost:8000/portfolio)
+
+#### Portfolio Contents
+
+- **About/Introduction**: Overview of the developer profile and philosophy
+- **Skills**: Technologies, frameworks, and areas of expertise for generative AI
+- **Projects**: Hand-picked, detailed LLM, agent, and creative ML work
+- **Contact**: Simple frontend contact form (demo, no backend email integration)
+
+To customize, edit the files in `src/agentic_dev_agent/ui/`:
+- `portfolio.html` — structure & content
+- `portfolio.css` — theme, colors, layout
+- `portfolio.js` — form interactivity or frontend logic
+
 ## Service Integration
 
 LLM calls use a deterministic local provider by default. Install `.[llm]` and set `OPENAI_API_KEY` to call an OpenAI-compatible gateway, including a Databricks model serving gateway if exposed through an OpenAI-compatible endpoint. The agent reads `.env` automatically and uses `OPENAI_MODEL` by default, or the role-specific `CODING_MODEL`, `REASONING_MODEL`, `FAST_MODEL`, and `DEBUGGER_MODEL` values when set.
@@ -55,3 +99,13 @@ The Streamlit UI provides a hackathon-ready operator console with:
 - project context summary
 - plan, model routing, generated artifacts, test output, and review status
 - Entire timeline table and JSON download
+
+---
+
+### Portfolio Feature Test Coverage
+
+API and static asset tests for the /portfolio endpoint are provided in `tests/test_portfolio.py`. You can run them with:
+
+```bash
+pytest tests/test_portfolio.py
+```

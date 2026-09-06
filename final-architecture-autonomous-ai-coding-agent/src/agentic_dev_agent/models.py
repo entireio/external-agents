@@ -56,16 +56,24 @@ class OpenAICompatibleProvider:
 
     def complete(self, model: str, system: str, prompt: str) -> str:
         try:
-            response = self.client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-            )
+            response = self._chat_completion(model, system, prompt)
         except Exception as exc:
             raise RuntimeError(f"OpenAI API call failed for model '{model}': {_clean_error(exc)}") from exc
         return response.choices[0].message.content or ""
+
+    def _chat_completion(self, model: str, system: str, prompt: str):
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
+        try:
+            return self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                response_format={"type": "json_object"},
+            )
+        except Exception:
+            return self.client.chat.completions.create(model=model, messages=messages)
 
 
 def make_provider() -> LLMProvider:

@@ -1,1 +1,0 @@
-function e(e){return function(t){return t?.[e]}}export{e as t};

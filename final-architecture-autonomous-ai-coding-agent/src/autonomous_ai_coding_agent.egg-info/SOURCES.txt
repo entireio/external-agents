@@ -6,6 +6,7 @@ src/agentic_dev_agent/cli.py
 src/agentic_dev_agent/context.py
 src/agentic_dev_agent/databricks.py
 src/agentic_dev_agent/entire.py
+src/agentic_dev_agent/memory.py
 src/agentic_dev_agent/models.py
 src/agentic_dev_agent/state.py
 src/agentic_dev_agent/tools.py

@@ -48,6 +48,11 @@ class Planner:
             plan = _plan_from_json(parsed)
             if plan:
                 return plan
+        if getattr(llm, "name", "") != "local-deterministic":
+            raise RuntimeError(
+                "The LLM did not return a valid JSON plan. Update the prompt/model or retry; "
+                "the workflow will not use the hardcoded local plan while OpenAI is configured."
+            )
         return _fallback_plan(state)
 
 
@@ -78,6 +83,11 @@ class PlanExecutor:
         artifacts = _artifacts_from_json(_extract_json_object(response))
         if artifacts:
             return artifacts
+        if getattr(llm, "name", "") != "local-deterministic":
+            raise RuntimeError(
+                "The LLM did not return valid JSON artifacts. The workflow will not use "
+                "hardcoded generated files while OpenAI is configured."
+            )
         return CodingAgent().run(state, llm)
 
 
