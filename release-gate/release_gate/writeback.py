@@ -30,6 +30,20 @@ def render_comment(
         MARKER,
         f"## Release Gate: {badge} - risk {risk_pct}/100",
         "",
+    ]
+
+    ingest = bundle.get("ingest", {}) or {}
+    if ingest.get("partial"):
+        lines += [
+            "> :warning: **PARTIAL / INCOMPLETE evidence** - this result is "
+            "provisional, not authoritative.",
+            f"> formats={ingest.get('formats')} · unknown_events="
+            f"{ingest.get('unknown_events', 0)} · parse_errors="
+            f"{ingest.get('parse_errors', 0)}",
+            "",
+        ]
+
+    lines += [
         f"Scored PR #{pr.get('number')} @ `{str(pr.get('revision_sha') or '')[:8]}` "
         f"by model `{score.get('model')}`.",
         "",

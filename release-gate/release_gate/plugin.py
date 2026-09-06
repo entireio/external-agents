@@ -25,6 +25,7 @@ if _CWD not in sys.path:
 
 from release_gate import __version__
 from release_gate.collect import build_bundle
+from release_gate.events import events_to_bundle, parse_events
 from release_gate.features import build_gold_features
 from release_gate.handoff import build_handoff, render_handoff
 from release_gate.scoring import score_features
@@ -41,7 +42,7 @@ def _info() -> dict:
         "kind": "cli-plugin",
         "version": __version__,
         "description": "PR release-risk gate from Entire Checkpoints + Entire Graph.",
-        "commands": ["info", "version", "collect", "score", "handoff"],
+        "commands": ["info", "version", "collect", "score", "handoff", "ingest"],
     }
 
 
@@ -106,6 +107,10 @@ def main(argv: list[str] | None = None) -> int:
     sp_hand.add_argument("--repo", default=".")
     sp_hand.add_argument("--base", default=None)
     sp_hand.add_argument("--head", default="HEAD")
+    sp_ing = sub.add_parser("ingest")
+    sp_ing.add_argument("--events", required=True, help="Path to a lifecycle-event JSONL file (v1 or v2).")
+    sp_ing.add_argument("--pr-number", type=int, default=0)
+    sp_ing.add_argument("--pr-repo", default="")
     sp_score = sub.add_parser("score")
     _add_common(sp_score)
     sp_score.add_argument("--out", default=None, help="Write the bundle to this path.")
@@ -127,6 +132,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "handoff":
         print(render_handoff(build_handoff(args.repo, args.base, args.head)))
+        return 0
+
+    if args.cmd == "ingest":
+        with open(args.events, "r", encoding="utf-8") as fh:
+            parsed = parse_events(fh)
+        bundle = events_to_bundle(parsed, pr_number=args.pr_number, pr_repo=args.pr_repo)
+        features = build_gold_features(to_silver(bundle))
+        score = score_features(features)
+        print(render_comment(bundle, features, score))
+        partial = bundle["ingest"]["partial"]
+        print(f"\n[release-gate] gate={score['gate']} risk={score['risk_score']} "
+              f"partial={partial} formats={bundle['ingest']['formats']} "
+              f"unknown={bundle['ingest']['unknown_events']}")
         return 0
 
     bundle = _bundle_from(args)

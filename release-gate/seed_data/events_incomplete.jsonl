@@ -1,0 +1,3 @@
+{"schema": 2, "event": "graph.impact", "payload": {"name": "orphan_fn", "path": "x.py", "kind": "function", "rel": "CALLS", "depth": 1}}
+{"schema": 2, "event": "checkpoint.recorded", "payload": {"id": "cp3", "intent": "half-written", "risks": ["unverified"]}}
+{"schema": 2, "event": "test.result", "payload": {"name": "test_partial", "outcome": "pass

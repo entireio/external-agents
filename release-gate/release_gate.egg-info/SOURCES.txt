@@ -3,6 +3,7 @@ pyproject.toml
 release_gate/__init__.py
 release_gate/bundle.py
 release_gate/collect.py
+release_gate/events.py
 release_gate/features.py
 release_gate/handoff.py
 release_gate/model.py
@@ -16,6 +17,7 @@ release_gate.egg-info/dependency_links.txt
 release_gate.egg-info/entry_points.txt
 release_gate.egg-info/requires.txt
 release_gate.egg-info/top_level.txt
+tests/test_events.py
 tests/test_features.py
 tests/test_plugin.py
 tests/test_scoring.py
