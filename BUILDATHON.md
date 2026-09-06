@@ -1,26 +1,22 @@
-# Bengaluru Tech Week Buildathon 2026 — Track 3
+# Bengaluru Tech Week Buildathon 2026 - Track 3
 
-## Entire + Cline: Change-Resilient Agent Workflow
+## One-sentence summary
 
-### Track
+Entire + Cline provide a change-resilient agent workflow that preserves useful development context when transcript or lifecycle formats change.
 
-**Track 3 — Bring Entire to a New Agent or Workflow**
-
-### Theme
-
-> Build something that survives a change of plan.
-
----
-
-## 1. Problem
+## Problem, intended user and why it matters
 
 Coding-agent integrations often depend on a specific transcript and lifecycle-event format. When the agent changes that format, a rigid integration can break, lose session context, or discard incomplete work.
 
-This project brings Entire to Cline through an external-agent integration designed to tolerate transcript/lifecycle format changes while preserving useful development context.
+The intended user is a developer using Cline with Entire who needs agent work to remain traceable and recoverable as workflows change.
 
----
+## Selected Entire track and why Entire is essential
 
-## 2. Solution
+**Track 3 - Bring Entire to a New Agent or Workflow**
+
+The integration brings Entire to Cline through an external-agent adapter. Entire is essential because it provides lifecycle handling, checkpoints, and Graph analysis that preserve and verify development context across agent changes.
+
+## Architecture and main workflow
 
 The integration connects Cline with Entire through:
 
@@ -31,31 +27,43 @@ The integration connects Cline with Entire through:
 - Entire checkpoints
 - Entire Graph analysis
 
-The key design is a shared normalization layer.
+The key design is a shared normalization layer:
 
 ```text
-Original format ──────┐
-                      │
-                      ▼
+Original format -------+
+                      |
+                      v
               Shared normalization
-                      │
-New JSONL format ─────┘
-                      │
-                      ▼
+                      ^
+New JSONL format ------+
+                      |
+                      v
                Common event model
-                      │
-                      ▼
+                      |
+                      v
           Entire lifecycle + checkpoints
 ```
 
----
+## Entire Graph findings and verification
 
-## Final demo readiness
+Document the relevant Entire Graph finding here, including the code path or relationship it verified and how the finding supports the change-resilient workflow.
 
-- State the user and problem in one sentence.
-- Show the working product and the critical path, rather than a slide-only walkthrough.
-- Explain why Entire is essential to the solution.
-- Show one useful checkpoint and one changed or verified decision captured by the workflow.
-- Explain the Noon Curveball, the behavior that changed, and the test that proves the integration handles it.
-- If opting into Databricks, show the essential Databricks function and the evidence that it is working.
-- Close with known limitations and the next step toward production readiness.
+## Noon Curveball: what changed and how we adapted
+
+Document the Noon Curveball here: describe the behavior that changed, the adaptation made in the integration, and the test that proves the new behavior works.
+
+## Checkpoint links and what each checkpoint proves
+
+Add links to the relevant checkpoints and describe what each one proves, including at least one changed or verified decision.
+
+## Setup, run and test instructions
+
+Add the commands needed to set up, run, and test the Cline external agent integration.
+
+## Databricks use, data sources and limitations (if applicable)
+
+If Databricks is used, document the essential Databricks function, data sources, and evidence that it is working. Otherwise, state that Databricks is not used by this project.
+
+## Known limitations and next steps
+
+Document known limitations and the next step toward production readiness.
