@@ -1,0 +1,1 @@
+import{n as e,t}from"./_isIterateeCall.BUStsXAd.js";var n=Math.ceil,r=Math.max;function i(e,t,i,a){for(var o=-1,s=r(n((t-e)/(i||1)),0),c=Array(s);s--;)c[a?s:++o]=e,e+=i;return c}function a(n){return function(r,a,o){return o&&typeof o!=`number`&&t(r,a,o)&&(a=o=void 0),r=e(r),a===void 0?(a=r,r=0):a=e(a),o=o===void 0?r<a?1:-1:e(o),i(r,a,o,n)}}var o=a();export{o as t};
