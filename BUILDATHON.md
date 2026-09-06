@@ -1,78 +1,61 @@
-@"
-# Entire + Cline
+# Bengaluru Tech Week Buildathon 2026 — Track 3
 
-## Project
+## Entire + Cline: Change-Resilient Agent Workflow
 
-entire-agent-cline
+### Track
 
-## Problem
+**Track 3 — Bring Entire to a New Agent or Workflow**
 
-Cline is an AI coding agent. Its coding sessions contain useful context such
-as user prompts, agent responses, tool activity, modified files, and session
-state. We want to make this context available to Entire.
+### Theme
 
-When a coding task is interrupted or the requirements change, developers
-should be able to recover the important context instead of starting again
-from scratch.
+> Build something that survives a change of plan.
 
-## Solution
+---
 
-Build a native Entire external-agent integration for Cline.
+## 1. Problem
 
-The integration will connect Cline's session lifecycle and session data to
-Entire's external-agent protocol.
+Coding-agent integrations often depend on a specific transcript and lifecycle-event format. When the agent changes that format, a rigid integration can break, lose session context, or discard incomplete work.
 
-The adapter will provide:
+This project brings Entire to Cline through an external-agent integration designed to tolerate transcript/lifecycle format changes while preserving useful development context.
 
-- Cline detection
-- session identification
-- session metadata
-- transcript access
-- prompt extraction
-- modified-file extraction
-- hook/event handling
-- resume information
-- token information
+---
 
-## Architecture
+## 2. Solution
 
-Cline
-  |
-  v
-Cline hooks + session data
-  |
-  v
-entire-agent-cline
-  |
-  v
-Entire external-agent protocol
-  |
-  v
-Entire checkpoint
-  |
-  v
-Recoverable development context
+The integration connects Cline with Entire through:
 
-## Track
+- a Cline plugin
+- an Entire external-agent adapter
+- transcript handling
+- lifecycle/event handling
+- Entire checkpoints
+- Entire Graph analysis
 
-Track 3 — Bring Entire to a New Agent or Workflow.
+The key design is a shared normalization layer.
 
-Entire is essential because the project uses Entire's external-agent
-protocol to connect Cline sessions with Entire's checkpoint workflow.
+```text
+Original format ──────┐
+                      │
+                      ▼
+              Shared normalization
+                      │
+New JSONL format ─────┘
+                      │
+                      ▼
+               Common event model
+                      │
+                      ▼
+          Entire lifecycle + checkpoints
+```
 
-## Implementation Plan
+---
 
-1. Verify Cline CLI behavior.
-2. Verify Cline session storage.
-3. Verify Cline lifecycle hooks.
-4. Implement Cline detection.
-5. Implement session identification.
-6. Implement transcript handling.
-7. Implement prompt and modified-file extraction.
-8. Implement hook installation and parsing.
-9. Implement resume support.
-10. Add tests.
-11. Verify a real Cline session with Entire.
-12. Use Entire Graph for impact analysis.
-13. Demonstrate recovery after the Buildathon Curveball.
-"@ | Set-Content BUILDATHON.md
+## Final demo readiness
+
+- State the user and problem in one sentence.
+- Show the working product and the critical path, rather than a slide-only walkthrough.
+- Explain why Entire is essential to the solution.
+- Show one useful checkpoint and one changed or verified decision captured by the workflow.
+- Explain the Noon Curveball, the behavior that changed, and the test that proves the integration handles it.
+- If opting into Databricks, show the essential Databricks function and the evidence that it is working.
+- Close with known limitations and the next step toward production readiness.
