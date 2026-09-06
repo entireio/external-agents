@@ -1,7 +1,0 @@
-Metadata-Version: 2.4
-Name: release-gate
-Version: 0.1.0
-Summary: PR release-risk gate from Entire Checkpoints + Entire Graph, scored on Databricks.
-Requires-Python: >=3.10
-Requires-Dist: jsonschema>=4.0
-Requires-Dist: requests>=2.28

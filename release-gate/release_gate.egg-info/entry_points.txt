@@ -1,2 +1,0 @@
-[console_scripts]
-entire-release-gate = release_gate.plugin:main
