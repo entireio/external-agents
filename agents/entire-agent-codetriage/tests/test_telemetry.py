@@ -5,6 +5,7 @@ from entire_agent_codetriage.telemetry import log_esi_run
 
 
 def test_telemetry_skips_without_tracking_uri(monkeypatch) -> None:
+    monkeypatch.setattr("entire_agent_codetriage.telemetry.load_dotenv_files", lambda: None)
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
     monkeypatch.delenv("CODETRIAGE_DISABLE_MLFLOW", raising=False)
     result = compute_blast_radius(["a.py"], reverse_graph={})

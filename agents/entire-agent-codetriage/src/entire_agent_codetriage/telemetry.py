@@ -26,12 +26,16 @@ def log_esi_run(result: BlastRadius, extra: dict[str, Any] | None = None) -> boo
         tracking_uri = "databricks"
 
     try:
+        _utf8_stdio()
+        os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
         mlflow.set_tracking_uri(tracking_uri)
-        experiment = os.environ.get("MLFLOW_EXPERIMENT_NAME", "codetriage-esi")
+        experiment = os.environ.get("MLFLOW_EXPERIMENT_NAME", "/Shared/codetriage-esi")
         experiment_id = os.environ.get("MLFLOW_EXPERIMENT_ID")
         if experiment_id:
             mlflow.set_experiment(experiment_id=experiment_id)
         else:
+            if tracking_uri == "databricks" and experiment and not experiment.startswith("/"):
+                experiment = f"/Shared/{experiment.lstrip('/')}"
             mlflow.set_experiment(experiment)
 
         with mlflow.start_run(run_name="codetriage-commit-gate"):
@@ -56,3 +60,16 @@ def log_esi_run(result: BlastRadius, extra: dict[str, Any] | None = None) -> boo
         return True
     except Exception:
         return False
+
+
+def _utf8_stdio() -> None:
+    """MLflow prints emoji run URLs; Windows cp1252 consoles would otherwise abort the run."""
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
