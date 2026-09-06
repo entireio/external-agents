@@ -12,6 +12,27 @@ from entire_agent_codetriage.hooks import (
 )
 
 
+def test_install_writes_git_pre_commit_hook(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ENTIRE_REPO_ROOT", str(tmp_path))
+    (tmp_path / ".git" / "hooks").mkdir(parents=True)
+    legacy = tmp_path / ".git" / "hooks" / "pre-commit-codetriage"
+    legacy.write_text("#!/bin/sh\necho leftover\n", encoding="utf-8")
+
+    assert install_hooks(root=tmp_path) == 3
+    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    assert hook.is_file()
+    text = hook.read_text(encoding="utf-8")
+    assert "entire-agent-codetriage parse-hook --hook commit" in text
+    assert not legacy.exists()
+
+    assert install_hooks(root=tmp_path) == 0
+    assert hook.is_file()
+
+    uninstall_hooks(tmp_path)
+    assert not hook.exists()
+    assert are_hooks_installed(tmp_path) is False
+
+
 def test_install_uninstall_roundtrip(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("ENTIRE_REPO_ROOT", str(tmp_path))
     assert are_hooks_installed(tmp_path) is False

@@ -136,3 +136,31 @@ def test_hooks_and_commit_rejection(tmp_path: Path) -> None:
     event = json.loads(blocked.stdout)
     assert event["metadata"]["blocked"] == "true"
     assert event["metadata"]["esi_level"] == "1"
+
+
+def test_parse_hook_accepts_acmecode_jsonl(tmp_path: Path) -> None:
+    graph = tmp_path / ".codetriage" / "graph.json"
+    graph.parent.mkdir(parents=True)
+    graph.write_text(
+        json.dumps(
+            {
+                "reverse_dependencies": {
+                    "core.py": ["a.py"],
+                    "a.py": ["b.py"],
+                    "b.py": ["c.py"],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    jsonl = (
+        json.dumps({"event": "session_start", "session_id": "acme-cli"})
+        + "\n"
+        + json.dumps({"event": "file_changed", "path": "core.py"})
+        + "\n"
+    )
+    blocked = run_agent(["parse-hook", "--hook", "commit"], stdin=jsonl.encode(), repo=tmp_path)
+    assert blocked.returncode != 0
+    event = json.loads(blocked.stdout)
+    assert event["session_id"] == "acme-cli"
+    assert event["metadata"]["blocked"] == "true"

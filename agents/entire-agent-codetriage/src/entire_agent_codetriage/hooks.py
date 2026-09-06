@@ -14,8 +14,11 @@ from entire_agent_codetriage.blast_radius import BlastRadius, compute_blast_radi
 from entire_agent_codetriage.env import repo_root
 from entire_agent_codetriage.graph import normalize_path
 from entire_agent_codetriage.telemetry import log_esi_run
+from entire_agent_codetriage.transcript import adapt_payload, adapt_raw, coerce_files
 
 HOOK_MARKER = ".codetriage/hooks.json"
+GIT_HOOK_NAME = "pre-commit"
+LEGACY_GIT_HOOK_NAME = "pre-commit-codetriage"
 
 EVENT_SESSION_START = 1
 EVENT_TURN_END = 3
@@ -44,6 +47,7 @@ def install_hooks(force: bool = False, local_dev: bool = False, root: Path | Non
     path = hook_marker_path(repo)
     if path.is_file() and not force:
         if are_hooks_installed(repo):
+            _write_git_commit_hook(repo)
             return 0
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -66,19 +70,16 @@ def uninstall_hooks(root: Path | None = None) -> None:
     path = hook_marker_path(repo)
     if path.is_file():
         path.unlink()
-    git_hook = repo / ".git" / "hooks" / "pre-commit-codetriage"
-    if git_hook.is_file():
-        git_hook.unlink()
+    hooks_dir = repo / ".git" / "hooks"
+    for name in (GIT_HOOK_NAME, LEGACY_GIT_HOOK_NAME):
+        git_hook = hooks_dir / name
+        if git_hook.is_file() and (name == LEGACY_GIT_HOOK_NAME or _is_codetriage_git_hook(git_hook)):
+            git_hook.unlink()
 
 
 def parse_hook(hook_name: str, raw: bytes) -> dict[str, Any] | None:
-    if not raw.strip():
-        return None
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
+    payload = adapt_raw(raw)
+    if payload is None:
         return None
 
     session_id = str(payload.get("session_id") or "")
@@ -118,23 +119,24 @@ def evaluate_commit(payload: dict[str, Any]) -> BlastRadius:
 
 
 def identify_modified_files(payload: dict[str, Any]) -> list[str]:
+    payload = adapt_payload(payload)
     files: list[str] = []
     raw_data = payload.get("raw_data")
     if isinstance(raw_data, dict):
-        files.extend(_coerce_files(raw_data.get("files")))
-        files.extend(_coerce_files(raw_data.get("modified_files")))
-        files.extend(_coerce_files(raw_data.get("changed_files")))
+        files.extend(coerce_files(raw_data.get("files")))
+        files.extend(coerce_files(raw_data.get("modified_files")))
+        files.extend(coerce_files(raw_data.get("changed_files")))
 
     tool_input = payload.get("tool_input")
     if isinstance(tool_input, dict):
         for key in ("path", "file_path", "file", "filename"):
             if tool_input.get(key):
                 files.append(str(tool_input[key]))
-        files.extend(_coerce_files(tool_input.get("files")))
-        files.extend(_coerce_files(tool_input.get("paths")))
+        files.extend(coerce_files(tool_input.get("files")))
+        files.extend(coerce_files(tool_input.get("paths")))
 
     for key in ("modified_files", "files", "changed_files"):
-        files.extend(_coerce_files(payload.get(key)))
+        files.extend(coerce_files(payload.get(key)))
 
     session_ref = payload.get("session_ref")
     if session_ref:
@@ -142,8 +144,13 @@ def identify_modified_files(payload: dict[str, Any]) -> list[str]:
             from entire_agent_codetriage.sessions import read_session
 
             session = read_session(payload)
-            files.extend(_coerce_files(session.get("modified_files")))
-            files.extend(_coerce_files(session.get("new_files")))
+            files.extend(coerce_files(session.get("modified_files")))
+            files.extend(coerce_files(session.get("new_files")))
+            native = session.get("native_data")
+            if native:
+                nested = adapt_raw(native if isinstance(native, (bytes, str)) else b"")
+                if nested:
+                    files.extend(coerce_files(nested.get("modified_files")))
         except Exception:
             pass
 
@@ -190,16 +197,6 @@ def _rejection_message(result: BlastRadius) -> str:
     )
 
 
-def _coerce_files(value: Any) -> list[str]:
-    if not value:
-        return []
-    if isinstance(value, str):
-        return [value]
-    if isinstance(value, list):
-        return [str(item) for item in value if item]
-    return []
-
-
 def _git_changed_files() -> list[str]:
     root = repo_root()
     files: list[str] = []
@@ -222,9 +219,16 @@ def _write_git_commit_hook(repo: Path) -> None:
         return
     hooks_dir = git_dir / "hooks"
     hooks_dir.mkdir(parents=True, exist_ok=True)
-    hook = hooks_dir / "pre-commit-codetriage"
+    legacy = hooks_dir / LEGACY_GIT_HOOK_NAME
+    if legacy.is_file():
+        try:
+            legacy.unlink()
+        except OSError:
+            pass
+    hook = hooks_dir / GIT_HOOK_NAME
     hook.write_text(
         "#!/bin/sh\n"
+        "# entire-agent-codetriage\n"
         "exec entire-agent-codetriage parse-hook --hook commit\n",
         encoding="utf-8",
     )
@@ -232,6 +236,14 @@ def _write_git_commit_hook(repo: Path) -> None:
         os.chmod(hook, 0o755)
     except OSError:
         pass
+
+
+def _is_codetriage_git_hook(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return "entire-agent-codetriage" in text and "parse-hook" in text
 
 
 def _now() -> str:
