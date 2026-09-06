@@ -1,8 +1,10 @@
 README.md
 pyproject.toml
 release_gate/__init__.py
+release_gate/ai.py
 release_gate/bundle.py
 release_gate/collect.py
+release_gate/dashboard.py
 release_gate/events.py
 release_gate/features.py
 release_gate/handoff.py

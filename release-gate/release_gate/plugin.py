@@ -31,6 +31,7 @@ from release_gate.handoff import build_handoff, render_handoff
 from release_gate.scoring import score_features
 from release_gate.silver import to_silver
 from release_gate.writeback import render_comment
+from release_gate.dashboard import render_dashboard
 
 PLUGIN_NAME = "release-gate"
 
@@ -42,7 +43,7 @@ def _info() -> dict:
         "kind": "cli-plugin",
         "version": __version__,
         "description": "PR release-risk gate from Entire Checkpoints + Entire Graph.",
-        "commands": ["info", "version", "collect", "score", "handoff", "ingest"],
+        "commands": ["info", "version", "collect", "score", "handoff", "ingest", "dashboard"],
     }
 
 
@@ -91,6 +92,20 @@ def _score_via_endpoint(features: dict, fallback: dict, profile: str) -> dict:
         return fallback
 
 
+def _risk_texts(bundle: dict) -> list:
+    out: list = []
+    for c in (bundle.get("checkpoint_signals", {}) or {}).get("checkpoints", []) or []:
+        out += c.get("unresolved_risks", []) or []
+    return out
+
+
+def _ai_narrative(features: dict, score: dict, bundle: dict, profile: str, use_ai: bool):
+    if not use_ai:
+        return None
+    from release_gate.ai import risk_narrative
+    return risk_narrative(features, score, profile=profile, risk_texts=_risk_texts(bundle))
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -108,18 +123,28 @@ def main(argv: list[str] | None = None) -> int:
     sp_hand.add_argument("--base", default=None)
     sp_hand.add_argument("--head", default="HEAD")
     sp_ing = sub.add_parser("ingest")
-    sp_ing.add_argument("--events", required=True, help="Path to a lifecycle-event JSONL file (v1 or v2).")
+    sp_ing.add_argument("--events", required=True, help="Lifecycle-event / agent-transcript JSONL.")
     sp_ing.add_argument("--pr-number", type=int, default=0)
     sp_ing.add_argument("--pr-repo", default="")
+    sp_ing.add_argument("--ai", action="store_true", help="Add an AI review (Databricks foundation model).")
+    sp_ing.add_argument("--profile", default=os.environ.get("DATABRICKS_CONFIG_PROFILE", "release-gate"))
     sp_score = sub.add_parser("score")
     _add_common(sp_score)
     sp_score.add_argument("--out", default=None, help="Write the bundle to this path.")
+    sp_score.add_argument("--ai", action="store_true", help="Add an AI review (Databricks foundation model).")
     sp_score.add_argument("--use-endpoint", action="store_true",
                           help="Score via the Databricks Model Serving endpoint (heuristic fallback).")
     sp_score.add_argument("--load-databricks", action="store_true",
                           help="Also load the medallion tables live (needs a profile).")
     sp_score.add_argument("--warehouse", default=os.environ.get("RG_WAREHOUSE_ID", ""))
     sp_score.add_argument("--profile", default=os.environ.get("DATABRICKS_CONFIG_PROFILE", "release-gate"))
+    sp_dash = sub.add_parser("dashboard")
+    _add_common(sp_dash)
+    sp_dash.add_argument("--events", default=None, help="Render from a transcript JSONL instead of the repo.")
+    sp_dash.add_argument("--out", default="release_gate_dashboard.html")
+    sp_dash.add_argument("--ai", action="store_true", help="Include an AI review (Databricks foundation model).")
+    sp_dash.add_argument("--use-endpoint", action="store_true")
+    sp_dash.add_argument("--profile", default=os.environ.get("DATABRICKS_CONFIG_PROFILE", "release-gate"))
 
     args = parser.parse_args(argv)
 
@@ -140,11 +165,32 @@ def main(argv: list[str] | None = None) -> int:
         bundle = events_to_bundle(parsed, pr_number=args.pr_number, pr_repo=args.pr_repo)
         features = build_gold_features(to_silver(bundle))
         score = score_features(features)
-        print(render_comment(bundle, features, score))
+        comment = render_comment(bundle, features, score)
+        narrative = _ai_narrative(features, score, bundle, args.profile, getattr(args, "ai", False))
+        if narrative:
+            comment += "\n\n### AI review (Databricks foundation model)\n" + narrative
+        print(comment)
         partial = bundle["ingest"]["partial"]
         print(f"\n[release-gate] gate={score['gate']} risk={score['risk_score']} "
               f"partial={partial} formats={bundle['ingest']['formats']} "
               f"unknown={bundle['ingest']['unknown_events']}")
+        return 0
+
+    if args.cmd == "dashboard":
+        if getattr(args, "events", None):
+            with open(args.events, "r", encoding="utf-8") as fh:
+                bundle = events_to_bundle(parse_events(fh), pr_number=args.pr_number, pr_repo=args.pr_repo)
+        else:
+            bundle = _bundle_from(args)
+        features = build_gold_features(to_silver(bundle))
+        score = score_features(features)
+        if getattr(args, "use_endpoint", False):
+            score = _score_via_endpoint(features, score, args.profile)
+        narrative = _ai_narrative(features, score, bundle, args.profile, getattr(args, "ai", False))
+        with open(args.out, "w", encoding="utf-8") as fh:
+            fh.write(render_dashboard(bundle, features, score, narrative))
+        print(f"[release-gate] dashboard written to {args.out} "
+              f"(gate={score['gate']} risk={score['risk_score']})")
         return 0
 
     bundle = _bundle_from(args)
@@ -159,6 +205,9 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "use_endpoint", False):
         score = _score_via_endpoint(features, score, args.profile if hasattr(args, "profile") else "release-gate")
     comment = render_comment(bundle, features, score)
+    narrative = _ai_narrative(features, score, bundle, getattr(args, "profile", "release-gate"), getattr(args, "ai", False))
+    if narrative:
+        comment += "\n\n### AI review (Databricks foundation model)\n" + narrative
 
     if getattr(args, "out", None):
         with open(args.out, "w", encoding="utf-8") as fh:
