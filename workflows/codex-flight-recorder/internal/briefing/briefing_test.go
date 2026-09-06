@@ -31,7 +31,7 @@ func TestBuildCombinesEntireGraphAndReviewedHistory(t *testing.T) {
 		}
 	}
 	history := filepath.Join(dir, "history.json")
-	if err := os.WriteFile(history, []byte(`[{"session_id":"s-1","files_touched":["payments/service.go"],"test_result":"failed","retries":3,"revert_count":1,"summary":"Webhook migration previously failed."}]`), 0o600); err != nil {
+	if err := os.WriteFile(history, []byte(`[{"session_id":"s-1","files_touched":["payments/service.go"],"test_result":"failed","retries":3,"revert_count":1,"risk_score":0.9,"summary":"Webhook migration previously failed."}]`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runner := fakeRunner{responses: map[string][]byte{
@@ -57,6 +57,9 @@ func TestBuildCombinesEntireGraphAndReviewedHistory(t *testing.T) {
 	}
 	if b.History.Source != "synthetic test history" {
 		t.Fatalf("history source = %q", b.History.Source)
+	}
+	if b.History.MaxRiskScore != 0.9 {
+		t.Fatalf("max risk score = %v", b.History.MaxRiskScore)
 	}
 	if len(b.RecommendedTests) != 2 {
 		t.Fatalf("tests = %#v", b.RecommendedTests)

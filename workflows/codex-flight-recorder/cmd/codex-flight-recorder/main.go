@@ -72,7 +72,7 @@ func printMarkdown(b briefing.Briefing) {
 		fmt.Println("## Graph impact\n\n```text\n" + b.Graph.ImpactSummary + "\n```")
 	}
 	if b.History.Available {
-		fmt.Printf("## Historical development evidence\n\nSource: %s\n\nMatched sessions: %d; failed: %d; retries: %d; reverts: %d\n", b.History.Source, b.History.MatchedSessions, b.History.FailedSessions, b.History.Retries, b.History.Reverts)
+		fmt.Printf("## Historical development evidence\n\nSource: %s\n\nMatched sessions: %d; failed: %d; retries: %d; reverts: %d; max risk score: %.2f\n", b.History.Source, b.History.MatchedSessions, b.History.FailedSessions, b.History.Retries, b.History.Reverts, b.History.MaxRiskScore)
 		section("Findings", b.History.Findings)
 	}
 	section("Warnings", b.Warnings)

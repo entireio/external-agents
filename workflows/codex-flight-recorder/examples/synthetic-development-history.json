@@ -4,6 +4,7 @@
     "timestamp": "2026-09-06T09:30:00+05:30",
     "files_touched": ["agents/entire-agent-kilo/internal/kilo/hooks.go"],
     "test_result": "failed",
+    "risk_score": 0.9,
     "retries": 3,
     "revert_count": 1,
     "summary": "SYNTHETIC DEMO DATA — a hook configuration change required retries and was reverted."
@@ -13,6 +14,7 @@
     "timestamp": "2026-09-06T10:00:00+05:30",
     "files_touched": ["agents/entire-agent-kilo/internal/kilo/hooks.go"],
     "test_result": "passed",
+    "risk_score": 0.3,
     "retries": 1,
     "revert_count": 0,
     "summary": "SYNTHETIC DEMO DATA — follow-up validation passed after reviewing hook behavior."

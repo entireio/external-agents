@@ -26,6 +26,8 @@ go run ./cmd/codex-flight-recorder --repo ../.. --task "..." --history history-e
 
 Use `--format json` for a UI, CI, or Databricks consumer. The command reports unavailable Entire/Graph/history sources as warnings; it never substitutes example data.
 
+For a real Databricks-backed export, use the [Databricks analytics notebook](databricks/README.md). Its computed `risk_score` is consumed by the briefing and increases the warning level for high-risk components.
+
 ### Local demo without Databricks
 
 Use the committed fixture only for a demo; it is deliberately marked synthetic and must never be presented as real development history:

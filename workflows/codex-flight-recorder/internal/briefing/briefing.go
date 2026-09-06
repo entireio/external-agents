@@ -48,6 +48,7 @@ type HistoryEvidence struct {
 	FailedSessions  int      `json:"failed_sessions"`
 	Retries         int      `json:"retries"`
 	Reverts         int      `json:"reverts"`
+	MaxRiskScore    float64  `json:"max_risk_score"`
 	Findings        []string `json:"findings,omitempty"`
 }
 
@@ -66,6 +67,7 @@ type historyRecord struct {
 	TestResult  string   `json:"test_result"`
 	Retries     int      `json:"retries"`
 	RevertCount int      `json:"revert_count"`
+	RiskScore   float64  `json:"risk_score"`
 	Summary     string   `json:"summary"`
 }
 
@@ -209,6 +211,9 @@ func (b *Briefing) loadHistory(path, source string) {
 		b.History.MatchedSessions++
 		b.History.Retries += record.Retries
 		b.History.Reverts += record.RevertCount
+		if record.RiskScore > b.History.MaxRiskScore {
+			b.History.MaxRiskScore = record.RiskScore
+		}
 		if strings.EqualFold(record.TestResult, "failed") {
 			b.History.FailedSessions++
 		}
@@ -251,6 +256,9 @@ func assessRisk(b Briefing) string {
 	}
 	score += b.History.FailedSessions + b.History.Reverts
 	if b.History.Retries >= 3 {
+		score++
+	}
+	if b.History.MaxRiskScore >= 0.75 {
 		score++
 	}
 	if score >= 4 {
