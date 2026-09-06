@@ -23,6 +23,22 @@ from release_gate.model import FEATURE_COLUMNS, LABEL_COLUMN  # noqa: E402
 
 REGISTERED_MODEL_NAME = "release_gate_risk"
 
+try:
+    from mlflow.pyfunc import PythonModel as _PythonModel
+except Exception:  # noqa: BLE001 - mlflow only needed at train time
+    _PythonModel = object
+
+
+class RiskProbaModel(_PythonModel):
+    """Serve a graded P(incident) in [0,1] instead of a hard 0/1 class."""
+
+    def __init__(self, model=None):
+        self._model = model
+
+    def predict(self, context, model_input, params=None):
+        X = getattr(model_input, "values", model_input)
+        return [float(p[1]) for p in self._model.predict_proba(X)]
+
 
 def _load(data_path: str):
     X, y = [], []
@@ -93,16 +109,26 @@ def train(data_path: str, register: bool) -> dict:
         mlflow.log_metrics(metrics)
 
         signature = None
+        input_example = None
         try:
+            import pandas as pd
             from mlflow.models.signature import infer_signature
-            signature = infer_signature(Xte, proba)
+            Xte_df = pd.DataFrame(Xte, columns=FEATURE_COLUMNS)
+            signature = infer_signature(Xte_df, proba)
+            input_example = Xte_df.head(1)
         except Exception:  # noqa: BLE001
             pass
 
         kwargs = {"signature": signature}
+        if input_example is not None:
+            kwargs["input_example"] = input_example
         if register:
             kwargs["registered_model_name"] = model_name
-        mlflow.sklearn.log_model(model, artifact_path="model", **kwargs)
+        # Serve a graded probability (risk_score in [0,1]) via a pyfunc wrapper.
+        import mlflow.pyfunc
+        mlflow.pyfunc.log_model(
+            artifact_path="model", python_model=RiskProbaModel(model),
+            pip_requirements=["scikit-learn", "mlflow", "pandas"], **kwargs)
 
         result = {"run_id": run.info.run_id, "flavor": flavor, **metrics}
         print("[train_model] " + json.dumps(result))

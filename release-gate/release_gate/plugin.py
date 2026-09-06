@@ -71,18 +71,20 @@ def _score_via_endpoint(features: dict, fallback: dict, profile: str) -> dict:
     try:
         from databricks.sdk import WorkspaceClient
 
-        from release_gate.model import to_vector
+        from release_gate.model import FEATURE_COLUMNS, to_vector
+
+        import requests
 
         w = WorkspaceClient(profile=profile)
-        # Model signature is a (-1, N) tensor of doubles; post the canonical
-        # MLflow serving shape via the raw API client for full control.
-        resp = w.api_client.do(
-            "POST", "/serving-endpoints/release-gate-risk/invocations",
-            body={"inputs": [to_vector(features)]},
-        )
-        pred = resp["predictions"][0]
+        headers = w.config.authenticate()  # {"Authorization": "Bearer ..."}
+        url = f"{w.config.host.rstrip('/')}/serving-endpoints/release-gate-risk/invocations"
+        record = dict(zip(FEATURE_COLUMNS, to_vector(features)))
+        r = requests.post(url, headers={**headers, "Content-Type": "application/json"},
+                          json={"dataframe_records": [record]}, timeout=30)
+        r.raise_for_status()
+        pred = r.json()["predictions"][0]
         raw = float(pred.get("risk_score", 0) if isinstance(pred, dict) else pred)
-        # Model is a binary incident classifier; map class -> representative score.
+        # v2 serves a graded probability in [0,1]; v1 served a 0/1 class.
         score = raw if 0.0 < raw < 1.0 else (0.85 if raw >= 1.0 else 0.15)
         gate = "PASS" if score < 0.34 else "REVIEW" if score < 0.67 else "BLOCK"
         return {**fallback, "risk_score": round(score, 4), "gate": gate,
