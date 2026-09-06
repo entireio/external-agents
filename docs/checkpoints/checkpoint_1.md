@@ -2,7 +2,8 @@
 
 **Project:** CodeTriage  
 **Track:** BTW Buildathon Track 3 — custom Entire external agent  
-**Repo:** [HotaroOreki-art/CodeTriage](https://github.com/HotaroOreki-art/CodeTriage#external-agents-for-entire-cli)
+**Repo:** [HotaroOreki-art/CodeTriage](https://github.com/HotaroOreki-art/CodeTriage#external-agents-for-entire-cli)  
+**Default branch:** `main` (CodeTriage ESI agent merged for Entire dashboard)
 
 ## Goal
 
