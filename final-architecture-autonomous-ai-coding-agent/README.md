@@ -34,7 +34,15 @@ agentic-dev --repo C:\path\to\repo --request "Create a FastAPI app with tests" -
 
 ## Service Integration
 
-LLM calls use a deterministic local provider by default. Install `.[llm]` and set `OPENAI_API_KEY` to call an OpenAI-compatible gateway, including a Databricks model serving gateway if exposed through an OpenAI-compatible endpoint.
+LLM calls use a deterministic local provider by default. Install `.[llm]` and set `OPENAI_API_KEY` to call an OpenAI-compatible gateway, including a Databricks model serving gateway if exposed through an OpenAI-compatible endpoint. The agent reads `.env` automatically and uses `OPENAI_MODEL` by default, or the role-specific `CODING_MODEL`, `REASONING_MODEL`, `FAST_MODEL`, and `DEBUGGER_MODEL` values when set.
+
+When `OPENAI_API_KEY` is present, the workflow requires the OpenAI SDK and will fail loudly instead of falling back to local generated output. Install it with:
+
+```bash
+pip install -e ".[llm]"
+```
+
+The autonomous loop now asks the model for a structured JSON plan, records that plan, then asks the coding model to execute it by returning repository-relative file artifacts. Previous runs are remembered per repository in `.entire/conversation.jsonl` and are included in future planning and implementation prompts.
 
 Databricks and Entire adapters are intentionally thin. They always record locally and can be extended to write to Databricks SQL tables or an Entire API by setting the environment variables in `.env.example`.
 

@@ -70,7 +70,9 @@ class AgentState:
     repo_path: Path
     apply_changes: bool = False
     max_debug_loops: int = 2
+    provider_name: str = "unknown"
     context: ProjectContext | None = None
+    conversation_history: list[dict[str, Any]] = field(default_factory=list)
     analysis: TaskAnalysis | None = None
     plan: Plan | None = None
     selected_models: dict[ModelRole, str] = field(default_factory=dict)

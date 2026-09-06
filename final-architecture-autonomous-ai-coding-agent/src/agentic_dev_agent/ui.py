@@ -15,7 +15,7 @@ DEFAULT_REQUEST = "Create a FastAPI health check endpoint with tests"
 
 def main() -> None:
     st.set_page_config(
-        page_title="Autonomous AI Coding Agent",
+        page_title="DODO AI Coding Agent",
         page_icon="</>",
         layout="wide",
         initial_sidebar_state="expanded",
@@ -37,6 +37,7 @@ def main() -> None:
         st.header("Integrations")
         st.caption("Enabled through environment variables")
         st.code("OPENAI_API_KEY\nDATABRICKS_*\nENTIRE_*", language="text")
+        st.caption("Conversation memory is saved per repository in `.entire/conversation.jsonl`.")
 
     if "last_state" not in st.session_state:
         st.session_state.last_state = None
@@ -120,6 +121,7 @@ def _summary(state: Any) -> None:
     b.metric("Task risk", state.analysis.risk if state.analysis else "unknown")
     c.metric("Validation", f"{tests_passed} pass / {tests_failed} fail")
     d.metric("Review", "Approved" if review and review.approved else "Needs work")
+    st.caption(f"LLM provider: `{state.provider_name}`")
 
     if review and review.approved:
         st.success(review.summary)
@@ -128,8 +130,8 @@ def _summary(state: Any) -> None:
 
 
 def _tabs(state: Any, timeline: list[dict[str, Any]]) -> None:
-    overview, plan, artifacts, tests, timeline_tab, raw = st.tabs(
-        ["Overview", "Plan", "Artifacts", "Tests", "Entire Timeline", "Raw State"]
+    overview, plan, artifacts, tests, memory, timeline_tab, raw = st.tabs(
+        ["Overview", "Plan", "Artifacts", "Tests", "Memory", "Entire Timeline", "Raw State"]
     )
 
     with overview:
@@ -180,6 +182,15 @@ def _tabs(state: Any, timeline: list[dict[str, Any]]) -> None:
                     st.code(result.stdout, language="text")
                 if result.stderr:
                     st.code(result.stderr, language="text")
+
+    with memory:
+        history = state.conversation_history
+        if not history:
+            st.info("No prior conversation memory found for this repository.")
+        for turn in reversed(history[-10:]):
+            label = turn.get("request", "Previous run")
+            with st.expander(label, expanded=False):
+                st.json(_to_jsonable(turn))
 
     with timeline_tab:
         if not timeline:
