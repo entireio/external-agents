@@ -26,6 +26,7 @@ if _CWD not in sys.path:
 from release_gate import __version__
 from release_gate.collect import build_bundle
 from release_gate.features import build_gold_features
+from release_gate.handoff import build_handoff, render_handoff
 from release_gate.scoring import score_features
 from release_gate.silver import to_silver
 from release_gate.writeback import render_comment
@@ -40,7 +41,7 @@ def _info() -> dict:
         "kind": "cli-plugin",
         "version": __version__,
         "description": "PR release-risk gate from Entire Checkpoints + Entire Graph.",
-        "commands": ["info", "version", "collect", "score"],
+        "commands": ["info", "version", "collect", "score", "handoff"],
     }
 
 
@@ -63,6 +64,32 @@ def _bundle_from(args) -> dict:
     )
 
 
+def _score_via_endpoint(features: dict, fallback: dict, profile: str) -> dict:
+    """Score via the Databricks Model Serving endpoint; heuristic fallback on error."""
+    try:
+        from databricks.sdk import WorkspaceClient
+
+        from release_gate.model import to_vector
+
+        w = WorkspaceClient(profile=profile)
+        # Model signature is a (-1, N) tensor of doubles; post the canonical
+        # MLflow serving shape via the raw API client for full control.
+        resp = w.api_client.do(
+            "POST", "/serving-endpoints/release-gate-risk/invocations",
+            body={"inputs": [to_vector(features)]},
+        )
+        pred = resp["predictions"][0]
+        raw = float(pred.get("risk_score", 0) if isinstance(pred, dict) else pred)
+        # Model is a binary incident classifier; map class -> representative score.
+        score = raw if 0.0 < raw < 1.0 else (0.85 if raw >= 1.0 else 0.15)
+        gate = "PASS" if score < 0.34 else "REVIEW" if score < 0.67 else "BLOCK"
+        return {**fallback, "risk_score": round(score, 4), "gate": gate,
+                "model": "served:release-gate-risk"}
+    except Exception as exc:  # noqa: BLE001 - protect the demo
+        sys.stderr.write(f"[release-gate] endpoint unreachable ({exc}); heuristic fallback\n")
+        return fallback
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -75,9 +102,15 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("info")
     sub.add_parser("version")
     _add_common(sub.add_parser("collect"))
+    sp_hand = sub.add_parser("handoff")
+    sp_hand.add_argument("--repo", default=".")
+    sp_hand.add_argument("--base", default=None)
+    sp_hand.add_argument("--head", default="HEAD")
     sp_score = sub.add_parser("score")
     _add_common(sp_score)
     sp_score.add_argument("--out", default=None, help="Write the bundle to this path.")
+    sp_score.add_argument("--use-endpoint", action="store_true",
+                          help="Score via the Databricks Model Serving endpoint (heuristic fallback).")
     sp_score.add_argument("--load-databricks", action="store_true",
                           help="Also load the medallion tables live (needs a profile).")
     sp_score.add_argument("--warehouse", default=os.environ.get("RG_WAREHOUSE_ID", ""))
@@ -92,6 +125,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"entire release-gate {__version__}")
         return 0
 
+    if args.cmd == "handoff":
+        print(render_handoff(build_handoff(args.repo, args.base, args.head)))
+        return 0
+
     bundle = _bundle_from(args)
 
     if args.cmd == "collect":
@@ -101,6 +138,8 @@ def main(argv: list[str] | None = None) -> int:
     # score
     features = build_gold_features(to_silver(bundle))
     score = score_features(features)
+    if getattr(args, "use_endpoint", False):
+        score = _score_via_endpoint(features, score, args.profile if hasattr(args, "profile") else "release-gate")
     comment = render_comment(bundle, features, score)
 
     if getattr(args, "out", None):

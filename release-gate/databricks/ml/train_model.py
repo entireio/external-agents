@@ -65,6 +65,12 @@ def train(data_path: str, register: bool) -> dict:
         experiment = ("/Shared/release_gate_risk" if _on_databricks()
                       else "release_gate_risk")
     mlflow.set_experiment(experiment)
+
+    # Unity Catalog model registry when requested (3-level name required).
+    registry_uri = os.environ.get("MLFLOW_REGISTRY_URI")
+    if registry_uri:
+        mlflow.set_registry_uri(registry_uri)
+    model_name = os.environ.get("RG_MODEL_NAME", REGISTERED_MODEL_NAME)
     with mlflow.start_run() as run:
         # Cross-validated AUC on the full set for a stable estimate.
         cv_model, _ = _build_model()
@@ -95,7 +101,7 @@ def train(data_path: str, register: bool) -> dict:
 
         kwargs = {"signature": signature}
         if register:
-            kwargs["registered_model_name"] = REGISTERED_MODEL_NAME
+            kwargs["registered_model_name"] = model_name
         mlflow.sklearn.log_model(model, artifact_path="model", **kwargs)
 
         result = {"run_id": run.info.run_id, "flavor": flavor, **metrics}
