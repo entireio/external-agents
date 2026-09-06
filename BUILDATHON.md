@@ -97,11 +97,33 @@ unavailable" state instead of crashing CI.
 
 ## Noon Curveball: what changed and how we adapted
 
-_To be completed when the official Curveball is received at 12:00 noon._ The
-build was designed with four extension seams so the constraint can be absorbed
-without a rewrite: (a) the evidence-bundle schema is versioned and additive;
-(b) Gold features are a pure function of Silver; (c) scoring is decoupled from
-the model via the registry; (d) the PR-comment writeback is data-driven.
+**Constraint (Track 3):** the integrated workflow released a **new transcript /
+lifecycle-event format**; existing users still emit the original. We must support
+both, never crash on unknown events, produce **partial** (not corrupted) results
+on incomplete input, and preserve existing behaviour — without duplicating the
+implementation.
+
+- **Invalidated assumption:** the workflow emits evidence/lifecycle events in a
+  *single fixed format*.
+- **Fresh session + reconstruction:** a new agent session reconstructed prior
+  intent/risks by running our own `entire release-gate handoff` plus the pre-noon
+  checkpoint doc.
+- **Graph impact (before editing):** `entire graph impact --symbol build_bundle`
+  showed `build_bundle` is the single assembly boundary and all downstream
+  (`to_silver → features → scoring → writeback`, plus `handoff`) consumes the
+  **normalized bundle** — so we adapt at the *parse boundary* and keep the bundle
+  contract stable. No downstream change, no duplication.
+- **Focused revision:** new `release_gate/events.py` — one version-detecting
+  parser normalizes **both** v1 (`type`-based) and v2 (`event`/`payload`-based)
+  events into the same model; `events_to_bundle` builds the existing bundle.
+  Unknown events are counted (not fatal); corrupt/truncated lines tolerated;
+  incomplete input yields `ingest.partial = true`, surfaced as a **PARTIAL
+  banner** in the PR comment so incomplete context is never shown as
+  authoritative. New `entire release-gate ingest --events <jsonl>` subcommand.
+- **Tests:** `tests/test_events.py` covers **original, new, unknown, incomplete**;
+  existing 11 tests still pass (**16 total**).
+- **Why safe:** existing collection path unchanged; downstream untouched; partial
+  results explicitly flagged. Checkpoint: `afab2f277342` (commit `ae1cc09`).
 
 ## Checkpoint links and what each checkpoint proves
 
