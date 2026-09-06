@@ -1,0 +1,60 @@
+{
+  "schema_version": "1.0.0",
+  "bundle_id": "seed-0001",
+  "generated_at": "2026-09-06T04:30:00Z",
+  "source": "seed-data-synthetic",
+  "pr": {
+    "repo": "Yashas14/Buildathon_TriNexus",
+    "number": 1,
+    "revision_sha": "1d52bc3aa0000000000000000000000000000000",
+    "base_sha": "8fde1bf0000000000000000000000000000000000",
+    "author": "Yashas14",
+    "title": "Add gold feature builder and heuristic scorer",
+    "changed_files": [
+      "release_gate/features.py",
+      "release_gate/scoring.py"
+    ],
+    "churn": {
+      "additions": 180,
+      "deletions": 12,
+      "files_changed": 2
+    }
+  },
+  "graph_impact": {
+    "available": true,
+    "impacted_symbols": [
+      {"symbol": "build_gold_features", "file": "release_gate/features.py", "kind": "function", "relationship": "DEFINES", "distance": 0},
+      {"symbol": "score_features", "file": "release_gate/scoring.py", "kind": "function", "relationship": "CALLS", "distance": 1},
+      {"symbol": "run_local_slice", "file": "scripts/run_local_slice.py", "kind": "function", "relationship": "CALLS", "distance": 2},
+      {"symbol": "render_comment", "file": "release_gate/writeback.py", "kind": "function", "relationship": "REFERENCES", "distance": 2}
+    ],
+    "blast_radius": {"symbol_count": 4, "file_count": 4, "max_distance": 2}
+  },
+  "checkpoint_signals": {
+    "available": true,
+    "checkpoints": [
+      {
+        "checkpoint_id": "01M1TGFPESE5NSHXPWD2M1DYWV",
+        "created_at": "2026-09-06T04:14:00Z",
+        "intent_summary": "Scaffold repo skeleton, evidence-bundle schema, and Entire+Graph setup.",
+        "rejected_options": ["fine-tuned LLM scorer", "one DLT pipeline per table"],
+        "assumptions": ["Curveball content unknown; built four extension seams"],
+        "unresolved_risks": [
+          "Checkpoint risk extraction is heuristic, not semantic",
+          "Model is heuristic-only; ML training not yet run"
+        ],
+        "referenced_paths": ["release_gate/features.py", "release_gate/scoring.py"]
+      }
+    ],
+    "unresolved_risk_count": 2
+  },
+  "test_results": {
+    "available": true,
+    "summary": {"total": 3, "passed": 3, "failed": 0, "skipped": 0, "duration_s": 0.42},
+    "cases": [
+      {"name": "test_build_gold_features_basic", "status": "passed", "duration_s": 0.15, "touched_symbols": ["build_gold_features"]},
+      {"name": "test_score_features_gate", "status": "passed", "duration_s": 0.12, "touched_symbols": ["score_features"]},
+      {"name": "test_slice_end_to_end", "status": "passed", "duration_s": 0.15, "touched_symbols": ["run_local_slice"]}
+    ]
+  }
+}

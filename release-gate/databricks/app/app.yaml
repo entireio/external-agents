@@ -1,0 +1,11 @@
+command:
+  - streamlit
+  - run
+  - app.py
+
+env:
+  - name: RG_CATALOG
+    value: release_gate
+  # DATABRICKS_HTTP_PATH is set to the SQL warehouse HTTP path at deploy time.
+  - name: DATABRICKS_HTTP_PATH
+    valueFrom: sql-warehouse-http-path
