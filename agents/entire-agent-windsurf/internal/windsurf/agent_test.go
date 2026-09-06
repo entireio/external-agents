@@ -1,0 +1,67 @@
+package windsurf
+
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"testing"
+
+	"github.com/entireio/external-agents/agents/entire-agent-windsurf/internal/protocol"
+)
+
+func TestInfo(t *testing.T) {
+	info := New().Info()
+	if info.ProtocolVersion != protocol.ProtocolVersion || info.Name != AgentName || info.Type != "Windsurf Cascade" || !info.IsPreview {
+		t.Fatalf("unexpected info: %#v", info)
+	}
+	if !reflect.DeepEqual(info.ProtectedDirs, []string{".windsurf"}) || !info.Capabilities.Hooks || info.Capabilities.TranscriptAnalyzer {
+		t.Fatalf("unexpected hook capability info: %#v", info)
+	}
+}
+
+func TestDetect(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repo)
+	t.Setenv("PATH", t.TempDir())
+	if New().Detect().Present { t.Fatal("Detect().Present = true without executable or configuration") }
+	if err := os.Mkdir(filepath.Join(repo, ".windsurf"), 0o755); err != nil { t.Fatal(err) }
+	if !New().Detect().Present { t.Fatal("Detect().Present = false with workspace configuration") }
+}
+
+func TestSessionIdentityUsesTrajectoryID(t *testing.T) {
+	agent := New()
+	input := &protocol.HookInputJSON{RawData: map[string]interface{}{"trajectory_id": "trajectory-1"}}
+	if got := agent.GetSessionID(input); got != "trajectory-1" { t.Fatalf("GetSessionID() = %q", got) }
+	input.SessionID = "already-normalized"
+	if got := agent.GetSessionID(input); got != "already-normalized" { t.Fatalf("GetSessionID() = %q", got) }
+	if got := agent.ResolveSessionFile("sessions", "../unsafe"); got != "" { t.Fatalf("unsafe session file = %q", got) }
+}
+
+func TestReadSessionUsesNativeTranscriptReference(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trajectory-1.jsonl")
+	content := []byte("{\"type\":\"user_input\"}\n")
+	if err := os.WriteFile(path, content, 0o600); err != nil { t.Fatal(err) }
+	input := &protocol.HookInputJSON{SessionID: "trajectory-1", SessionRef: path, Timestamp: "2026-09-06T00:00:00Z"}
+	session, err := New().ReadSession(input)
+	if err != nil { t.Fatal(err) }
+	if session.SessionID != "trajectory-1" || session.SessionRef != path || string(session.NativeData) != string(content) { t.Fatalf("session = %#v", session) }
+	if len(session.ModifiedFiles) != 0 { t.Fatalf("modified files = %#v", session.ModifiedFiles) }
+}
+
+func TestReadSessionRejectsMissingTranscript(t *testing.T) {
+	_, err := New().ReadSession(&protocol.HookInputJSON{SessionID: "trajectory-1", SessionRef: filepath.Join(t.TempDir(), "missing.jsonl")})
+	if err == nil { t.Fatal("missing transcript accepted") }
+}
+
+func TestReadSessionPassesThroughNativeCascadeTranscript(t *testing.T) {
+	path := filepath.Join("testdata", "cascade_transcript.jsonl")
+	session, err := New().ReadSession(&protocol.HookInputJSON{SessionID: "trajectory-123", SessionRef: path})
+	if err != nil { t.Fatal(err) }
+	if session.SessionID != "trajectory-123" || session.SessionRef != path || len(session.NativeData) == 0 { t.Fatalf("session = %#v", session) }
+}
+
+func TestNormalizeEvent(t *testing.T) {
+	event := NormalizeEvent(2, LifecycleEvent{Name: "pre_user_prompt", TrajectoryID: "trajectory-1", ExecutionID: "execution-1", Prompt: "hello", Timestamp: "2026-01-01T00:00:00Z"})
+	if event == nil || event.Type != 2 || event.SessionID != "trajectory-1" || event.Metadata["execution_id"] != "execution-1" { t.Fatalf("event = %#v", event) }
+	if NormalizeEvent(2, LifecycleEvent{}) != nil { t.Fatal("empty trajectory produced event") }
+}
