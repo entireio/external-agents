@@ -97,14 +97,19 @@ unavailable" state instead of crashing CI.
 
 ## Noon Curveball: what changed and how we adapted
 
-**Constraint (Track 3):** the integrated workflow released a **new transcript /
-lifecycle-event format**; existing users still emit the original. We must support
-both, never crash on unknown events, produce **partial** (not corrupted) results
-on incomplete input, and preserve existing behaviour — without duplicating the
-implementation.
+**Constraint (Track 3):** the official Track-3 fixture
+(`release-gate/seed_data/track-3-agent-session.jsonl`) is an AcmeCode
+agent-session **transcript** in a **new**, `event`-named format
+(`session_started`, `user_prompt`, `agent_response`, `tool_call`,
+`tool_result`, `file_read`, `file_changed`, `usage`, `checkpoint_created`,
+`session_ended`); existing users still emit the **original**, `type`-named
+format (`start`/`edit`/`test`/`checkpoint`/`end`). We must support both,
+never crash on unknown events, produce **partial** (not corrupted) results
+on incomplete input, and preserve existing behaviour — without duplicating
+the implementation.
 
-- **Invalidated assumption:** the workflow emits evidence/lifecycle events in a
-  *single fixed format*.
+- **Invalidated assumption:** the workflow emits evidence/lifecycle events in
+  a *single fixed format*.
 - **Fresh session + reconstruction:** a new agent session reconstructed prior
   intent/risks by running our own `entire release-gate handoff` plus the pre-noon
   checkpoint doc.
@@ -114,16 +119,24 @@ implementation.
   **normalized bundle** — so we adapt at the *parse boundary* and keep the bundle
   contract stable. No downstream change, no duplication.
 - **Focused revision:** new `release_gate/events.py` — one version-detecting
-  parser normalizes **both** v1 (`type`-based) and v2 (`event`/`payload`-based)
-  events into the same model; `events_to_bundle` builds the existing bundle.
-  Unknown events are counted (not fatal); corrupt/truncated lines tolerated;
-  incomplete input yields `ingest.partial = true`, surfaced as a **PARTIAL
-  banner** in the PR comment so incomplete context is never shown as
-  authoritative. New `entire release-gate ingest --events <jsonl>` subcommand.
-- **Tests:** `tests/test_events.py` covers **original, new, unknown, incomplete**;
-  existing 11 tests still pass (**16 total**).
-- **Why safe:** existing collection path unchanged; downstream untouched; partial
-  results explicitly flagged. Checkpoint: `afab2f277342` (commit `ae1cc09`).
+  parser normalizes **both** formats into the same internal model;
+  `events_to_bundle` builds the existing bundle. Churn comes from
+  `file_changed.lines_added`/`lines_removed` (new) or `edit.added`/`removed`
+  (original); unresolved risks come from `checkpoint_created.open_questions`
+  (new) or `checkpoint.risks` (original); test counts come from correlating
+  `tool_call` npm-test commands to their `tool_result` summary (new) versus a
+  direct `test` event (original). Known-but-no-evidence events (`user_prompt`,
+  `agent_response`, `file_read`, `usage`) are skipped; unknown events are
+  counted (not fatal); corrupt/truncated lines tolerated; incomplete input
+  yields `ingest.partial = true`, surfaced as a **PARTIAL banner** in the PR
+  comment so incomplete context is never shown as authoritative. New
+  `entire release-gate ingest --events <jsonl>` subcommand.
+- **Tests:** `tests/test_events.py` covers **new (official fixture), original,
+  unknown, incomplete**; existing 11 tests still pass (**17 total**).
+- **Why safe:** existing collection path unchanged; downstream
+  (`to_silver`/`features`/`scoring`) untouched, verified via `entire graph diff`
+  semantic-diff; partial results explicitly flagged. Checkpoint: `afab2f277342`
+  (commit `ae1cc09`).
 
 ## Checkpoint links and what each checkpoint proves
 

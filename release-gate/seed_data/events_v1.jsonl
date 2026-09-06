@@ -1,6 +1,0 @@
-{"v": 1, "type": "pr", "repo": "Yashas14/external-agents", "number": 7, "revision_sha": "abc12345", "base_sha": "def67890", "author": "dev", "title": "Add retry logic", "additions": 120, "deletions": 15, "files_changed": 3}
-{"v": 1, "type": "graph_impact", "symbol": "retry_handler", "file": "payments/retry.py", "kind": "function", "relationship": "CALLS", "distance": 1}
-{"v": 1, "type": "graph_impact", "symbol": "payment_api", "file": "payments/api.py", "kind": "function", "relationship": "CALLS", "distance": 2}
-{"v": 1, "type": "checkpoint", "checkpoint_id": "cp1", "created_at": "2026-09-06T06:00:00Z", "intent": "Add exponential backoff", "unresolved_risks": ["Duplicate payment on retry"]}
-{"v": 1, "type": "test", "name": "test_retry_backoff", "status": "passed", "touched_symbols": ["retry_handler"]}
-{"v": 1, "type": "test", "name": "test_payment_api", "status": "failed", "touched_symbols": ["payment_api"]}

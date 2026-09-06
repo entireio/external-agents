@@ -1,6 +1,0 @@
-{"schema": 2, "event": "pull_request.opened", "payload": {"repo": "Yashas14/external-agents", "pr": 8, "head": "aaa11122", "base": "bbb33344", "author": "dev", "title": "Add refund path", "churn": {"add": 90, "del": 4, "files": 2}}}
-{"schema": 2, "event": "graph.impact", "payload": {"name": "refund_handler", "path": "payments/refund.py", "kind": "function", "rel": "CALLS", "depth": 1}}
-{"schema": 2, "event": "checkpoint.recorded", "payload": {"id": "cp2", "at": "2026-09-06T06:30:00Z", "intent": "Support partial refunds", "risks": ["Idempotency not covered", "Currency rounding"]}}
-{"schema": 2, "event": "test.result", "payload": {"name": "test_refund", "outcome": "passed", "symbols": ["refund_handler"]}}
-{"schema": 2, "event": "agent.telemetry.heartbeat", "payload": {"ts": 123456}}
-{"schema": 2, "event": "some.brand_new_unknown_event", "payload": {"whatever": true}}

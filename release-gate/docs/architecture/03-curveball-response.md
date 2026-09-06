@@ -8,11 +8,15 @@
 ## 1. Invalidated assumption
 
 The pre-noon design assumed the integrated workflow emits evidence /
-lifecycle events in a **single fixed format** (the original `type`-based
-JSON lines consumed by `release_gate/collect.py`). The Noon Curveball
-introduces a **new** transcript/lifecycle-event format (`event` +
-`payload`-based JSON lines) — while existing integrations continue to emit
-the **original** format unchanged. Both must be supported simultaneously;
+lifecycle events in a **single fixed format** (the original `type`-named
+JSON lines: `start`/`edit`/`test`/`checkpoint`/`end`, consumed by
+`release_gate/collect.py`). The Noon Curveball delivers the **official
+Track-3 fixture** (`release-gate/seed_data/track-3-agent-session.jsonl`) — an
+AcmeCode **agent-session transcript** in a **new**, `event`-named format
+(`session_started`, `user_prompt`, `agent_response`, `tool_call`,
+`tool_result`, `file_read`, `file_changed`, `usage`, `checkpoint_created`,
+`session_ended`) — while existing integrations continue to emit the
+**original** format unchanged. Both must be supported simultaneously;
 neither can be assumed away.
 
 ## 2. Graph impact (run before editing)
@@ -39,20 +43,35 @@ Nothing downstream of the bundle needs to know a second format exists.
 
 Added `release_gate/events.py` — additive, no existing file modified:
 
-- **One version-detecting parser** (`parse_events`) normalizes both:
-  - **v1** (original, `type`-based: `pr` / `graph_impact` / `checkpoint` /
-    `test`), and
-  - **v2** (new, `event`/`payload`-based: `pull_request.*` / `graph.*` /
-    `checkpoint.*` / `test.*`)
+- **One version-detecting parser** (`parse_events`) normalizes both
+  transcript formats into **one internal event model**
+  (`{meta, changes[], checkpoints[], tests, ended}`):
+  - **new** (official Track-3 fixture, `event`-named): `session_started`,
+    `file_changed`, `checkpoint_created`, `session_ended`, plus `tool_call`
+    / `tool_result` pairs correlated by `call_id`.
+  - **original** (`type`-named): `start`, `edit`, `test`, `checkpoint`, `end`.
 
-  into **one internal event model** (`{pr, graph[], checkpoint[], test[]}`).
   There is no per-format duplication of bundle-assembly logic.
 - `events_to_bundle` assembles the **existing** evidence-bundle contract
   (`schema_version`, `pr`, `graph_impact`, `checkpoint_signals`,
   `test_results`) from the normalized model, so `silver.py` / `features.py`
   / `scoring.py` / `writeback.py` / `handoff.py` are untouched.
-- **Unknown events are counted, not fatal** — an unrecognized `type`/`event`
-  is appended to an `unknown` list and parsing continues.
+- **Churn** comes from `file_changed.lines_added`/`lines_removed` (new) or
+  `edit.added`/`removed` (original), summed per file into `pr.churn`.
+- **Unresolved risks** come from `checkpoint_created.open_questions` (new)
+  or `checkpoint.risks` (original) — both map to
+  `checkpoint_signals.unresolved_risk_count`.
+- **Test counts** are derived differently per format: the new transcript has
+  no direct test event, so `tool_call` commands containing `test` (e.g.
+  `npm test -- ...`) are correlated by `call_id` to their `tool_result`
+  summary (`"8 passed"`, `"1 failed, 7 passed"`) and parsed into
+  passed/failed/skipped counts; the original format reports a `test` event
+  directly with those counts already structured.
+- **Known-but-no-evidence events are skipped, not unknown**: `user_prompt`,
+  `agent_response`, `file_read`, and `usage` are recognized but contribute no
+  bundle signal.
+- **Unknown event types are counted, not fatal** — an unrecognized
+  `type`/`event` is appended to an `unknown` list and parsing continues.
 - **Corrupt/truncated lines are tolerated** — a line that fails
   `json.loads` increments `parse_errors` and is skipped, not raised.
 - **Incomplete input yields a PARTIAL bundle** — `events_to_bundle` sets
@@ -62,25 +81,30 @@ Added `release_gate/events.py` — additive, no existing file modified:
   an incomplete evidence bundle is never presented as an authoritative,
   complete risk decision.
 - New CLI subcommand: **`entire release-gate ingest --events <jsonl>`**
-  (wired in `release_gate/plugin.py`) reads a lifecycle-event JSONL file,
-  runs it through `parse_events` / `events_to_bundle`, and produces a
-  schema-valid evidence bundle exactly like `build_bundle` does from git +
-  `entire graph`/`entire checkpoint` output — same contract, different
-  source.
+  (wired in `release_gate/plugin.py`) reads an agent-session transcript
+  JSONL file, runs it through `parse_events` / `events_to_bundle`, and
+  produces a schema-valid evidence bundle exactly like `build_bundle` does
+  from git + `entire graph`/`entire checkpoint` output — same contract,
+  different source.
 
 ## 4. Tests
 
-`tests/test_events.py` (new) covers:
+`tests/test_events.py` (new) covers, against three fixtures —
+`seed_data/track-3-agent-session.jsonl` (**official** new-format transcript),
+`agent-session-original.jsonl` (original format), and
+`agent-session-incomplete.jsonl` (truncated/unknown-event stream):
 
-1. Original (v1) `type`-based event format parses correctly.
-2. New (v2) `event`/`payload`-based format parses correctly.
+1. New format — the official Track-3 fixture parses correctly (churn, risks,
+   correlated test counts, `formats == ["new"]`, `partial == False`).
+2. Original format parses correctly (`formats == ["original"]`,
+   `partial == False`).
 3. Unknown event kinds are counted, not fatal — no exception raised.
-4. Incomplete input (partial stream / parse errors) yields
-   `ingest.partial == true` in the resulting bundle.
+4. Incomplete input (parse errors + unknown events) yields
+   `ingest.partial == true` and still produces a scorable bundle.
 
 Existing 11 tests (`test_slice.py`, `test_scoring.py`, `test_plugin.py`,
-`test_features.py`, `conftest.py` fixtures) still pass unmodified — **16
-total** after adding the events suite.
+`test_features.py`, `conftest.py` fixtures) still pass unmodified — **17
+total** after adding the events suite (6 tests in `test_events.py`).
 
 ## 5. Why this is safe
 
@@ -91,7 +115,9 @@ total** after adding the events suite.
 - **Downstream untouched.** `silver.py`, `features.py`, `scoring.py`,
   `writeback.py`, and `handoff.py` never see raw events — only the same
   evidence-bundle shape they already validate against
-  `evidence_schemas/evidence_bundle.schema.json`.
+  `evidence_schemas/evidence_bundle.schema.json`. Confirmed with
+  `entire graph diff` (entity-level semantic diff): `to_silver`,
+  `build_gold_features`, and `score_features` show zero changes.
 - **Partial results are clearly flagged**, not silently treated as
   complete: `ingest.partial` propagates from the parser through the bundle
   to the PR-comment banner, so a truncated or mixed-format event stream
