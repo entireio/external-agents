@@ -11,6 +11,8 @@ preserving unrelated configuration.
 `trajectory_id` is the stable session identity and `execution_id` is retained
 as event metadata. The v1 Entire protocol has no code-write event type, so the
 exported lifecycle boundary preserves `post_write_code` data for downstream
-context extraction without ending a turn. Transcript parsing remains separate.
+context extraction without ending a turn. A native transcript hook supplies
+`transcript_path` as `SessionRef`; `read-session` reads those native bytes for
+the existing transcript/context layer. Transcript parsing remains separate.
 
 Build with `mise run build` or `go build -o entire-agent-windsurf ./cmd/entire-agent-windsurf`.

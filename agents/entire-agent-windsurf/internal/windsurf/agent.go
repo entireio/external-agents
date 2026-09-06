@@ -4,6 +4,7 @@ package windsurf
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -58,7 +59,18 @@ func (a *Agent) ResolveSessionFile(dir, id string) string {
 func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessionJSON, error) {
 	id := a.GetSessionID(input)
 	if id == "" { return protocol.AgentSessionJSON{}, errors.New("Windsurf trajectory_id is required") }
-	return protocol.AgentSessionJSON{SessionID: id, AgentName: AgentName, SessionRef: input.SessionRef, StartTime: input.Timestamp, ModifiedFiles: []string{}, NewFiles: []string{}, DeletedFiles: []string{}}, nil
+	if input == nil || strings.TrimSpace(input.SessionRef) == "" {
+		return protocol.AgentSessionJSON{}, errors.New("Windsurf transcript_path is required")
+	}
+	data, err := os.ReadFile(input.SessionRef)
+	if err != nil {
+		return protocol.AgentSessionJSON{}, fmt.Errorf("read Windsurf transcript: %w", err)
+	}
+	return protocol.AgentSessionJSON{
+		SessionID: id, AgentName: AgentName, RepoPath: protocol.RepoRoot(),
+		SessionRef: input.SessionRef, StartTime: input.Timestamp, NativeData: data,
+		ModifiedFiles: []string{}, NewFiles: []string{}, DeletedFiles: []string{},
+	}, nil
 }
 // WriteSession is intentionally a no-op until the lifecycle owner supplies a
 // native session persistence strategy.
