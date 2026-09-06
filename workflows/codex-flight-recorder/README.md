@@ -30,6 +30,8 @@ Use `--format json` for a UI, CI, or Databricks consumer. The command reports un
 
 For a real Databricks-backed export, use the [Databricks analytics notebook](databricks/README.md). Its computed `risk_score` is consumed by the briefing and increases the warning level for high-risk components.
 
+For a concise judge-facing walkthrough and verification checklist, see [DEMO.md](DEMO.md).
+
 ### Local demo without Databricks
 
 Use the committed fixture only for a demo; it is deliberately marked synthetic and must never be presented as real development history:

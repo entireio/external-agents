@@ -36,7 +36,7 @@ go run ./cmd/codex-flight-recorder --repo ../.. --task "your significant coding 
 
 ## Databricks use, data sources, and limitations
 
-Databricks is an optional analytics producer, not a required runtime dependency. The repository now includes a Databricks SQL notebook that calculates a per-file `risk_score` from non-sensitive development-history rows; that score is consumed by `--history` and influences the Before You Code risk level. A workspace has not been configured in this checkout. The included demo fixture is explicitly synthetic and is not presented as real history. No Databricks credentials or data are stored in this repository.
+Databricks is an optional analytics producer, not a required runtime dependency. The repository includes a Databricks SQL notebook that calculates a per-file `risk_score` from non-sensitive development-history rows; that score is consumed by `--history` and influences the Before You Code risk level. A live demo workspace/dashboard has been created with explicitly labelled synthetic rows only; no credentials or production data are stored in this repository.
 
 ## Known limitations and next steps
 
