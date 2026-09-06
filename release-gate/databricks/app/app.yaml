@@ -6,6 +6,6 @@ command:
 env:
   - name: RG_CATALOG
     value: release_gate
-  # DATABRICKS_HTTP_PATH is set to the SQL warehouse HTTP path at deploy time.
+  # SQL warehouse HTTP path (warehouse IDs are not secrets).
   - name: DATABRICKS_HTTP_PATH
-    valueFrom: sql-warehouse-http-path
+    value: /sql/1.0/warehouses/7f0409edb975227e
