@@ -4,8 +4,8 @@
 
 Release Gate turns every pull request into a Databricks-scored, evidence-backed
 release-risk decision — using **Entire Checkpoints** for *why* the code changed
-and **Entire Graph** for *what it structurally touches* — instead of a diff and a
-vibe.
+and **Entire Graph** for *what it structurally touches* — surfaced through an
+interactive dashboard and an AI-written review, instead of a diff and a vibe.
 
 ## Problem, intended user and why it matters
 
@@ -28,8 +28,11 @@ unrelated app, which the guide states "is not sufficient by itself."
 ```
 entire release-gate score --base <sha> --pr-number 1 --pr-repo owner/name --run-tests
 entire release-gate collect > bundle.json     # emit the evidence bundle
+entire release-gate dashboard --out dashboard.html --ai   # interactive HTML dashboard + AI review
 entire release-gate info                       # plugin metadata
 ```
+
+Plugin commands: `info | version | collect | score | handoff | ingest | dashboard`.
 
 (For Track 3 the designated fork is `entireio/external-agents`, which hosts
 `entire-agent-<name>` *session-capture* binaries; Release Gate is a CI/PR
@@ -64,9 +67,15 @@ Databricks Free Edition  (databricks/jobs/*.py, medallion Delta)
    [Gold]   pr_risk_features  →  pr_risk_scores   (MERGE on pr+sha,
                                  CHECK risk_score BETWEEN 0 AND 1, OPTIMIZE ZORDER)
    MLflow model (databricks/ml/train_model.py) → Model Serving (heuristic fallback)
+     endpoint `release-gate-risk` (UC model `release_gate.gold.risk_model` v1), READY;
+     `score --use-endpoint` calls it live, with the heuristic scorer as fallback
+   Foundation Model (Llama 3.3 70B, release_gate/ai.py) → AI risk narrative (heuristic fallback)
    Databricks Workflow (databricks/bundle/databricks.yml): ingest→transform→features→score
    Writeback (integration/writeback/github_writeback.py) → PR comment + gate
    Databricks App (databricks/app) / SQL dashboard (databricks/sql) → judge-facing UI
+   entire release-gate dashboard (release_gate/dashboard.py) → self-contained interactive
+     HTML: risk gauge, Entire-Graph blast-radius network (vis-network), evidence cards,
+     top risk drivers, checkpoint open-questions, and the AI review
 ```
 
 The pure scoring logic lives in `release_gate/` (bundle → silver → features →
@@ -94,6 +103,18 @@ Graph output is treated as evidence, not an oracle: findings were spot-checked
 against source and tests, and every evidence block in the bundle carries an
 `available` flag so a graph/checkpoint failure degrades to an "evidence
 unavailable" state instead of crashing CI.
+
+## Live demo
+
+Release Gate scores itself, live, on a real GitHub PR:
+[`Yashas14/external-agents#1`](https://github.com/Yashas14/external-agents/pull/1).
+`entire release-gate score` collected real Entire Graph + Checkpoint evidence
+for that PR, computed a **blast radius of 60 impacted symbols across 22 files**,
+landed a **REVIEW** gate, and posted the gate comment (evidence table + gate)
+back onto the PR via `integration/writeback/github_writeback.py`, with the
+Databricks Llama 3.3 70B AI review appended underneath. The same bundle also
+renders via `entire release-gate dashboard` into the interactive HTML dashboard
+described above.
 
 ## Noon Curveball: what changed and how we adapted
 
@@ -176,6 +197,8 @@ pip install -r requirements.txt
 pip install -e .                                  # builds entire-release-gate
 entire plugin install "$(python -c 'import shutil;print(shutil.which("entire-release-gate"))')"
 entire release-gate score --base <sha> --pr-number 1 --pr-repo owner/name --run-tests
+entire release-gate score --use-endpoint --ai --base <sha> --pr-number 1 --pr-repo owner/name
+entire release-gate dashboard --ai --out dashboard.html --base <sha> --pr-number 1 --pr-repo owner/name
 
 # Run the whole slice locally (no Databricks/quota needed):
 python scripts/run_local_slice.py                 # scores the sample bundle
@@ -189,7 +212,7 @@ python scripts/run_local_slice.py bundle.json
 python integration/writeback/github_writeback.py --bundle bundle.json --dry-run
 
 # Tests:
-python -m pytest -q                               # 9 passing
+python -m pytest -q                               # 18 passing
 
 # Train the risk model (MLflow-tracked):
 python databricks/ml/train_model.py               # cv_auc ~0.85
@@ -209,8 +232,15 @@ databricks bundle run release_gate_pipeline -t dev -p release-gate
 - **MLflow tracking + Model Registry** (`databricks/ml/train_model.py`):
   CPU-friendly gradient-boosted model, logged params/metrics
   (cv_auc ≈ 0.85, holdout_auc ≈ 0.82).
-- **Model Serving** (serverless): `score_and_writeback.py` calls the endpoint
-  when configured, with the heuristic scorer as an automatic fallback.
+- **Model Serving** (serverless): a `release-gate-risk` endpoint (UC model
+  `release_gate.gold.risk_model` v1) is deployed and **READY**; `score
+  --use-endpoint` / `dashboard --use-endpoint` call it live, with the heuristic
+  scorer as an automatic fallback (also used by `score_and_writeback.py`).
+- **Foundation Models (Llama 3.3 70B) for the AI review** (`release_gate/ai.py`):
+  a serverless Databricks-hosted foundation-model endpoint
+  (`databricks-meta-llama-3-3-70b-instruct`) turns the evidence bundle into a
+  short verdict/why/check narrative appended to the gate comment and the
+  dashboard; heuristic-free text is skipped (fails soft) if unreachable.
 - **Databricks Workflows / Asset Bundles** (`databricks/bundle/databricks.yml`):
   a single 4-task Workflow, tagged `project=release-gate`.
 - **Databricks App** (`databricks/app`) or **Lakeview/SQL dashboard**
