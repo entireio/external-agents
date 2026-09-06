@@ -15,10 +15,11 @@ type Runner interface {
 }
 
 type Request struct {
-	Repo        string
-	Task        string
-	Files       []string
-	HistoryPath string
+	Repo          string
+	Task          string
+	Files         []string
+	HistoryPath   string
+	HistorySource string
 }
 
 type Briefing struct {
@@ -85,7 +86,7 @@ func Build(r Runner, request Request) (Briefing, error) {
 	b.loadCheckpoints(r, request.Repo)
 	b.loadGraph(r, request)
 	b.AffectedFiles = unique(append(request.Files, b.AffectedFiles...))
-	b.loadHistory(request.HistoryPath)
+	b.loadHistory(request.HistoryPath, request.HistorySource)
 	b.RecommendedTests = recommendTests(r, request.Repo, b.AffectedFiles)
 	b.Risk = assessRisk(b)
 	return b, nil
@@ -182,7 +183,7 @@ func isRepositoryFile(repo, graphPath string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func (b *Briefing) loadHistory(path string) {
+func (b *Briefing) loadHistory(path, source string) {
 	if path == "" {
 		return
 	}
@@ -197,7 +198,10 @@ func (b *Briefing) loadHistory(path string) {
 		return
 	}
 	b.History.Available = true
-	b.History.Source = "local development-history export (verify provenance before use)"
+	b.History.Source = source
+	if b.History.Source == "" {
+		b.History.Source = "local development-history export (verify provenance before use)"
+	}
 	for _, record := range records {
 		if !overlaps(record.Files, b.AffectedFiles) {
 			continue

@@ -39,7 +39,7 @@ func TestBuildCombinesEntireGraphAndReviewedHistory(t *testing.T) {
 		"entire graph":      []byte(`{"results":[{"file_path":"payments/service.go","focus_line":10,"symbol_name":"Charge"},{"file_path":"payments/webhook.go","focus_line":12,"symbol_name":"Verify"}]}`),
 		"git ls-files":      []byte("payments/service_test.go\npayments/webhook_test.go\nother/other_test.go\n"),
 	}, errors: map[string]error{}}
-	b, err := Build(runner, Request{Repo: dir, Task: "replace payment gateway", Files: []string{"payments/service.go"}, HistoryPath: history})
+	b, err := Build(runner, Request{Repo: dir, Task: "replace payment gateway", Files: []string{"payments/service.go"}, HistoryPath: history, HistorySource: "synthetic test history"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +54,9 @@ func TestBuildCombinesEntireGraphAndReviewedHistory(t *testing.T) {
 	}
 	if b.History.FailedSessions != 1 || b.History.Retries != 3 || b.History.Reverts != 1 {
 		t.Fatalf("history = %#v", b.History)
+	}
+	if b.History.Source != "synthetic test history" {
+		t.Fatalf("history source = %q", b.History.Source)
 	}
 	if len(b.RecommendedTests) != 2 {
 		t.Fatalf("tests = %#v", b.RecommendedTests)

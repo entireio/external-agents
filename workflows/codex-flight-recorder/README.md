@@ -26,6 +26,19 @@ go run ./cmd/codex-flight-recorder --repo ../.. --task "..." --history history-e
 
 Use `--format json` for a UI, CI, or Databricks consumer. The command reports unavailable Entire/Graph/history sources as warnings; it never substitutes example data.
 
+### Local demo without Databricks
+
+Use the committed fixture only for a demo; it is deliberately marked synthetic and must never be presented as real development history:
+
+```bash
+go run ./cmd/codex-flight-recorder \
+  --repo ../.. \
+  --task "Explain the impact of changing external-agent hook installation" \
+  --files agents/entire-agent-kilo/internal/kilo/hooks.go \
+  --history examples/synthetic-development-history.json \
+  --history-source "SYNTHETIC DEMO DATA — not production or Databricks history"
+```
+
 ## Codex workflow
 
 1. Run the command before editing a high-impact area.

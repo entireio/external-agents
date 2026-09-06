@@ -32,10 +32,11 @@ func main() {
 	repo := flag.String("repo", ".", "Repository root")
 	files := flag.String("files", "", "Comma-separated files already known to be affected")
 	history := flag.String("history", "", "Path to a reviewed development-history JSON export")
+	historySource := flag.String("history-source", "", "Visible provenance label for the history export")
 	format := flag.String("format", "markdown", "Output format: markdown or json")
 	flag.Parse()
 
-	b, err := briefing.Build(commandRunner{}, briefing.Request{Repo: *repo, Task: *task, Files: split(*files), HistoryPath: *history})
+	b, err := briefing.Build(commandRunner{}, briefing.Request{Repo: *repo, Task: *task, Files: split(*files), HistoryPath: *history, HistorySource: *historySource})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "codebase-flight-recorder:", err)
 		os.Exit(2)

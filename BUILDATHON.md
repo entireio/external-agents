@@ -28,7 +28,7 @@ go run ./cmd/codex-flight-recorder --repo ../.. --task "your significant coding 
 
 ## Databricks use, data sources, and limitations
 
-Databricks is an optional analytics producer, not a required runtime dependency. A future Databricks job may export non-sensitive development-history records for `--history`; the current implementation labels this source and requires it to be explicitly supplied. No Databricks credentials or data are stored in this repository.
+Databricks is an optional analytics producer, not a required runtime dependency. A future Databricks job may export non-sensitive development-history records for `--history`; the current implementation labels this source and requires it to be explicitly supplied. The included demo fixture is explicitly synthetic and is not presented as real history. No Databricks credentials or data are stored in this repository.
 
 ## Known limitations and next steps
 
