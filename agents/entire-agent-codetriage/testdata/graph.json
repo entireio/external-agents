@@ -1,0 +1,7 @@
+{
+  "reverse_dependencies": {
+    "src/core.py": ["src/mid.py"],
+    "src/mid.py": ["src/edge.py"],
+    "src/edge.py": ["src/leaf.py"]
+  }
+}
