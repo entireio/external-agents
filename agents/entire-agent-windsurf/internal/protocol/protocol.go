@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type sessionDirResolver interface{ GetSessionDir(string) (string, error) }
@@ -17,6 +18,12 @@ type sessionWriter interface{ WriteSession(AgentSessionJSON) error }
 type transcriptReader interface{ ReadTranscript(string) ([]byte, error) }
 type transcriptChunker interface { ChunkTranscript([]byte, int) ([][]byte, error); ReassembleTranscript([][]byte) ([]byte, error) }
 type resumeFormatter interface{ FormatResumeCommand(string) string }
+type hookParser interface {
+	ParseHook(string, []byte) (*EventJSON, error)
+	InstallHooks(bool, bool) (int, error)
+	UninstallHooks() error
+	AreHooksInstalled() bool
+}
 
 func WriteJSON(w io.Writer, v any) error { enc := json.NewEncoder(w); enc.SetEscapeHTML(false); return enc.Encode(v) }
 func ReadJSON[T any](r io.Reader) (*T, error) { var value T; if err := json.NewDecoder(r).Decode(&value); err != nil { return nil, err }; return &value, nil }
@@ -31,6 +38,32 @@ func HandleReadTranscript(args []string, out io.Writer, a transcriptReader) erro
 func HandleChunkTranscript(args []string, in io.Reader, out io.Writer, a transcriptChunker) error { fs := newFlagSet("chunk-transcript"); size := fs.Int("max-size", 0, "maximum chunk size"); if err := fs.Parse(args); err != nil { return err }; data, err := io.ReadAll(in); if err != nil { return err }; chunks, err := a.ChunkTranscript(data, *size); if err != nil { return err }; return WriteJSON(out, ChunkResponse{Chunks: chunks}) }
 func HandleReassembleTranscript(in io.Reader, out io.Writer, a transcriptChunker) error { value, err := ReadJSON[ChunkResponse](in); if err != nil { return err }; data, err := a.ReassembleTranscript(value.Chunks); if err != nil { return err }; _, err = out.Write(data); return err }
 func HandleFormatResumeCommand(args []string, out io.Writer, a resumeFormatter) error { fs := newFlagSet("format-resume-command"); id := fs.String("session-id", "", "session id"); if err := fs.Parse(args); err != nil { return err }; return WriteJSON(out, ResumeCommandResponse{Command: a.FormatResumeCommand(*id)}) }
+func HandleParseHook(args []string, in io.Reader, out io.Writer, a hookParser) error {
+	fs := newFlagSet("parse-hook")
+	hook := fs.String("hook", "", "hook name")
+	if err := fs.Parse(args); err != nil { return err }
+	data, err := readStdinWithTimeout(in, 100*time.Millisecond)
+	if err != nil { return err }
+	event, err := a.ParseHook(*hook, data)
+	if err != nil { return err }
+	if event == nil { _, err = io.WriteString(out, "null\n"); return err }
+	return WriteJSON(out, event)
+}
+func HandleInstallHooks(args []string, out io.Writer, a hookParser) error {
+	fs := newFlagSet("install-hooks")
+	localDev := fs.Bool("local-dev", false, "local development")
+	force := fs.Bool("force", false, "force")
+	if err := fs.Parse(args); err != nil { return err }
+	count, err := a.InstallHooks(*localDev, *force)
+	if err != nil { return err }
+	return WriteJSON(out, HooksInstalledCountResponse{HooksInstalled: count})
+}
+func readStdinWithTimeout(r io.Reader, timeout time.Duration) ([]byte, error) {
+	type result struct { data []byte; err error }
+	ch := make(chan result, 1)
+	go func() { data, err := io.ReadAll(r); ch <- result{data, err} }()
+	select { case result := <-ch: return result.data, result.err; case <-time.After(timeout): return nil, nil }
+}
 func DefaultSessionDir(repo string) string { return filepath.Join(repo, ".entire", "tmp") }
 func ResolveSessionFile(dir, id string) string { return filepath.Join(dir, id+".json") }
 func newFlagSet(name string) *flag.FlagSet { fs := flag.NewFlagSet(name, flag.ContinueOnError); fs.SetOutput(io.Discard); return fs }

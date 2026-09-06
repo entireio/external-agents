@@ -33,6 +33,8 @@ type SessionDirResponse struct{ SessionDir string `json:"session_dir"` }
 type SessionFileResponse struct{ SessionFile string `json:"session_file"` }
 type ChunkResponse struct{ Chunks [][]byte `json:"chunks"` }
 type ResumeCommandResponse struct{ Command string `json:"command"` }
+type HooksInstalledCountResponse struct{ HooksInstalled int `json:"hooks_installed"` }
+type AreHooksInstalledResponse struct{ Installed bool `json:"installed"` }
 
 type AgentSessionJSON struct {
 	SessionID     string   `json:"session_id"`

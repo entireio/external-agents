@@ -44,6 +44,14 @@ func run(args []string, in io.Reader, out io.Writer) error {
 		return protocol.HandleReassembleTranscript(in, out, agent)
 	case "format-resume-command":
 		return protocol.HandleFormatResumeCommand(args[1:], out, agent)
+	case "parse-hook":
+		return protocol.HandleParseHook(args[1:], in, out, agent)
+	case "install-hooks":
+		return protocol.HandleInstallHooks(args[1:], out, agent)
+	case "uninstall-hooks":
+		return agent.UninstallHooks()
+	case "are-hooks-installed":
+		return protocol.WriteJSON(out, protocol.AreHooksInstalledResponse{Installed: agent.AreHooksInstalled()})
 	default:
 		return fmt.Errorf("unknown subcommand: %s", args[0])
 	}

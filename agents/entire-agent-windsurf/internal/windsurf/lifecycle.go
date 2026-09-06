@@ -2,9 +2,8 @@ package windsurf
 
 import "github.com/entireio/external-agents/agents/entire-agent-windsurf/internal/protocol"
 
-// LifecycleEvent is the raw-event contract for the future Windsurf hook
-// adapter. It intentionally models common Cascade fields without choosing a
-// hook installation or mapping policy.
+// LifecycleEvent is the raw-event contract between Windsurf hook receiving and
+// the existing Entire protocol adapter.
 type LifecycleEvent struct {
 	Name         string
 	TrajectoryID string
@@ -12,6 +11,7 @@ type LifecycleEvent struct {
 	Timestamp    string
 	SessionRef   string
 	Prompt       string
+	Metadata     map[string]string
 }
 
 // NormalizeEvent creates the protocol event after the lifecycle owner selects
@@ -20,7 +20,10 @@ func NormalizeEvent(eventType int, input LifecycleEvent) *protocol.EventJSON {
 	if input.TrajectoryID == "" {
 		return nil
 	}
-	metadata := map[string]string{}
+	metadata := make(map[string]string, len(input.Metadata)+2)
+	for key, value := range input.Metadata {
+		metadata[key] = value
+	}
 	if input.ExecutionID != "" {
 		metadata["execution_id"] = input.ExecutionID
 	}

@@ -14,8 +14,8 @@ func TestInfo(t *testing.T) {
 	if info.ProtocolVersion != protocol.ProtocolVersion || info.Name != AgentName || info.Type != "Windsurf Cascade" || !info.IsPreview {
 		t.Fatalf("unexpected info: %#v", info)
 	}
-	if !reflect.DeepEqual(info.ProtectedDirs, []string{".windsurf"}) || info.Capabilities.Hooks || info.Capabilities.TranscriptAnalyzer {
-		t.Fatalf("unexpected core-only info: %#v", info)
+	if !reflect.DeepEqual(info.ProtectedDirs, []string{".windsurf"}) || !info.Capabilities.Hooks || info.Capabilities.TranscriptAnalyzer {
+		t.Fatalf("unexpected hook capability info: %#v", info)
 	}
 }
 
