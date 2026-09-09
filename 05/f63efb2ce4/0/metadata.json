@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "05f63efb2ce4",
+  "session_id": "01a08662-1679-7de2-87e6-b48f28980099",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-09T14:52:57.209842Z",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-crewai/mise.toml",
+    "agents/entire-agent-crewai/protocol_wrapper.py",
+    "agents/entire-agent-crewai/test_build_task.py",
+    "agents/entire-agent-crewai/test_protocol_wrapper.py",
+    "agents/entire-agent-langgraph/protocol_wrapper.py",
+    "agents/entire-agent-langgraph/test_protocol_wrapper.py"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "395e3e2d4b06",
+  "checkpoint_transcript_start": 959,
+  "transcript_lines_at_start": 959,
+  "compact_transcript_start": 108,
+  "token_usage": {
+    "input_tokens": 17019,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4834560,
+    "output_tokens": 7896,
+    "api_call_count": 27
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-09T14:52:57.12755Z",
+    "agent_lines": 797,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 797,
+    "total_lines_changed": 797,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
