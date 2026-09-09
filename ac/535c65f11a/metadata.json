@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "ac535c65f11a",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-crewai/protocol_wrapper.py",
+    "agents/entire-agent-crewai/test_forwarding.py",
+    "agents/entire-agent-crewai/test_protocol_wrapper.py",
+    "agents/entire-agent-langgraph/protocol_wrapper.py",
+    "agents/entire-agent-langgraph/test_forwarding.py",
+    "agents/entire-agent-langgraph/test_protocol_wrapper.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ac/535c65f11a/0/metadata.json",
+      "transcript": "/ac/535c65f11a/0/full.jsonl",
+      "compact_transcript": "/ac/535c65f11a/0/transcript.jsonl",
+      "content_hash": "/ac/535c65f11a/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 15966,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4187776,
+    "output_tokens": 8808,
+    "api_call_count": 22
+  }
+}
