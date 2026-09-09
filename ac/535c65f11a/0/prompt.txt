@@ -1,0 +1,17 @@
+Review PR 32
+
+---
+
+Before we fix those, can you solve the merge errors?
+
+---
+
+Did you address the issues?
+
+---
+
+Ok, do that then
+
+---
+
+Address the Copilot feedback. Commit/push, then ask Copilot to review again. Keep going until Copilot can't find anything.
