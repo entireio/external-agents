@@ -1,0 +1,19 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "5d3432d6d1a3",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-kiro/internal/kiro/large_record_test.go",
+    "agents/entire-agent-kiro/internal/kiro/session_jsonl.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5d/3432d6d1a3/0/metadata.json",
+      "transcript": "/5d/3432d6d1a3/0/full.jsonl",
+      "compact_transcript": "/5d/3432d6d1a3/0/transcript.jsonl",
+      "content_hash": "/5d/3432d6d1a3/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
