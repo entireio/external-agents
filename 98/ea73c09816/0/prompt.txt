@@ -1,0 +1,21 @@
+Review PR 54
+
+---
+
+Before we fix those, do you have a harness to test this?
+
+---
+
+Does the E2E test use the full Hermes agent?
+
+---
+
+Ok, address the findings as a stacked PR, run all tests.
+
+---
+
+Before merging 54, there is a merge confict. How do we resolve that one?
+
+---
+
+CI is failing now.
