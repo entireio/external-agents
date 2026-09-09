@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "c67224cd8221",
+  "session_id": "01a086e4-e6c2-70a1-8041-9fd8fbc14421",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-09T16:06:22.6414Z",
+  "branch": "fix/pr57-review",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-amp/internal/amp/agent.go",
+    "agents/entire-agent-amp/internal/amp/agent_test.go",
+    "agents/entire-agent-goose/internal/goose/agent.go",
+    "agents/entire-agent-goose/internal/goose/agent_test.go"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "05ac746bf060",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 58985,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 770048,
+    "output_tokens": 3153,
+    "api_call_count": 16
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-09T16:06:22.598367Z",
+    "agent_lines": 183,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 183,
+    "total_lines_changed": 183,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
