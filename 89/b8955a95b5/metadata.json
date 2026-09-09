@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "89b8955a95b5",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-crewai/.gitignore",
+    "agents/entire-agent-crewai/AGENT.md",
+    "agents/entire-agent-crewai/README.md",
+    "agents/entire-agent-crewai/e2e_crewai_fixture.py",
+    "agents/entire-agent-crewai/mise.toml",
+    "agents/entire-agent-langgraph/AGENT.md",
+    "agents/entire-agent-langgraph/README.md",
+    "agents/entire-agent-langgraph/mise.toml",
+    "e2e/crewai_smoke_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/89/b8955a95b5/0/metadata.json",
+      "transcript": "/89/b8955a95b5/0/full.jsonl",
+      "compact_transcript": "/89/b8955a95b5/0/transcript.jsonl",
+      "content_hash": "/89/b8955a95b5/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 58608,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3858176,
+    "output_tokens": 10344,
+    "api_call_count": 32
+  }
+}
