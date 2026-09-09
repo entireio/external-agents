@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "1bda692ae02c",
+  "strategy": "manual-commit",
+  "branch": "fix/hermes-repository-attribution",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "agents/entire-agent-hermes/README.md",
+    "agents/entire-agent-hermes/internal/hermes/agent_test.go",
+    "agents/entire-agent-hermes/internal/hermes/plugin/__init__.py",
+    "agents/entire-agent-hermes/scripts/verify-hermes.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/1b/da692ae02c/0/metadata.json",
+      "transcript": "/1b/da692ae02c/0/full.jsonl",
+      "compact_transcript": "/1b/da692ae02c/0/transcript.jsonl",
+      "content_hash": "/1b/da692ae02c/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 172874,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2833920,
+    "output_tokens": 9168,
+    "api_call_count": 40
+  }
+}
