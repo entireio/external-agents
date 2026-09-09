@@ -1,0 +1,15 @@
+{
+  "transcript_analyzer": {
+    "session_ref": "testdata/transcript.jsonl",
+    "offset": 0,
+    "modified_files": [
+      "README.md",
+      "cmd/greet/main.go"
+    ],
+    "prompts": [
+      "Create a small greeting command."
+    ],
+    "summary": "Implemented the greeting command and documented it.",
+    "has_summary": true
+  }
+}

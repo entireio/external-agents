@@ -1,0 +1,35 @@
+[tools]
+# CrewAI supports Python <3.14. Use the same interpreter for the optional fixture.
+python = "3.13"
+
+[tasks.build]
+description = "Build the entire-agent-crewai wrapper"
+run = """
+# Recreate generated environments from older builds using Python 3.14.
+if [ -x .venv/bin/python ] && ! .venv/bin/python -c 'import sys; sys.exit(sys.version_info[:2] != (3, 13))'; then
+  python3 -m venv --clear .venv
+else
+  python3 -m venv .venv
+fi
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install 'entire-adapter==0.2.2'
+if [ "${CREWAI_E2E:-}" = "1" ]; then
+  python3 -m venv .venv-crewai
+  .venv-crewai/bin/python -m pip install 'entire-adapter[crewai]==0.2.2' 'crewai==1.15.20'
+fi
+.venv/bin/python build_launcher.py
+"""
+
+[tasks.test]
+description = "Run wrapper unit tests and protocol smoke tests"
+run = """
+mise run build
+.venv/bin/python -m unittest discover -s . -p 'test_*.py'
+./entire-agent-crewai info >/dev/null
+./entire-agent-crewai detect >/dev/null
+printf '%s' '{"session_id":"crewai-smoke","user_prompt":"Smoke test","raw_data":{"framework":"crewai","agent_label":"smoke"}}' | ./entire-agent-crewai parse-hook --hook turn-start >/dev/null
+"""
+
+[tasks.clean]
+description = "Remove generated wrapper and virtual environment"
+run = "rm -rf .venv .venv-crewai entire-agent-crewai"

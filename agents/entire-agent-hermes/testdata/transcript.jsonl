@@ -1,0 +1,5 @@
+{"v":1,"type":"session_start","timestamp":"2026-08-06T12:00:00Z","model":"fixture-model"}
+{"v":1,"type":"user","timestamp":"2026-08-06T12:00:01Z","content":"Create a small greeting command."}
+{"v":1,"type":"tool","timestamp":"2026-08-06T12:00:02Z","name":"write_file","status":"ok","modified_files":["cmd/greet/main.go","README.md"]}
+{"v":1,"type":"assistant","timestamp":"2026-08-06T12:00:03Z","content":"Implemented the greeting command and documented it."}
+{"v":1,"type":"turn_end","timestamp":"2026-08-06T12:00:04Z","status":"ok"}
