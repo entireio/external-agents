@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "9d1810b50ec9",
+  "strategy": "manual-commit",
+  "branch": "fix/hermes-repository-attribution",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".github/workflows/lint.yml",
+    ".github/workflows/protocol-compliance.yml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/9d/1810b50ec9/0/metadata.json",
+      "transcript": "/9d/1810b50ec9/0/full.jsonl",
+      "compact_transcript": "/9d/1810b50ec9/0/transcript.jsonl",
+      "content_hash": "/9d/1810b50ec9/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 21770,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2269056,
+    "output_tokens": 4267,
+    "api_call_count": 20
+  }
+}

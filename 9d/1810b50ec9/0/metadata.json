@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "9d1810b50ec9",
+  "session_id": "01a084b0-ff5e-7673-96f5-f755e3e7e6b9",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-09T10:38:07.6849Z",
+  "branch": "fix/hermes-repository-attribution",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".github/workflows/lint.yml",
+    ".github/workflows/protocol-compliance.yml"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "f8691cd91456",
+  "checkpoint_transcript_start": 313,
+  "transcript_lines_at_start": 313,
+  "compact_transcript_start": 39,
+  "token_usage": {
+    "input_tokens": 21770,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2269056,
+    "output_tokens": 4267,
+    "api_call_count": 20
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-09T10:38:07.376561Z",
+    "agent_lines": 16,
+    "agent_removed": 5,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 16,
+    "total_lines_changed": 21,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
