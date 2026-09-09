@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "2ae433579fc0",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-goose/internal/goose/compact.go",
+    "agents/entire-agent-goose/internal/goose/session_jsonl.go",
+    "agents/entire-agent-goose/internal/goose/transcript.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2a/e433579fc0/0/metadata.json",
+      "transcript": "/2a/e433579fc0/0/full.jsonl",
+      "compact_transcript": "/2a/e433579fc0/0/transcript.jsonl",
+      "content_hash": "/2a/e433579fc0/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 11554,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 830592,
+    "output_tokens": 2570,
+    "api_call_count": 6
+  }
+}
