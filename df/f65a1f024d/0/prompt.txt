@@ -1,0 +1,37 @@
+Review PR 54
+
+---
+
+Before we fix those, do you have a harness to test this?
+
+---
+
+Does the E2E test use the full Hermes agent?
+
+---
+
+Ok, address the findings as a stacked PR, run all tests.
+
+---
+
+Before merging 54, there is a merge confict. How do we resolve that one?
+
+---
+
+CI is failing now.
+
+---
+
+Did you see Suhaan's review feedback? Are all items addressed in this PR or my PR stacked on top?
+
+---
+
+54 is merged. What's the status of 88 now?
+
+---
+
+The Hermes protocol compliance failed.
+
+---
+
+Copilot has feedback on #88. Review and address it.
