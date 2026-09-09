@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "1605a25718e7",
+  "strategy": "manual-commit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-qwen/internal/qwen/hooks.go",
+    "agents/entire-agent-qwen/internal/qwen/hooks_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/16/05a25718e7/0/metadata.json",
+      "transcript": "/16/05a25718e7/0/full.jsonl",
+      "compact_transcript": "/16/05a25718e7/0/transcript.jsonl",
+      "content_hash": "/16/05a25718e7/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6826,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 587264,
+    "output_tokens": 1988,
+    "api_call_count": 4
+  }
+}
