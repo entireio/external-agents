@@ -1,0 +1,7 @@
+[tasks.build]
+description = "Build the binary"
+run = "go build -o entire-agent-windsurf ./cmd/entire-agent-windsurf"
+
+[tasks.test]
+description = "Run unit tests"
+run = "go test ./..."
