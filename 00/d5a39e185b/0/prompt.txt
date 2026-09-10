@@ -1,0 +1,41 @@
+Review https://github.com/entireio/external-agents/issues/18 - I believe it's filed in the wrong repo and belongs to entireio/cli. Investigate if the issue still persists.
+
+---
+
+Review PR 62
+
+---
+
+Resolve the merge conflict
+
+---
+
+Copilot has a bunch of comments. Review and address them, then re-request Copilot to review. Keep that loop until no findings are left.
+
+---
+
+Check this error: https://github.com/entireio/external-agents/actions/runs/34450757988
+
+---
+
+Is there JS/TS in this repo?
+
+---
+
+Can you fix the failure?
+
+---
+
+Can we just exclude it and wrap up the CodeQL config without those files?
+
+---
+
+https://github.com/entireio/external-agents/security/code-scanning/tools/CodeQL/status/configurations/automatic/3a122c819a7aef136ff1e47b0150ef45507e6d915bb8193d75b6f3023e74ebcb still shows an error. Is there a way to clear this?
+
+---
+
+Cool. Now look at this: https://github.com/entireio/external-agents/security/code-scanning/1
+
+---
+
+Why don't you add it?
