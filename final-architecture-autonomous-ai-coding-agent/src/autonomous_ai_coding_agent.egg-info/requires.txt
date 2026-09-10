@@ -1,0 +1,10 @@
+streamlit>=1.37.0
+
+[databricks]
+databricks-sdk>=0.30.0
+
+[dev]
+pytest>=8.0.0
+
+[llm]
+openai>=1.40.0
