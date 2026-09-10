@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "a00820514822",
+  "strategy": "manual-commit",
+  "branch": "codex/pr58-merge",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-amp/internal/amp/paths.go",
+    "agents/entire-agent-kiro/internal/kiro/paths.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a0/0820514822/0/metadata.json",
+      "transcript": "/a0/0820514822/0/full.jsonl",
+      "compact_transcript": "/a0/0820514822/0/transcript.jsonl",
+      "content_hash": "/a0/0820514822/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 74608,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1185664,
+    "output_tokens": 2121,
+    "api_call_count": 17
+  }
+}
