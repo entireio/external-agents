@@ -1,0 +1,25 @@
+Review all PRs opened by suhaanthayyil. Identify functional and security issues. If the fix is straightforward, push it straight into the PR. If not, leave a comment. Summarize your work at the end, including which PRs can be merged by me.
+
+---
+
+Ok, check again
+
+---
+
+On PR 56, CI is failing. Figure out why.
+
+---
+
+So atomicWriteFile doesn't have this param?
+
+---
+
+But there could be caller that passes 0o755?
+
+---
+
+What's the link to the linter documentation describing this param?
+
+---
+
+Ok, add the //nolint:unparam with short explanation.
