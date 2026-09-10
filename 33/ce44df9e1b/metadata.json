@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "33ce44df9e1b",
+  "strategy": "manual-commit",
+  "branch": "fix/codeql-opencode",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".github/workflows/codeql-verify.yml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/33/ce44df9e1b/0/metadata.json",
+      "transcript": "/33/ce44df9e1b/0/full.jsonl",
+      "compact_transcript": "/33/ce44df9e1b/0/transcript.jsonl",
+      "content_hash": "/33/ce44df9e1b/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10711,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 578688,
+    "output_tokens": 1355,
+    "api_call_count": 5
+  }
+}
