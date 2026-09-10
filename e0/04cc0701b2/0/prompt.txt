@@ -1,0 +1,13 @@
+Review https://github.com/entireio/external-agents/issues/18 - I believe it's filed in the wrong repo and belongs to entireio/cli. Investigate if the issue still persists.
+
+---
+
+Review PR 62
+
+---
+
+Resolve the merge conflict
+
+---
+
+Copilot has a bunch of comments. Review and address them, then re-request Copilot to review. Keep that loop until no findings are left.
