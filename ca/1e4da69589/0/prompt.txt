@@ -1,0 +1,25 @@
+Review PR 58
+
+---
+
+Resolve the merge conflict
+
+---
+
+Copilot has a bunch of comments. Review and address them, then re-request Copilot to review. Keep that loop until no findings are left.
+
+---
+
+Next, look at PR 79. Read the PR description and 2 committed files. What should we do with this?
+
+---
+
+Write me a response that is both technical and human. Keep it short.
+
+---
+
+Hm, not quite right. Why would we talk about the folders? The right answer is to open a PR with the implementation if we agree with the proposal. If not, how to change it?
+
+---
+
+Ok, next is 60. Resolve the merge conflict first.
