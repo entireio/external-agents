@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "c9144fcdcd2d",
+  "strategy": "manual-commit",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "agents/entire-agent-kilo/internal/kilo/session_jsonl.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c9/144fcdcd2d/0/metadata.json",
+      "transcript": "/c9/144fcdcd2d/0/full.jsonl",
+      "compact_transcript": "/c9/144fcdcd2d/0/transcript.jsonl",
+      "content_hash": "/c9/144fcdcd2d/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 225576,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2307072,
+    "output_tokens": 1739,
+    "api_call_count": 15
+  }
+}
