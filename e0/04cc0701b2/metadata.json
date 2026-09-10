@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "e004cc0701b2",
+  "strategy": "manual-commit",
+  "branch": "fix/pr62-conflict",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-goose/internal/goose/agent_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e0/04cc0701b2/0/metadata.json",
+      "transcript": "/e0/04cc0701b2/0/full.jsonl",
+      "compact_transcript": "/e0/04cc0701b2/0/transcript.jsonl",
+      "content_hash": "/e0/04cc0701b2/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 7204,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 148864,
+    "output_tokens": 529,
+    "api_call_count": 2
+  }
+}
