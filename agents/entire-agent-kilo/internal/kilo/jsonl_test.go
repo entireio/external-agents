@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/entireio/external-agents/agents/entire-agent-kilo/internal/protocol"
@@ -184,5 +185,197 @@ func TestReadSessionRecoversIDFromMessages(t *testing.T) {
 	}
 	if got.SessionID != "S-42" {
 		t.Fatalf("SessionID = %q, want S-42", got.SessionID)
+	}
+}
+
+// compactKind mirrors normalizeKind in Entire's
+// cmd/entire/cli/transcript/compact/compact.go:197 — the generic JSONL reader
+// used for any agent Entire does not special-case, Kilo included. It takes the
+// entry kind from the TOP-LEVEL "type", falling back to "role"; a line with
+// neither is dropped outright.
+func compactKind(line map[string]json.RawMessage) string {
+	var kind string
+	if json.Unmarshal(line["type"], &kind) == nil && kind != "" {
+		return kind
+	}
+	if json.Unmarshal(line["role"], &kind) == nil {
+		return kind
+	}
+	return ""
+}
+
+// compactMessageContent mirrors parseMessage (compact.go:617): content is read
+// from a TOP-LEVEL "message" object, never from the line itself. A line that
+// passes compactKind but has no "message" compacts to an empty content array.
+func compactMessageContent(line map[string]json.RawMessage) []map[string]json.RawMessage {
+	var msg map[string]json.RawMessage
+	if json.Unmarshal(line["message"], &msg) != nil {
+		return nil
+	}
+	var blocks []map[string]json.RawMessage
+	if json.Unmarshal(msg["content"], &blocks) != nil {
+		return nil
+	}
+	return blocks
+}
+
+func decodeLines(t *testing.T, data []byte) []map[string]json.RawMessage {
+	t.Helper()
+	var out []map[string]json.RawMessage
+	for line := range bytes.SplitSeq(bytes.TrimRight(data, "\n"), []byte{'\n'}) {
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(line, &m); err != nil {
+			t.Fatalf("line is not valid JSON: %v (%s)", err, line)
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// The regression PR #47 did not cover: the stored lines were valid JSONL and
+// sliced correctly, but carried neither of the two things Entire's generic
+// compactJSONL needs, so transcript.jsonl came out 0 bytes. Both halves are
+// asserted here because either one alone still loses the content.
+func TestStoredLinesSatisfyEntireCompactContract(t *testing.T) {
+	data := fourMessageTranscript(t)
+	lines := decodeLines(t, data)
+	if len(lines) != 4 {
+		t.Fatalf("got %d lines, want 4", len(lines))
+	}
+
+	wantKind := []string{"user", "assistant", "user", "assistant"}
+	wantText := []string{"first prompt", "first answer", "second prompt", "second answer"}
+
+	for i, line := range lines {
+		if got := compactKind(line); got != wantKind[i] {
+			t.Fatalf("line %d: compactKind = %q, want %q — Entire drops this line", i, got, wantKind[i])
+		}
+		blocks := compactMessageContent(line)
+		if len(blocks) == 0 {
+			t.Fatalf("line %d: no content under the \"message\" wrapper — Entire emits an empty line", i)
+		}
+		var text string
+		if err := json.Unmarshal(blocks[0]["text"], &text); err != nil || text != wantText[i] {
+			t.Fatalf("line %d: message content text = %q (err %v), want %q", i, text, err, wantText[i])
+		}
+	}
+}
+
+// A mid-session slice must keep satisfying the contract: Entire compacts the
+// scoped bytes, not the whole file.
+func TestScopedSliceSatisfiesEntireCompactContract(t *testing.T) {
+	scoped := sliceFromLine(fourMessageTranscript(t), 2)
+	lines := decodeLines(t, scoped)
+	if len(lines) != 2 {
+		t.Fatalf("scoped slice has %d lines, want 2", len(lines))
+	}
+	for i, line := range lines {
+		if compactKind(line) == "" {
+			t.Fatalf("scoped line %d has no top-level type/role", i)
+		}
+		if len(compactMessageContent(line)) == 0 {
+			t.Fatalf("scoped line %d carries no message content", i)
+		}
+	}
+}
+
+// An assistant tool call becomes a tool_use block, the only tool shape
+// stripAssistantContent (compact.go:704) keeps.
+func TestToolPartProjectsToToolUseBlock(t *testing.T) {
+	msg := SessionMessage{
+		Info: MessageInfo{ID: "m1", Role: MessageRoleAssistant},
+		Parts: []MessagePart{{
+			Type:   PartTool,
+			Tool:   "edit_file",
+			CallID: "call-1",
+			State:  &ToolState{Input: json.RawMessage(`{"path":"hello.txt"}`), Output: "ok"},
+		}},
+	}
+	data, err := encodeMessagesJSONL([]SessionMessage{msg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := compactMessageContent(decodeLines(t, data)[0])
+	if len(blocks) != 1 {
+		t.Fatalf("got %d content blocks, want 1", len(blocks))
+	}
+	for key, want := range map[string]string{"type": "tool_use", "id": "call-1", "name": "edit_file"} {
+		var got string
+		if err := json.Unmarshal(blocks[0][key], &got); err != nil || got != want {
+			t.Fatalf("tool block %q = %q (err %v), want %q", key, got, err, want)
+		}
+	}
+	if got := string(blocks[0]["input"]); got != `{"path":"hello.txt"}` {
+		t.Fatalf("tool block input = %s", got)
+	}
+}
+
+// Usage must use Entire's snake_case names (compact.go:517) or the token
+// counts silently read as zero.
+func TestUsageProjectsToSnakeCaseTokens(t *testing.T) {
+	data, err := encodeMessagesJSONL([]SessionMessage{{
+		Info: MessageInfo{
+			ID:     "m1",
+			Role:   MessageRoleAssistant,
+			Tokens: &Tokens{Input: 100, Output: 25},
+		},
+		Parts: []MessagePart{{Type: PartText, Text: "hi"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var msg struct {
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(decodeLines(t, data)[0]["message"], &msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg.Usage.InputTokens != 100 || msg.Usage.OutputTokens != 25 {
+		t.Fatalf("usage = %+v, want 100/25", msg.Usage)
+	}
+}
+
+// Back-compat: a transcript written before the projection existed carries only
+// info/parts. It must still decode, and re-encoding must self-heal it.
+func TestLegacyLinesWithoutProjectionStillDecode(t *testing.T) {
+	legacy := []byte(`{"info":{"id":"m1","role":"user"},"parts":[{"type":"text","text":"old line"}]}` + "\n")
+	msgs, err := decodeTranscript(legacy)
+	if err != nil {
+		t.Fatalf("decodeTranscript: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Info.ID != "m1" || msgs[0].Parts[0].Text != "old line" {
+		t.Fatalf("legacy decode = %+v", msgs)
+	}
+
+	healed, err := encodeMessagesJSONL(msgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := decodeLines(t, healed)[0]
+	if compactKind(line) != "user" || len(compactMessageContent(line)) == 0 {
+		t.Fatalf("re-encoded legacy line did not self-heal: %s", healed)
+	}
+}
+
+// The projection is derived data: decoding ignores it and yields the native
+// message unchanged, so a round-trip is lossless.
+func TestProjectionIsIgnoredOnDecode(t *testing.T) {
+	in := []SessionMessage{
+		makeTextMessage("m1", MessageRoleUser, "first prompt"),
+		makeTextMessage("m2", MessageRoleAssistant, "first answer"),
+	}
+	data, err := encodeMessagesJSONL(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := decodeTranscript(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(in, out) {
+		t.Fatalf("round-trip lost data:\n in = %+v\nout = %+v", in, out)
 	}
 }
