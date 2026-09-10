@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "00d5a39e185b",
+  "strategy": "manual-commit",
+  "branch": "fix/license-check-permissions",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".github/workflows/license-check.yml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/00/d5a39e185b/0/metadata.json",
+      "transcript": "/00/d5a39e185b/0/full.jsonl",
+      "compact_transcript": "/00/d5a39e185b/0/transcript.jsonl",
+      "content_hash": "/00/d5a39e185b/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 18209,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2409600,
+    "output_tokens": 2473,
+    "api_call_count": 19
+  }
+}

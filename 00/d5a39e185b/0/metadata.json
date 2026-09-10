@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "00d5a39e185b",
+  "session_id": "01a08a19-1320-7d00-b6e9-d58296c6eca2",
+  "strategy": "manual-commit",
+  "created_at": "2026-09-10T08:47:49.536211Z",
+  "branch": "fix/license-check-permissions",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".github/workflows/license-check.yml"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6-astra",
+  "turn_id": "cc4e26c11b8c",
+  "checkpoint_transcript_start": 426,
+  "transcript_lines_at_start": 426,
+  "compact_transcript_start": 52,
+  "token_usage": {
+    "input_tokens": 18209,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2409600,
+    "output_tokens": 2473,
+    "api_call_count": 19
+  },
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-09-10T08:47:49.464165Z",
+    "agent_lines": 3,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3,
+    "total_lines_changed": 3,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
