@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.10.7-nightly.202609080625.78a655db4.0.20260908145503-8bbfeb6d3901+dirty",
+  "checkpoint_id": "5fc8516bf302",
+  "strategy": "manual-commit",
+  "branch": "security/session-path-containment",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "agents/entire-agent-amp/internal/amp/hooks.go",
+    "agents/entire-agent-amp/internal/amp/hooks_test.go",
+    "agents/entire-agent-amp/internal/amp/paths.go",
+    "agents/entire-agent-amp/internal/amp/paths_test.go",
+    "agents/entire-agent-amp/internal/protocol/protocol.go",
+    "agents/entire-agent-crewai/test_protocol_wrapper.py",
+    "agents/entire-agent-goose/internal/protocol/protocol.go",
+    "agents/entire-agent-grok/internal/grok/agent.go",
+    "agents/entire-agent-grok/internal/grok/paths.go",
+    "agents/entire-agent-grok/internal/grok/paths_test.go",
+    "agents/entire-agent-grok/internal/grok/transcript.go",
+    "agents/entire-agent-grok/internal/protocol/protocol.go",
+    "agents/entire-agent-kilo/internal/kilo/hooks.go",
+    "agents/entire-agent-kilo/internal/kilo/hooks_test.go",
+    "agents/entire-agent-kilo/internal/kilo/paths.go",
+    "agents/entire-agent-kilo/internal/kilo/paths_test.go",
+    "agents/entire-agent-kilo/internal/protocol/protocol.go",
+    "agents/entire-agent-kiro/internal/kiro/paths.go",
+    "agents/entire-agent-kiro/internal/kiro/paths_test.go",
+    "agents/entire-agent-kiro/internal/protocol/handlers_test.go",
+    "agents/entire-agent-kiro/internal/protocol/protocol.go",
+    "agents/entire-agent-langgraph/test_protocol_wrapper.py",
+    "agents/entire-agent-omp/internal/protocol/protocol.go",
+    "agents/entire-agent-qwen/internal/protocol/protocol.go",
+    "agents/entire-agent-qwen/internal/qwen/agent.go",
+    "agents/entire-agent-qwen/internal/qwen/agent_test.go",
+    "agents/entire-agent-qwen/internal/qwen/transcript.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5f/c8516bf302/0/metadata.json",
+      "transcript": "/5f/c8516bf302/0/full.jsonl",
+      "compact_transcript": "/5f/c8516bf302/0/transcript.jsonl",
+      "content_hash": "/5f/c8516bf302/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 701991,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 30213120,
+    "output_tokens": 103667,
+    "api_call_count": 242
+  }
+}
