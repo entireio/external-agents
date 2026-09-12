@@ -1,0 +1,306 @@
+We got the following security report, which I am pasting below. Read it but hold any planning and implementation as the author sent a second email afterwards:
+1. DESCRIPTION
+--------------
+
+In the entireio/external-agents repository, Agent.ResolveSessionFile takes a
+session id and returns the path of the session file. Six of the eight Go
+agents either sanitize that id or reject an unsafe one. Two do not:
+
+  * entire-agent-kilo: Agent.ResolveSessionFile in internal/kilo/paths.go
+    delegates to protocol.ResolveSessionFile in internal/protocol/protocol.go,
+    which is filepath.Join(sessionDir, sessionID+".json") on the raw id.
+
+  * entire-agent-grok: Agent.ResolveSessionFile in internal/grok/agent.go
+    builds filepath.Join(sessionDir, sessionID, nativeTranscriptFile), placing
+    the raw id in as a DIRECTORY segment, guarded only by a check that the id
+    is not whitespace.
+
+Because filepath.Join cleans the result, an id containing "../" resolves
+upward and the returned path leaves the session directory.
+
+This is the same class PR #58 (fe86948, "amp, kiro: sanitize session paths")
+fixed in amp and kiro. That PR scoped itself to those two agents, and the
+class was not swept across the other six.
+
+Worth noting: grok already contains a suitable helper. safeFilename in
+internal/grok/transcript.go is byte-identical to qwen's, and qwen calls it
+from its ResolveSessionFile. Grok's ResolveSessionFile does not.
+
+
+2. IMPACT
+---------
+
+The escaped path is not only returned over the protocol. Both agents write
+to it:
+
+  * kilo: atomicWriteFile(session.SessionRef, ...) in Agent.WriteSession
+    (internal/kilo/transcript.go) and atomicWriteFile(sessionRef, ...) in
+    persistTurnMessages (internal/kilo/hooks.go).
+
+  * grok: os.WriteFile(session.SessionRef, ...) in Agent.WriteSession
+    (internal/grok/transcript.go).
+
+So a session id that escapes the session directory becomes a file write at an
+attacker-chosen path with attacker-influenced content, at mode 0600, creating
+parent directories as needed. I verified the write itself, not merely the
+returned string: a probe confined to a scratch worktree ran both binaries and
+confirmed the file was created outside the nominated session directory with
+the supplied content.
+
+What I did NOT establish is who controls the session id in practice. See
+section 6.
+
+
+3. STEPS TO REPRODUCE
+---------------------
+
+At commit 887356f06f517aa2f086140bcf22f91541df69ca of
+github.com/entireio/external-agents, working tree clean:
+
+    for a in amp kiro goose omp qwen hermes kilo grok; do
+      (cd agents/entire-agent-$a && go build -o /tmp/bin/entire-agent-$a ./cmd/...)
+    done
+
+    for a in amp kiro goose omp qwen hermes kilo grok; do
+      printf '%-8s ' "$a"
+      /tmp/bin/entire-agent-$a resolve-session-file \
+        --session-dir /home/u/.entire/sessions \
+        --session-id '../../../../tmp/pwned'
+    done
+
+Observed:
+
+    amp      {"session_file":"/home/u/.entire/sessions/.._.._.._.._tmp_pwned.json"}
+    kiro     {"session_file":"/home/u/.entire/sessions/.._.._.._.._tmp_pwned.json"}
+    goose    {"session_file":""}
+    omp      {"session_file":""}
+    qwen     {"session_file":"/home/u/.entire/sessions/tmp_pwned.jsonl"}
+    hermes   {"session_file":"/home/u/.entire/sessions/tmp-pwned-373554abc66c60f6.jsonl"}
+    kilo     {"session_file":"/tmp/pwned.json"}
+    grok     {"session_file":"/tmp/pwned/chat_history.jsonl"}
+
+kilo and grok escape --session-dir. The other six contain or reject. A benign
+id behaves identically across all eight, so a fix is not a behaviour change
+for valid input.
+
+Feeding the escaped path back through write-session produces the file at that
+location. I can supply that probe script if useful.
+
+
+4. AFFECTED VERSIONS
+--------------------
+
+The repository carries no tags, so I am citing commits.
+
+  * Verified at 887356f06f517aa2f086140bcf22f91541df69ca (2026-09-10), tip of
+    main at the time of testing.
+  * kilo: present since the agent was added, 2552110 (2026-05-22).
+  * grok: present since 760f6fe (2026-07-01).
+
+I have not checked released binaries, only a build from source at that commit.
+
+
+5. SUGGESTED FIX
+----------------
+
+Both have an in-repo precedent, so neither needs new design:
+
+  * kilo: replace the delegation with amp's shape,
+    filepath.Join(sessionDir, safePathSessionID(sessionID)+".json"), carrying
+    safePathSessionID and its regexp across from
+    entire-agent-amp/internal/amp/paths.go.
+
+  * grok: call the safeFilename it already has, as qwen does. Note grok's id
+    is a directory segment rather than a filename stem, so sanitizing the
+    segment is necessary but please confirm it is sufficient for that shape.
+
+Two related observations from the same sweep, neither of them a vulnerability
+today:
+
+  * Neither module has a test that would catch a regression here. A mutation
+    run replacing both ResolveSessionFile bodies with `return ""` left both
+    module suites reporting ok. kilo has no paths_test.go at all, and grok's
+    contains only TestEncodeRepoCWD and TestNativeTranscriptPath. The
+    equivalent mutation is caught in amp, kiro, goose, omp and hermes by their
+    existing traversal tests.
+
+  * qwen sanitizes correctly today, but its suite does not cover safeFilename,
+    so a future weakening there would also go unnoticed.
+
+
+6. ROUTING NOTE, AND WHAT I COULD NOT ASSESS
+--------------------------------------------
+
+Your SECURITY.md reserves advisories for issues exploitable by "a remote or
+non-local actor", and treats issues that "cannot be exploited without direct
+access to the user's machine" as ordinary bugs. I cannot answer that test from
+this repository alone.
+
+Everything above is verified inside entireio/external-agents. What decides
+severity is where --session-id comes from, which lives in entireio/cli and
+which I have not read. If a session id can be influenced by repository
+content, a crafted agent session file, or anything else delivered without
+local access, this is a remotely triggered arbitrary file write. If the id
+only ever originates from a locally installed agent's own metadata, your
+policy says this belongs in GitHub Issues as a bug.
+
+I am sending it here rather than filing publicly because that call is yours,
+and because the public route is not reversible if the answer turns out to be
+the first one. If you would rather it were a public issue, tell me and I will
+open one, or you are welcome to open it yourself.
+
+Also out of scope for me: entireio/external-agents-tests is not vendored in
+the repository, so I could not check whether the shared protocol compliance
+suite already covers traversal. If it does, kilo and grok should presumably be
+failing it.
+
+Happy to provide the probe scripts, the full per-agent output, or the mutation
+ledger. I am not planning to disclose this anywhere while you look at it.
+
+---
+
+Here's part 2:
+Follow-up to my report of earlier today. I have since read entireio/cli, which
+I had not read when I wrote that mail. Three updates, and the first one LOWERS
+the severity I reported. I would rather correct that promptly than leave an
+overstated report sitting in your queue.
+
+
+1. THE PRACTICAL SEVERITY IS LOWER THAN MY REPORT IMPLIED
+---------------------------------------------------------
+
+My section 6 said I could not tell whether the traversal was reachable. It
+largely is not, because you already block it, and the block is in the CLI
+rather than in the agents.
+
+validation.ValidateSessionID in cmd/entire/cli/validation/validators.go
+rejects any id containing "/" or "\\". So the exact input in my section 3,
+"../../../../tmp/pwned", cannot reach kilo or grok through any caller that
+validates. Because separators are rejected, the id is always a single path
+component, and filepath.Join cannot escape a single component.
+
+I checked the paths that consume checkpoint metadata off the shared
+entire/checkpoints/v1 branch, since that data crosses machines on a fetch and
+looked like the obvious remote vector. Both validate before resolving:
+RestoreLogsOnly and classifySessionsForRestore, in
+cmd/entire/cli/strategy/manual_commit_pending.go.
+
+So on Linux and macOS I can show no input that escapes through those paths.
+Treat my report as: a real unsanitized-id defect in two agent binaries,
+currently mitigated by a validator living in a different repository.
+
+
+2. THE COMPLIANCE-SUITE QUESTION IS NOW ANSWERED
+------------------------------------------------
+
+I said I could not check whether entireio/external-agents-tests covers
+traversal. I have now read it, and it does not.
+
+The only coverage is TestResolveSessionFile in tests/mandatory/protocol_test.go,
+which passes the single benign id "test-session-123" and asserts the returned
+session_file contains it. Searching every file in that repository for "../",
+"traversal", "sanitiz", "escape" and "outside", the only hits are relative
+paths in README examples.
+
+So kilo and grok pass the shared compliance suite today. My "they should
+presumably be failing it" was wrong. Usefully, this also means the fix I
+suggested will not break compliance: amp's safePathSessionID leaves a benign
+id unchanged.
+
+
+3. A NEW DEFECT, IN entireio/cli, THAT WOULD REOPEN THE GROK CASE
+------------------------------------------------------------------
+
+Since your whole defence rests on one validator, the validator is worth
+looking at closely. It has an inconsistency.
+
+ValidateSessionID checks emptiness with TrimSpace, but compares the reserved
+segment WITHOUT trimming:
+
+    if strings.TrimSpace(id) == "" { ... }      // trims
+    if id == "." || id == ".." { ... }          // does not
+
+So the id ".. " (dot, dot, trailing space) passes every clause: it is not
+empty, has no separator, is not equal to "..", has no colon, no glob
+characters, and is not absolute.
+
+It also passes your containment check. Go's filepath.Clean treats ".. " as an
+ordinary name, so filepath.Rel yields ".. /transcript", and
+paths.IsRelativeTraversal in cmd/entire/cli/paths/paths.go matches only "..",
+"../" and "..\\", none of which is a prefix of ".. /".
+
+Demonstrated with the two functions reimplemented standalone, grok's shape:
+
+    id="ok-123"  validator=true   traversal_flagged=false
+      -> /home/u/.entire/sessions/ok-123/chat_history.jsonl
+    id=".."      validator=false  traversal_flagged=true
+      -> /home/u/.entire/chat_history.jsonl
+    id=".. "     validator=true   traversal_flagged=false
+      -> /home/u/.entire/sessions/.. /chat_history.jsonl
+
+On Linux and macOS that last line is inert: it creates a directory literally
+named ".. " and escapes nothing.
+
+UNVERIFIED, AND I AM NOT ASSERTING IT: Win32 strips trailing spaces and dots
+from path components. If that normalisation applies to the write grok performs,
+the component becomes ".." and the write lands one directory above the session
+directory, having passed both the validator and the containment check. I have
+no Windows machine to test this on and I will not claim it without a run. Go
+switches to the \\?\ extended-length form for long paths, which disables the
+stripping, so it may not hold even there.
+
+The asymmetry that makes this agent-specific: built-in agents write through
+SessionStore.WriteFile using an *os.Root with handle-relative opens, which do
+not apply Win32 normalisation. An external agent does its own write inside
+write-session. And it only bites a resolver that uses the id as a DIRECTORY
+component, which is grok and not kilo.
+
+The blocking artifact is one test on Windows: what does os.WriteFile do with a
+path containing a ".. " component.
+
+TestValidateSessionID in validators_test.go has cases named "single dot",
+"double dot", "path traversal attempt", "absolute windows path" and
+"whitespace-only session ID", but none for dot-dot with adjacent whitespace.
+It reads as untested rather than deliberately allowed.
+
+Two fixes that close it without anyone having to settle the Win32 question:
+trim before the reserved-segment comparison, and teach IsRelativeTraversal to
+recognise a component that normalises to "..".
+
+
+4. ONE OBSERVATION ABOUT THE SHAPE OF THE DEFENCE
+--------------------------------------------------
+
+Your own comment above the validation call in manual_commit_pending.go says
+the session ID "is attacker-influenceable" and that rejecting separators stops
+a crafted ID that "would otherwise let a crafted session ID overwrite files
+outside the agent session directory". The SECURITY CONTRACT comment on
+Agent.ResolveSessionFile in cmd/entire/cli/agent/agent.go says the same, and
+notes that "some implementations use it as a directory component", which
+describes grok exactly.
+
+So the analysis is already correct in your codebase. The observation is only
+that it is enforced in one place, in a different repository from the binaries
+it protects, against agents you do not control, with no defence in depth
+behind it. That is why a whitespace inconsistency in one function is worth
+more attention than it would otherwise be, and why I would still fix kilo and
+grok even though the validator currently covers them.
+
+Nothing here changes my routing question in section 6 of the original mail, or
+my undertaking not to disclose while you look at it.
+
+---
+
+Run investigation and planning. Make sure to cover all agents supported by this repo, but not just Kiro and Grok.
+
+---
+
+Continue with Sol then
+
+---
+
+For the CLI (your no 8), give me a separate handover task that I can start in a new session
+
+---
+
+Thanks. Now continue without this part on the external-agents repo.
