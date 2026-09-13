@@ -90,6 +90,8 @@ Kiro has enough hook, session, and transcript surface area to fit the Entire ext
 - CLI transcript capture: fetched from SQLite at turn end, materialized as JSONL, and written atomically to `.entire/tmp/<session-id>.json`
 - IDE transcript capture: read from the workspace session file, converted to CLI shape, materialized as JSONL, and written atomically to `.entire/tmp/<session-id>.json`
 
+Session filename portability: Windows reserved device basenames (case-insensitive, including names followed by extensions and COM/LPT superscript-digit forms) use the hash mapping on every OS. This keeps resolver and transcript paths consistent when sessions move between platforms.
+
 ## Protocol Mapping
 | Subcommand | Native Concept | Implementation Notes | Feasibility |
 |-----------|---------------|---------------------|-------------|

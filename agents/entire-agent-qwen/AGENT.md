@@ -14,6 +14,8 @@ Qwen Code exposes command hooks in `.qwen/settings.json` and stores project-scop
 | Config directory | PASS | Workspace `.qwen/settings.json` |
 | Session storage | PASS | Native JSONL under Qwen runtime; Entire sidecar in `/tmp/entire-qwen/<repo-hash>/` plus `.entire/tmp/<session_id>.json` marker |
 
+Session filename portability: Windows reserved device basenames (case-insensitive, including names followed by extensions and COM/LPT superscript-digit forms) use the hash mapping on every OS. This keeps resolver and transcript paths consistent when sessions move between platforms.
+
 ## Protocol Mapping
 
 | Protocol | Qwen Concept | Implementation |

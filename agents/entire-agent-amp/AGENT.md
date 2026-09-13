@@ -41,6 +41,7 @@ Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `
 
 - Session ID source: Amp `thread.id`.
 - Session directory: `.entire/tmp/amp/`.
+- Session filenames: `<safe-id>.jsonl`, shared by protocol resolution, hook exports, and reads by session ID. Non-device IDs containing only `A-Za-z0-9_.-` are preserved; other IDs, including empty IDs, use `~` plus the first 16 SHA-256 bytes as lowercase hex.
 - Session file format: exported Amp thread JSON, parsed as `Thread` from `internal/amp/types.go`. The binary writes this file on `session.start` and refreshes it on `agent.end`.
 - Resume mechanism: `PLUGINS=all amp threads continue <thread-id>`.
 
@@ -55,6 +56,8 @@ Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `
 - Token usage extraction: `ThreadMessage.Usage` on exported messages.
 - Unprepared behavior: transcript analyzer, compact transcript, token calculation, and read-session operations require exported `Thread` JSON and return an error if called on a `session_ref` that has not yet been populated by an export.
 
+Session filename portability: Windows reserved device basenames (case-insensitive, including names followed by extensions and COM/LPT superscript-digit forms) use the hash mapping on every OS. This keeps resolver and transcript paths consistent when sessions move between platforms.
+
 ## Protocol Mapping
 
 | Subcommand                | Native Concept          | Implementation Notes                                                                                | Feasibility         |
@@ -62,8 +65,8 @@ Amp has a TypeScript plugin system with lifecycle events for `agent.start` and `
 | `info`                    | static metadata         | Return name `amp`, capabilities                                                                     | Required            |
 | `detect`                  | `amp` binary            | Check `command -v amp`                                                                              | Required            |
 | `get-session-id`          | Amp thread ID           | Read from hook input                                                                                | Required            |
-| `get-session-dir`         | `.entire/tmp`           | Standard Entire temp dir                                                                            | Required            |
-| `resolve-session-file`    | `.entire/tmp/<id>.json` | Standard path resolution                                                                            | Required            |
+| `get-session-dir`         | `.entire/tmp/amp`       | Amp hook transcript directory                                                                            | Required            |
+| `resolve-session-file`    | `<session-dir>/<safe-id>.jsonl` | Same path as hook transcripts and reads by session ID                                                                            | Required            |
 | `read-session`            | exported Amp JSON       | Validate and parse `Thread`; use `Thread.ID`, raw JSON `native_data`, and extracted modified files  | Required            |
 | `write-session`           | exported Amp JSON       | Write native data to session ref                                                                    | Required            |
 | `read-transcript`         | exported Amp JSON       | Return raw bytes after validating `Thread` JSON                                                     | Required            |

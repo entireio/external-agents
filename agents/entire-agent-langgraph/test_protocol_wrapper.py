@@ -20,14 +20,34 @@ class SessionTests(unittest.TestCase):
         self.path.write_bytes(self.original)
         self.agent = Path(__file__).parent.name.removeprefix("entire-agent-")
 
-    def command(self, command, payload):
+    def command(self, command, payload, *args):
         result = subprocess.run(
             [sys.executable, str(Path(__file__).with_name("protocol_wrapper.py")),
-             self.agent, command],
+             self.agent, command, *args],
             input=json.dumps(payload), text=True, capture_output=True, check=True,
             env=dict(os.environ, ENTIRE_REPO_ROOT=self.temp.name),
         )
         return json.loads(result.stdout) if result.stdout else None
+
+    def test_pinned_resolver_contains_path_separators(self):
+        underlying = (Path(__file__).parent / ".venv" / "bin" /
+                      f"entire-agent-{self.agent}")
+        if not underlying.exists():
+            self.skipTest("pinned entire-adapter binary has not been built")
+
+        session_dir = Path(self.temp.name) / "sessions"
+        for session_id in ("../../outside", r"..\..\outside"):
+            with self.subTest(session_id=session_id):
+                response = self.command(
+                    "resolve-session-file",
+                    {},
+                    "--session-dir", str(session_dir),
+                    "--session-id", session_id,
+                )
+                session_file = Path(response["session_file"]).resolve()
+                relative = session_file.relative_to(session_dir.resolve())
+                self.assertEqual(len(relative.parts), 1)
+                self.assertNotIn("\\", relative.name)
 
     def restore(self):
         self.command("write-session", {

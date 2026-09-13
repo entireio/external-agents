@@ -59,6 +59,8 @@ Kilo Code is a fork of OpenCode with a `@kilocode/plugin` API that exposes sessi
 - Token usage extraction: `MessageV2.assistant.tokens` (`{ input, output, reasoning, cache: { read, write } }`).
 - Unprepared behavior: transcript analyzer, compact transcript, token calculation, and read-session require `session_ref` populated by the plugin. Operations called before `session.created` fires return an error.
 
+Session filename portability: Windows reserved device basenames (case-insensitive, including names followed by extensions and COM/LPT superscript-digit forms) use the hash mapping on every OS. This keeps resolver and transcript paths consistent when sessions move between platforms.
+
 ## Protocol Mapping
 
 | Subcommand                | Native Concept                  | Implementation Notes                                                                          | Feasibility         |

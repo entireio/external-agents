@@ -131,10 +131,7 @@ func findHashedSessionDir(root, repoPath string) string {
 }
 
 func nativeTranscriptPath(repoPath, sessionID string) string {
-	if strings.TrimSpace(sessionID) == "" {
-		sessionID = stubSessionID
-	}
-	return filepath.Join(nativeSessionDir(repoPath), sessionID, nativeTranscriptFile)
+	return filepath.Join(nativeSessionDir(repoPath), safeFilename(sessionID), nativeTranscriptFile)
 }
 
 func (a *Agent) resolveSessionRef(sessionID, repoPath string) string {
