@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.10.7-nightly.202609130627.8a43e78f1.0.20260913155315-d419fef66327",
+  "checkpoint_id": "09892b57749f",
+  "strategy": "manual-commit",
+  "branch": "security/session-path-containment",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "agents/entire-agent-amp/AGENT.md",
+    "agents/entire-agent-amp/internal/amp/device_names.go",
+    "agents/entire-agent-amp/internal/amp/device_names_test.go",
+    "agents/entire-agent-amp/internal/amp/paths.go",
+    "agents/entire-agent-grok/AGENT.md",
+    "agents/entire-agent-grok/internal/grok/device_names.go",
+    "agents/entire-agent-grok/internal/grok/device_names_test.go",
+    "agents/entire-agent-grok/internal/grok/transcript.go",
+    "agents/entire-agent-kilo/AGENT.md",
+    "agents/entire-agent-kilo/internal/kilo/device_names.go",
+    "agents/entire-agent-kilo/internal/kilo/device_names_test.go",
+    "agents/entire-agent-kilo/internal/kilo/paths.go",
+    "agents/entire-agent-kiro/AGENT.md",
+    "agents/entire-agent-kiro/internal/kiro/device_names.go",
+    "agents/entire-agent-kiro/internal/kiro/device_names_test.go",
+    "agents/entire-agent-kiro/internal/kiro/paths.go",
+    "agents/entire-agent-qwen/AGENT.md",
+    "agents/entire-agent-qwen/internal/qwen/device_names.go",
+    "agents/entire-agent-qwen/internal/qwen/device_names_test.go",
+    "agents/entire-agent-qwen/internal/qwen/transcript.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/09/892b57749f/0/metadata.json",
+      "transcript": "/09/892b57749f/0/full.jsonl",
+      "compact_transcript": "/09/892b57749f/0/transcript.jsonl",
+      "content_hash": "/09/892b57749f/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 24616,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3487104,
+    "output_tokens": 5293,
+    "api_call_count": 29
+  }
+}
