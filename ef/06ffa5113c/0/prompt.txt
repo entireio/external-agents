@@ -1,0 +1,17 @@
+Open a draft PR for the current branch. Reference https://github.com/entireio/cli/pull/2405 for the CLI-side fixes and give credit to https://github.com/wernerkasselman-au who was the original reporter.
+
+---
+
+Review and address the findings from Copilot. Keep looping with it until it no longer has any findings.
+
+---
+
+What's with the Cursor finding?
+
+---
+
+Did you address the Cursor finding?
+
+---
+
+Ok, do that now then

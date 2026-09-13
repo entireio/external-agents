@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.10.7-nightly.202609130627.8a43e78f1.0.20260913155315-d419fef66327",
+  "checkpoint_id": "ef06ffa5113c",
+  "strategy": "manual-commit",
+  "branch": "security/session-path-containment",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "agents/entire-agent-grok/internal/grok/empty_session_test.go",
+    "agents/entire-agent-grok/internal/grok/paths_test.go",
+    "agents/entire-agent-grok/internal/grok/transcript.go",
+    "agents/entire-agent-qwen/internal/qwen/agent_test.go",
+    "agents/entire-agent-qwen/internal/qwen/empty_session_test.go",
+    "agents/entire-agent-qwen/internal/qwen/transcript.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ef/06ffa5113c/0/metadata.json",
+      "transcript": "/ef/06ffa5113c/0/full.jsonl",
+      "compact_transcript": "/ef/06ffa5113c/0/transcript.jsonl",
+      "content_hash": "/ef/06ffa5113c/0/content_hash.txt",
+      "prompt": "/ef/06ffa5113c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 64133,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 883328,
+    "output_tokens": 4851,
+    "api_call_count": 19
+  }
+}
