@@ -1,5 +1,1 @@
-Ok, do that now then
-
----
-
 Push an empty commit to wrap up this session.
