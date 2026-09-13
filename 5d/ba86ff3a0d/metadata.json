@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.10.7-nightly.202609130627.8a43e78f1.0.20260913155315-d419fef66327",
+  "checkpoint_id": "5dba86ff3a0d",
+  "strategy": "manual-commit",
+  "branch": "security/session-path-containment",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "agents/entire-agent-amp/internal/amp/paths.go",
+    "agents/entire-agent-amp/internal/amp/paths_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5d/ba86ff3a0d/0/metadata.json",
+      "transcript": "/5d/ba86ff3a0d/0/full.jsonl",
+      "compact_transcript": "/5d/ba86ff3a0d/0/transcript.jsonl",
+      "content_hash": "/5d/ba86ff3a0d/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 23438,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1816192,
+    "output_tokens": 3104,
+    "api_call_count": 20
+  }
+}
