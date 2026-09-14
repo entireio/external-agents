@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>AI Developer Portfolio</title>
+    <link rel="stylesheet" href="/portfolio-static/portfolio.css">
+</head>
+<body>
+    <header>
+        <h1>Generative AI Developer Portfolio</h1>
+        <p id="subtitle">Building intelligent solutions & creative AI workflows</p>
+    </header>
+    <main>
+        <section id="introduction">
+            <h2>About Me</h2>
+            <p>
+                I am a passionate Generative AI Developer, specializing in building LLM-powered applications, automation agents, and creative AI workflows. My work blends software engineering and deep learning, from MLOps infrastructure to fine-tuning custom language models. I thrive at the intersection of AI research and robust deployment.
+            </p>
+        </section>
+        <section id="skills">
+            <h2>Skills & Expertise</h2>
+            <ul>
+                <li>Python, FastAPI, Streamlit, PyTorch, TensorFlow</li>
+                <li>LLM prompt engineering & custom finetuning</li>
+                <li>Agentic/Autonomous systems design</li>
+                <li>RAG, embeddings, vector search (FAISS, Pinecone)</li>
+                <li>ML infrastructure: Databricks, MLflow, Docker</li>
+                <li>Observability, evaluation hooks, and CI/CD workflows</li>
+            </ul>
+        </section>
+        <section id="projects">
+            <h2>Selected Projects</h2>
+            <div class="project-list">
+                <div class="project">
+                    <h3>Autonomous Coding Agent</h3>
+                    <p>Built a workflow agent capable of understanding project context, creating plans, generating code, and validating with structured feedback loops. Integrated with Databricks and observability APIs.</p>
+                    <span class="tags">#FastAPI #LLMs #Databricks #Automation</span>
+                </div>
+                <div class="project">
+                    <h3>LLM-Powered Document Chatbot</h3>
+                    <p>Deployed a RAG-based chatbot reading internal wiki docs using embeddings and GPT-4. Custom prompt strategy for safe, context-aware enterprise answers.</p>
+                    <span class="tags">#RAG #GPT-4 #Embeddings #EnterpriseAI</span>
+                </div>
+                <div class="project">
+                    <h3>Fine-tuned Diffusion Image Generator</h3>
+                    <p>Created a domain-specific stable diffusion model for marketing creative assets, including data pipelines and Streamlit demo app.</p>
+                    <span class="tags">#Diffusion #PyTorch #Streamlit #GenerativeArt</span>
+                </div>
+            </div>
+        </section>
+        <section id="contact">
+            <h2>Contact</h2>
+            <form id="contact-form">
+                <label for="name">Name:</label>
+                <input type="text" id="name" name="name" required />
+
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" required />
+
+                <label for="message">Message:</label>
+                <textarea id="message" name="message" rows="4" required></textarea>
+
+                <button type="submit">Send</button>
+            </form>
+            <div id="form-success" class="hidden">Thank you! Message received.</div>
+        </section>
+    </main>
+    <footer>
+        <p>&copy; 2024 Generative AI Developer &mdash; Open portfolio. Built with FastAPI & Streamlit.</p>
+    </footer>
+    <script src="/portfolio-static/portfolio.js"></script>
+</body>
+</html>
