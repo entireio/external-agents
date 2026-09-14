@@ -1,9 +1,11 @@
 package qwen
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,6 +48,122 @@ func TestGetSessionDirUsesRepoScopedTempDir(t *testing.T) {
 	if strings.Contains(sessionDir, filepath.Join(repo, ".entire", "tmp")) {
 		t.Fatalf("session dir must not live under .entire/tmp because broad external agents can claim it: %q", sessionDir)
 	}
+}
+
+func TestResolveSessionFileContainsHostileIDs(t *testing.T) {
+	sessionDir := t.TempDir()
+	agent := New()
+
+	for _, sessionID := range []string{
+		"../../outside",
+		`..\..\outside`,
+		"/tmp/outside",
+		`C:\outside`,
+		"C:outside",
+		"",
+		" \t",
+		"..",
+		".. ",
+		" ..",
+	} {
+		t.Run(sessionID, func(t *testing.T) {
+			safeID := safeFilename(sessionID)
+			wantSafeID := reservedSessionID(sessionID)
+			if strings.TrimSpace(sessionID) == "" {
+				wantSafeID = stubSessionID
+			}
+			if safeID != wantSafeID {
+				t.Fatalf("safeFilename(%q) = %q, want %q", sessionID, safeID, wantSafeID)
+			}
+			sessionFile := agent.ResolveSessionFile(sessionDir, sessionID)
+			rel, err := filepath.Rel(sessionDir, sessionFile)
+			if err != nil {
+				t.Fatalf("filepath.Rel(%q, %q): %v", sessionDir, sessionFile, err)
+			}
+			if filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				t.Fatalf("ResolveSessionFile(%q) = %q, outside session dir %q", sessionID, sessionFile, sessionDir)
+			}
+			if strings.ContainsAny(rel, `/\`) {
+				t.Fatalf("ResolveSessionFile(%q) = %q, filename still contains a path separator", sessionID, sessionFile)
+			}
+			if filepath.Ext(sessionFile) != ".jsonl" {
+				t.Fatalf("ResolveSessionFile(%q) = %q, want .jsonl extension", sessionID, sessionFile)
+			}
+		})
+	}
+}
+
+func TestSafeFilenamePreservesAcceptedIDs(t *testing.T) {
+	for _, sessionID := range []string{
+		"session-123",
+		"dotted.id_is-fine",
+		"sessión-１２３",
+	} {
+		if got := safeFilename(sessionID); got != sessionID {
+			t.Errorf("safeFilename(%q) = %q, want unchanged ID", sessionID, got)
+		}
+	}
+}
+
+func TestSafeFilenameSeparatesSanitizationCollisions(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"../../outside", "outside"},
+		{`..\..\outside`, "outside"},
+		{"nested/session", "nested_session"},
+		{"a/b", "a:b"},
+		{".. ", stubSessionID},
+		{".. ", " .."},
+		{"C:outside", "C_outside"},
+	} {
+		first := safeFilename(pair[0])
+		second := safeFilename(pair[1])
+		if first == second {
+			t.Fatalf("safeFilename(%q) and safeFilename(%q) both returned %q", pair[0], pair[1], first)
+		}
+	}
+}
+
+func TestParseHookUsesSafeFilenameForSidecarAndMarker(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repo)
+	agent := New()
+	const sessionID = "../../outside"
+
+	payload, err := json.Marshal(map[string]string{
+		"session_id": sessionID,
+		"timestamp":  "2026-05-20T12:00:00Z",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, err := agent.ParseHook(HookNameSessionStart, payload)
+	if err != nil {
+		t.Fatalf("ParseHook(): %v", err)
+	}
+	if event == nil {
+		t.Fatal("ParseHook() returned no event")
+	}
+
+	safeID := safeFilename(sessionID)
+	wantSessionRef := agent.sidecarPath(sessionID)
+	if event.SessionRef != wantSessionRef {
+		t.Fatalf("ParseHook() session ref = %q, want %q", event.SessionRef, wantSessionRef)
+	}
+	if got := filepath.Base(event.SessionRef); got != safeID+".jsonl" {
+		t.Fatalf("sidecar filename = %q, want %q", got, safeID+".jsonl")
+	}
+	if _, err := os.Stat(wantSessionRef); err != nil {
+		t.Fatalf("expected sidecar %q: %v", wantSessionRef, err)
+	}
+	markerPath := filepath.Join(repo, ".entire", "tmp", safeID+".json")
+	if _, err := os.Stat(markerPath); err != nil {
+		t.Fatalf("expected marker %q: %v", markerPath, err)
+	}
+}
+
+func reservedSessionID(sessionID string) string {
+	sum := sha256.Sum256([]byte(sessionID))
+	return fmt.Sprintf("~%x", sum[:16])
 }
 
 func TestInstallHooksIdempotentAndUninstallPreservesUserSettings(t *testing.T) {

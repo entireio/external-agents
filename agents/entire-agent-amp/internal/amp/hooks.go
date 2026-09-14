@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -315,13 +314,5 @@ export default function (amp: PluginAPI) {
 }
 
 func transcriptPath(sessionID string) string {
-	return filepath.Join(protocol.DefaultSessionDir(protocol.RepoRoot()), transcriptSubdir, safeSessionID(sessionID)+".jsonl")
-}
-
-func safeSessionID(sessionID string) string {
-	if sessionID == "" {
-		return "unknown"
-	}
-	re := regexp.MustCompile(`[^A-Za-z0-9_.-]+`)
-	return re.ReplaceAllString(sessionID, "_")
+	return filepath.Join(protocol.DefaultSessionDir(protocol.RepoRoot()), transcriptSubdir, safePathSessionID(sessionID)+".jsonl")
 }

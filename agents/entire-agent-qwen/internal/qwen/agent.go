@@ -85,9 +85,6 @@ func (a *Agent) ResolveSessionFile(sessionDir, sessionID string) string {
 	if strings.TrimSpace(sessionDir) == "" {
 		sessionDir, _ = a.GetSessionDir(protocol.RepoRoot())
 	}
-	if strings.TrimSpace(sessionID) == "" {
-		sessionID = stubSessionID
-	}
 	return filepath.Join(sessionDir, safeFilename(sessionID)+".jsonl")
 }
 

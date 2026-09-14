@@ -356,8 +356,16 @@ func TestParseHookHandlesStopCancelled(t *testing.T) {
 	testGrokHome(t)
 	agent := New()
 
-	payload := `{"session_id":"s1","hook_event_name":"StopCancelled","last_assistant_message":"partial answer","cwd":"` + repo + `"}`
-	event, err := agent.ParseHook(HookNameStopCancelled, []byte(payload))
+	payload, err := json.Marshal(map[string]string{
+		"session_id":             "s1",
+		"hook_event_name":        "StopCancelled",
+		"last_assistant_message": "partial answer",
+		"cwd":                    repo,
+	})
+	if err != nil {
+		t.Fatalf("marshal hook input: %v", err)
+	}
+	event, err := agent.ParseHook(HookNameStopCancelled, payload)
 	if err != nil {
 		t.Fatalf("ParseHook(stop-cancelled): %v", err)
 	}

@@ -80,7 +80,7 @@ func TestParseHookUserPromptSubmitSupportsIDEFallback(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 	t.Setenv("USER_PROMPT", "ide prompt")
 
 	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
@@ -116,7 +116,7 @@ func TestParseHookUserPromptSubmitPrefersIDESessionOverStaleCache(t *testing.T) 
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 	t.Setenv("USER_PROMPT", "ide prompt")
 
 	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
@@ -146,7 +146,7 @@ func TestParseHookSessionIDStableAcrossTurnsInSameIDEChat(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 	t.Setenv("USER_PROMPT", "first")
 
 	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
@@ -188,7 +188,7 @@ func TestParseHookSwitchingKiroChatTabsResolvesEachTabIndependently(t *testing.T
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 	t.Setenv("USER_PROMPT", "in tab A")
 
 	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
@@ -252,7 +252,7 @@ func TestParseHookTurnIdentityStableAcrossTabSwitchBetweenPromptAndStop(t *testi
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 	t.Setenv("USER_PROMPT", "in tab A")
 
 	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
@@ -307,7 +307,7 @@ func TestParseHookToolCallsAreIsolatedPerChat(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 
 	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
 	if err := os.WriteFile(
@@ -380,7 +380,7 @@ func TestResolveStopIdentityPrefersConversationIDOverActiveTurnCache(t *testing.
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 
 	// Plant unrelated IDE workspace data so ensureIDETranscript could
 	// silently fall back if the resolver leaks the IDE turn ID.
@@ -437,7 +437,7 @@ func TestPostToolUseWithConversationIDDoesNotLeakIntoIDEChat(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 
 	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)
 	if err := os.WriteFile(
@@ -479,7 +479,7 @@ func TestCLIPromptSubmitDoesNotClearInFlightIDETurnCache(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 
 	tmpDir := filepath.Join(repoRoot, ".entire", "tmp")
 	if err := os.MkdirAll(tmpDir, 0o750); err != nil {
@@ -511,7 +511,7 @@ func TestOverlappingIDEStopOnlyClearsItsOwnTurnCache(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 
 	tmpDir := filepath.Join(repoRoot, ".entire", "tmp")
 	if err := os.MkdirAll(tmpDir, 0o750); err != nil {
@@ -546,7 +546,7 @@ func TestCLIStopPreservesInFlightIDETurnCache(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 
 	tmpDir := filepath.Join(repoRoot, ".entire", "tmp")
 	if err := os.MkdirAll(tmpDir, 0o750); err != nil {
@@ -581,14 +581,14 @@ func TestIDEStopFromTurnCacheDoesNotInjectArbitraryConversationID(t *testing.T) 
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 
 	// Plant an unrelated CLI conversation in the kiro DB AND a matching
 	// transcript so the CLI fallback would succeed if it were ever
 	// reached. We then force ensureIDETranscript to fail (no IDE
 	// workspace data) and verify the captured ref is a placeholder, NOT
 	// the unrelated CLI transcript content.
-	dbPath := filepath.Join(home, "Library", "Application Support", "kiro-cli", "data.sqlite3")
+	dbPath := expectedCLIKiroDBPath(home)
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
 		t.Fatalf("mkdir db dir: %v", err)
 	}
@@ -632,7 +632,7 @@ func TestParseHookCLIConversationIDDoesNotMasqueradeAsIDESession(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 
 	// Plant unrelated IDE workspace data in the same repo.
 	sessionsDir := createIDEWorkspaceSessionsDir(t, home, repoRoot)

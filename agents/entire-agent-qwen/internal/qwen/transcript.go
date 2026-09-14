@@ -3,6 +3,7 @@ package qwen
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -295,11 +296,17 @@ func (a *Agent) writeSessionMarker(raw qwenHookInputRaw, sidecarPath string) err
 	return os.WriteFile(path, append(data, '\n'), 0o600)
 }
 
+// safeFilename reduces an untrusted session ID to one path component. Safe IDs
+// are unchanged unless they name a Windows device; transformed nonblank IDs use a
+// stable hash so they cannot alias an unchanged ID or another normalized form.
+// Sidecar transcripts and marker files must use the same mapping.
 func safeFilename(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
+	// Missing IDs share the same fallback identity as hooks and GetSessionID.
+	if strings.TrimSpace(name) == "" {
 		return stubSessionID
 	}
+	original := name
+	name = strings.TrimSpace(name)
 	var b strings.Builder
 	for _, r := range name {
 		switch {
@@ -321,9 +328,13 @@ func safeFilename(name string) string {
 	}
 	out := strings.Trim(b.String(), "._")
 	if out == "" {
-		return stubSessionID
+		out = stubSessionID
 	}
-	return out
+	if out == original && !isWindowsDeviceName(original) {
+		return out
+	}
+	sum := sha256.Sum256([]byte(original))
+	return fmt.Sprintf("~%x", sum[:16])
 }
 
 // maxSidecarLine bounds a single sidecar record. One record embeds a whole

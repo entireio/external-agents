@@ -250,8 +250,9 @@ func TestParseHookLifecycleEvents(t *testing.T) {
 			if event.SessionID != "grok-test-session" {
 				t.Fatalf("unexpected session id %q", event.SessionID)
 			}
-			if !strings.HasSuffix(event.SessionRef, "grok-test-session/chat_history.jsonl") {
-				t.Fatalf("unexpected session ref %q", event.SessionRef)
+			wantSessionRef := nativeTranscriptPath("/repo", "grok-test-session")
+			if event.SessionRef != wantSessionRef {
+				t.Fatalf("session ref = %q, want %q", event.SessionRef, wantSessionRef)
 			}
 			if event.Metadata["native_transcript_path"] != "/tmp/grok-native.jsonl" {
 				t.Fatalf("native transcript path missing from metadata: %#v", event.Metadata)
@@ -347,7 +348,14 @@ func TestTranscriptAnalysisAndCompactTranscript(t *testing.T) {
 		`{"type":"assistant","content":"","tool_calls":[{"id":"tool-1","name":"Write","arguments":"{\"path\":\"hello.txt\"}"}]}`,
 		`{"type":"assistant","content":"Created hello.txt"}`,
 	}, "\n")+"\n")
-	if _, err := agent.ParseHook(HookNameSessionStart, []byte(`{"session_id":"grok-test","cwd":"`+repo+`"}`)); err != nil {
+	input, err := json.Marshal(map[string]string{
+		"session_id": "grok-test",
+		"cwd":        repo,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agent.ParseHook(HookNameSessionStart, input); err != nil {
 		t.Fatal(err)
 	}
 	markerPath := filepath.Join(repo, ".entire", "tmp", "grok-test.json")

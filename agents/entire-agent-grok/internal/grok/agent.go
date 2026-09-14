@@ -75,10 +75,7 @@ func (a *Agent) GetSessionDir(repoPath string) (string, error) {
 }
 
 func (a *Agent) ResolveSessionFile(sessionDir, sessionID string) string {
-	if strings.TrimSpace(sessionID) == "" {
-		sessionID = stubSessionID
-	}
-	return filepath.Join(sessionDir, sessionID, nativeTranscriptFile)
+	return filepath.Join(sessionDir, safeFilename(sessionID), nativeTranscriptFile)
 }
 
 func (a *Agent) FormatResumeCommand(sessionID string) string {

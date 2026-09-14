@@ -199,8 +199,13 @@ func TestInstallAndUninstallHooks(t *testing.T) {
 	}
 }
 
-func TestSafeSessionID(t *testing.T) {
-	if got := safeSessionID("T/foo:bar"); got != "T_foo_bar" {
-		t.Fatalf("safeSessionID = %q", got)
+func TestTranscriptPathUsesSafePathSessionID(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("ENTIRE_REPO_ROOT", repo)
+	const sessionID = "T/foo:bar"
+	want := filepath.Join(repo, ".entire", "tmp", transcriptSubdir, safePathSessionID(sessionID)+".jsonl")
+
+	if got := transcriptPath(sessionID); got != want {
+		t.Fatalf("transcriptPath(%q) = %q, want %q", sessionID, got, want)
 	}
 }

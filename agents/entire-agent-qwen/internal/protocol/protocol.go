@@ -324,7 +324,3 @@ func HandleExtractSummary(args []string, stdout io.Writer, analyzer transcriptAn
 func DefaultSessionDir(repoPath string) string {
 	return filepath.Join(repoPath, ".entire", "tmp")
 }
-
-func ResolveSessionFile(sessionDir, sessionID string) string {
-	return filepath.Join(sessionDir, sessionID+".json")
-}

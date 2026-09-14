@@ -11,6 +11,8 @@ Grok Build exposes command hooks in `.grok/hooks/*.json` and stores sessions und
 | Hook system | PASS | Project hooks in `.grok/hooks/*.json` |
 | Native sessions | PASS | `~/.grok/sessions/<encoded-cwd>/<session-id>/chat_history.jsonl` |
 
+Session filename portability: Windows reserved device basenames (case-insensitive, including names followed by extensions and COM/LPT superscript-digit forms) use the hash mapping on every OS. This keeps resolver and transcript paths consistent when sessions move between platforms.
+
 ## Protocol Mapping
 
 | Subcommand | Source | Notes |

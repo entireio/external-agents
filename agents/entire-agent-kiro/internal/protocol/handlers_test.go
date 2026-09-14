@@ -18,10 +18,12 @@ func (r testSessionDirResolver) GetSessionDir(_ string) (string, error) {
 	return r.dir, r.err
 }
 
-type testSessionFileResolver struct{}
+type testSessionFileResolver struct {
+	file string
+}
 
-func (testSessionFileResolver) ResolveSessionFile(sessionDir, sessionID string) string {
-	return ResolveSessionFile(sessionDir, sessionID)
+func (r testSessionFileResolver) ResolveSessionFile(string, string) string {
+	return r.file
 }
 
 type testSessionReader struct {
@@ -175,7 +177,9 @@ func TestHandlerRoundTripForCoreProtocolCommands(t *testing.T) {
 
 	t.Run("resolve-session-file", func(t *testing.T) {
 		var stdout bytes.Buffer
-		err := HandleResolveSessionFile([]string{"--session-dir", "/tmp/repo/.entire/tmp", "--session-id", "abc123"}, &stdout, testSessionFileResolver{})
+		err := HandleResolveSessionFile([]string{"--session-dir", "/tmp/repo/.entire/tmp", "--session-id", "abc123"}, &stdout, testSessionFileResolver{
+			file: "/tmp/repo/.entire/tmp/abc123.json",
+		})
 		if err != nil {
 			t.Fatalf("HandleResolveSessionFile() error = %v", err)
 		}

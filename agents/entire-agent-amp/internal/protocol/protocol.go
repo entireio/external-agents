@@ -357,7 +357,3 @@ func HandleCalculateTokens(args []string, stdin io.Reader, stdout io.Writer, cal
 func DefaultSessionDir(repoPath string) string {
 	return filepath.Join(repoPath, ".entire", "tmp")
 }
-
-func ResolveSessionFile(sessionDir, sessionID string) string {
-	return filepath.Join(sessionDir, sessionID+".json")
-}

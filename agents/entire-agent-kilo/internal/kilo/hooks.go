@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -545,12 +544,4 @@ export default { id: "entire-agent-kilo", server: EntirePlugin }
 
 func transcriptPath(sessionID string) string {
 	return filepath.Join(protocol.DefaultSessionDir(protocol.RepoRoot()), transcriptSubdir, safeSessionID(sessionID)+".json")
-}
-
-func safeSessionID(sessionID string) string {
-	if sessionID == "" {
-		return "unknown"
-	}
-	re := regexp.MustCompile(`[^A-Za-z0-9_.-]+`)
-	return re.ReplaceAllString(sessionID, "_")
 }

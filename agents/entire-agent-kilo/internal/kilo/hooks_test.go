@@ -471,10 +471,10 @@ func TestGeneratedPluginTurnEndIsSynchronous(t *testing.T) {
 
 func TestSafeSessionID(t *testing.T) {
 	cases := map[string]string{
-		"":                  "unknown",
+		"":                  "~e3b0c44298fc1c149afbf4c8996fb924",
 		"S-abc_123":         "S-abc_123",
-		"path/with/slashes": "path_with_slashes",
-		"weird chars!@#$%":  "weird_chars_",
+		"path/with/slashes": "~0f5bd24a68a0f5fafb48b6af79fac130",
+		"weird chars!@#$%":  "~cbedb3d0deb4371167f7c3f15dd5c053",
 		"dotted.id.is.fine": "dotted.id.is.fine",
 	}
 	for in, want := range cases {
