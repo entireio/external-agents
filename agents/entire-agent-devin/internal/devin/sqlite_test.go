@@ -10,6 +10,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// setDevinDataDir points the Devin data-dir resolution at dataDir on every
+// platform: XDG_DATA_HOME on Unix, APPDATA on Windows.
+func setDevinDataDir(t *testing.T, dataDir string) {
+	t.Helper()
+	t.Setenv("XDG_DATA_HOME", dataDir)
+	t.Setenv("APPDATA", dataDir)
+}
+
 // setupSessionsDB creates a temporary Devin sessions.db with the live schema
 // and returns the path to the data directory (suitable for XDG_DATA_HOME).
 func setupSessionsDB(t *testing.T) (string, *sql.DB) {
@@ -91,7 +99,7 @@ func insertNode(t *testing.T, db *sql.DB, sessionID string, nodeID, parentID int
 
 func TestMaterializeLiveTranscript(t *testing.T) {
 	dataDir, db := setupSessionsDB(t)
-	t.Setenv("XDG_DATA_HOME", dataDir)
+	setDevinDataDir(t, dataDir)
 	transcriptDir := t.TempDir()
 	t.Setenv("ENTIRE_TEST_DEVIN_TRANSCRIPT_DIR", transcriptDir)
 
@@ -187,7 +195,7 @@ func TestMaterializeLiveTranscript(t *testing.T) {
 
 func TestMaterializeLiveTranscript_FallsBackToStubWhenSessionMissing(t *testing.T) {
 	dataDir, _ := setupSessionsDB(t)
-	t.Setenv("XDG_DATA_HOME", dataDir)
+	setDevinDataDir(t, dataDir)
 	transcriptDir := t.TempDir()
 	t.Setenv("ENTIRE_TEST_DEVIN_TRANSCRIPT_DIR", transcriptDir)
 
@@ -219,7 +227,7 @@ func parseTranscriptFile(path string) (*ATIFTranscript, error) {
 
 func TestBuildSteps_FollowsMainChain(t *testing.T) {
 	dataDir, db := setupSessionsDB(t)
-	t.Setenv("XDG_DATA_HOME", dataDir)
+	setDevinDataDir(t, dataDir)
 	transcriptDir := t.TempDir()
 	t.Setenv("ENTIRE_TEST_DEVIN_TRANSCRIPT_DIR", transcriptDir)
 
@@ -262,5 +270,153 @@ func TestBuildSteps_FollowsMainChain(t *testing.T) {
 		if s["source"] != want {
 			t.Errorf("step %d source = %q, want %q", i+1, s["source"], want)
 		}
+	}
+}
+
+func TestPrepareTranscript_RefreshesMaterializedTranscript(t *testing.T) {
+	dataDir, db := setupSessionsDB(t)
+	setDevinDataDir(t, dataDir)
+	transcriptDir := t.TempDir()
+	t.Setenv("ENTIRE_TEST_DEVIN_TRANSCRIPT_DIR", transcriptDir)
+
+	sessionID := "refresh-me"
+	insertSession(t, db, sessionID, "SWE-1.7", 1)
+	insertNode(t, db, sessionID, 1, 0, `{"role":"user","content":"first"}`, "")
+
+	d := New()
+	sessionRef := filepath.Join(transcriptDir, sessionID+".json")
+	if err := d.PrepareTranscript(sessionRef); err != nil {
+		t.Fatalf("PrepareTranscript #1: %v", err)
+	}
+	tx, err := parseTranscriptFile(sessionRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tx.Steps) != 1 {
+		t.Fatalf("steps = %d, want 1", len(tx.Steps))
+	}
+
+	// A second checkpoint materializes again instead of keeping the stale file.
+	insertNode(t, db, sessionID, 2, 1, `{"role":"assistant","content":"second"}`, "")
+	if _, err := db.Exec(`UPDATE sessions SET main_chain_id = 2 WHERE id = ?`, sessionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.PrepareTranscript(sessionRef); err != nil {
+		t.Fatalf("PrepareTranscript #2: %v", err)
+	}
+	tx, err = parseTranscriptFile(sessionRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tx.Steps) != 2 {
+		t.Fatalf("steps after refresh = %d, want 2", len(tx.Steps))
+	}
+}
+
+func TestPrepareTranscript_ReplacesStubWithLiveData(t *testing.T) {
+	dataDir, db := setupSessionsDB(t)
+	setDevinDataDir(t, dataDir)
+	transcriptDir := t.TempDir()
+	t.Setenv("ENTIRE_TEST_DEVIN_TRANSCRIPT_DIR", transcriptDir)
+
+	sessionID := "stub-first"
+	sessionRef := filepath.Join(transcriptDir, sessionID+".json")
+	if err := writeStubTranscript(sessionRef); err != nil {
+		t.Fatal(err)
+	}
+
+	insertSession(t, db, sessionID, "SWE-1.7", 1)
+	insertNode(t, db, sessionID, 1, 0, `{"role":"user","content":"hello"}`, "")
+
+	d := New()
+	if err := d.PrepareTranscript(sessionRef); err != nil {
+		t.Fatalf("PrepareTranscript: %v", err)
+	}
+	tx, err := parseTranscriptFile(sessionRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tx.Steps) != 1 {
+		t.Fatalf("steps = %d, want stub replaced with 1 real step", len(tx.Steps))
+	}
+}
+
+func TestPrepareTranscript_LeavesDevinTranscriptAlone(t *testing.T) {
+	dataDir, _ := setupSessionsDB(t)
+	setDevinDataDir(t, dataDir)
+	transcriptDir := t.TempDir()
+	t.Setenv("ENTIRE_TEST_DEVIN_TRANSCRIPT_DIR", transcriptDir)
+
+	// A Devin-authored transcript: no entire_materialized marker, non-empty
+	// steps, fresh mtime. PrepareTranscript must not touch it.
+	path := filepath.Join(transcriptDir, "almond-cylinder.json")
+	if err := os.WriteFile(path, []byte(sampleTranscript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	d := New()
+	if err := d.PrepareTranscript(path); err != nil {
+		t.Fatalf("PrepareTranscript: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != sampleTranscript {
+		t.Error("Devin-authored transcript was modified")
+	}
+}
+
+func TestMaterializeLiveTranscript_NullSessionMetadata(t *testing.T) {
+	dataDir, db := setupSessionsDB(t)
+	setDevinDataDir(t, dataDir)
+	transcriptDir := t.TempDir()
+	t.Setenv("ENTIRE_TEST_DEVIN_TRANSCRIPT_DIR", transcriptDir)
+
+	sessionID := "null-session-md"
+	insertSession(t, db, sessionID, "SWE-1.7", 1)
+	insertNode(t, db, sessionID, 1, 0, `{"role":"user","content":"hi"}`, "")
+	if _, err := db.Exec(`UPDATE sessions SET metadata = NULL WHERE id = ?`, sessionID); err != nil {
+		t.Fatal(err)
+	}
+
+	d := New()
+	sessionRef := filepath.Join(transcriptDir, sessionID+".json")
+	if err := d.materializeLiveTranscript(sessionRef); err != nil {
+		t.Fatalf("materializeLiveTranscript: %v", err)
+	}
+	tx, err := parseTranscriptFile(sessionRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tx.Steps) != 1 {
+		t.Fatalf("steps = %d, want 1", len(tx.Steps))
+	}
+}
+
+func TestMaterializeLiveTranscript_NullNodeMetadata(t *testing.T) {
+	dataDir, db := setupSessionsDB(t)
+	setDevinDataDir(t, dataDir)
+	transcriptDir := t.TempDir()
+	t.Setenv("ENTIRE_TEST_DEVIN_TRANSCRIPT_DIR", transcriptDir)
+
+	sessionID := "null-node-md"
+	insertSession(t, db, sessionID, "SWE-1.7", 1)
+	insertNode(t, db, sessionID, 1, 0, `{"role":"user","content":"hi"}`, "")
+	if _, err := db.Exec(`UPDATE message_nodes SET metadata = NULL WHERE session_id = ?`, sessionID); err != nil {
+		t.Fatal(err)
+	}
+
+	d := New()
+	sessionRef := filepath.Join(transcriptDir, sessionID+".json")
+	if err := d.materializeLiveTranscript(sessionRef); err != nil {
+		t.Fatalf("materializeLiveTranscript: %v", err)
+	}
+	tx, err := parseTranscriptFile(sessionRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tx.Steps) != 1 {
+		t.Fatalf("steps = %d, want 1", len(tx.Steps))
 	}
 }

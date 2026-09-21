@@ -65,13 +65,13 @@ type chatToolCall struct {
 }
 
 type chatMetadata struct {
-	IsUserInput bool         `json:"is_user_input"`
-	NumTokens   int          `json:"num_tokens"`
-	RequestID   string       `json:"request_id"`
-	Metrics     *chatMetrics `json:"metrics"`
-	FinishReason string      `json:"finish_reason"`
-	Model       string       `json:"model"`
-	ModelName   string       `json:"model_name"`
+	IsUserInput  bool         `json:"is_user_input"`
+	NumTokens    int          `json:"num_tokens"`
+	RequestID    string       `json:"request_id"`
+	Metrics      *chatMetrics `json:"metrics"`
+	FinishReason string       `json:"finish_reason"`
+	Model        string       `json:"model"`
+	ModelName    string       `json:"model_name"`
 }
 
 type chatMetrics struct {
@@ -148,7 +148,7 @@ func (a *Agent) materializeLiveTranscript(sessionRef string) error {
 func loadSession(db *sql.DB, sessionID string) (*sessionRow, error) {
 	var s sessionRow
 	err := db.QueryRow(`
-		SELECT id, model, backend_type, agent_mode, main_chain_id, created_at, metadata
+		SELECT id, COALESCE(model, ''), COALESCE(backend_type, ''), COALESCE(agent_mode, ''), main_chain_id, created_at, COALESCE(metadata, '')
 		FROM sessions WHERE id = ?
 	`, sessionID).Scan(&s.ID, &s.Model, &s.BackendType, &s.AgentMode, &s.MainChainID, &s.CreatedAt, &s.Metadata)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -162,7 +162,7 @@ func loadSession(db *sql.DB, sessionID string) (*sessionRow, error) {
 
 func loadMessageNodes(db *sql.DB, sessionID string) ([]messageNode, error) {
 	rows, err := db.Query(`
-		SELECT node_id, parent_node_id, chat_message, created_at, metadata
+		SELECT node_id, parent_node_id, COALESCE(chat_message, ''), created_at, COALESCE(metadata, '')
 		FROM message_nodes WHERE session_id = ? ORDER BY node_id ASC
 	`, sessionID)
 	if err != nil {
@@ -233,7 +233,7 @@ func buildAgentInfo(sess *sessionRow) json.RawMessage {
 	if sess.Model != "" {
 		info["model_name"] = sess.Model
 	}
-	extra := map[string]any{}
+	extra := map[string]any{"entire_materialized": true}
 	if sess.BackendType != "" {
 		extra["backend_type"] = sess.BackendType
 	}
@@ -246,9 +246,7 @@ func buildAgentInfo(sess *sessionRow) json.RawMessage {
 			extra["session_metadata"] = md
 		}
 	}
-	if len(extra) > 0 {
-		info["extra"] = extra
-	}
+	info["extra"] = extra
 	raw, _ := json.Marshal(info)
 	return raw
 }

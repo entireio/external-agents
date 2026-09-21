@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 )
 
@@ -48,10 +49,23 @@ func (a *Agent) GetSessionDir(_ string) (string, error) {
 	return TranscriptsDir()
 }
 
+// safePathSessionID replaces runs outside A-Za-z0-9_.- with an underscore
+// and maps an empty ID to "unknown". Dots are preserved; ResolveSessionFile
+// appends .json so even "." and ".." become filenames rather than path
+// segments.
+func safePathSessionID(sessionID string) string {
+	if sessionID == "" {
+		return "unknown"
+	}
+	return sessionIDPathSanitizer.ReplaceAllString(sessionID, "_")
+}
+
+var sessionIDPathSanitizer = regexp.MustCompile(`[^A-Za-z0-9_.-]+`)
+
 // ResolveSessionFile returns the path to a Devin transcript file.
 // Devin names transcripts directly as <session_id>.json.
 func (a *Agent) ResolveSessionFile(sessionDir, sessionID string) string {
-	return filepath.Join(sessionDir, sessionID+".json")
+	return filepath.Join(sessionDir, safePathSessionID(sessionID)+".json")
 }
 
 // sessionRefForID computes the canonical transcript path for a session ID.
@@ -65,5 +79,5 @@ func sessionRefForID(sessionID string) string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, sessionID+".json")
+	return filepath.Join(dir, safePathSessionID(sessionID)+".json")
 }

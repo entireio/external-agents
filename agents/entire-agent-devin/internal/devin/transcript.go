@@ -37,6 +37,15 @@ func (a *Agent) PrepareTranscript(sessionRef string) error {
 	if sessionRef == "" {
 		return nil
 	}
+	// A transcript we materialized (marked, or a bare stub) is refreshed from
+	// the live session store on every checkpoint — Devin's canonical file may
+	// still be a whole session away. Devin-authored transcripts (no marker)
+	// keep the fresh/stale/poll behavior below.
+	if _, err := os.Stat(sessionRef); err == nil && isEntireMaterialized(sessionRef) {
+		// Best-effort: keep the existing file if the refresh fails.
+		_ = a.materializeLiveTranscript(sessionRef)
+		return nil
+	}
 	const (
 		maxWait      = 2 * time.Second
 		pollInterval = 50 * time.Millisecond
@@ -106,6 +115,31 @@ func writeStubTranscript(sessionRef string) error {
 		return fmt.Errorf("failed to write stub transcript: %w", err)
 	}
 	return nil
+}
+
+// isEntireMaterialized reports whether the transcript at path was written by
+// this integration rather than by Devin itself: either the agent info carries
+// our marker, or the file is a stub (no steps, no agent block).
+func isEntireMaterialized(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	t, err := parseTranscript(data)
+	if err != nil {
+		return false
+	}
+	var agent struct {
+		Extra map[string]any `json:"extra"`
+	}
+	if len(t.Agent) > 0 {
+		if err := json.Unmarshal(t.Agent, &agent); err == nil {
+			if v, ok := agent.Extra["entire_materialized"].(bool); ok && v {
+				return true
+			}
+		}
+	}
+	return len(t.Steps) == 0 && len(t.Agent) == 0
 }
 
 // GetTranscriptPosition returns the current step count of a Devin transcript.

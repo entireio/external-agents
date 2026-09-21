@@ -15,7 +15,8 @@ and token usage from Devin CLI sessions.
 - **Transcript preparer** — polls for the canonical ATIF file; if Devin has
   not flushed it yet, reads `~/.local/share/devin/cli/sessions.db`
   (`message_nodes`) and materializes a live ATIF transcript, falling back to
-  a minimal stub only when both sources are unavailable
+  a minimal stub only when both sources are unavailable; Entire-materialized
+  files are refreshed on every checkpoint
 - **Token calculation** — per-step `metrics` (prompt/completion/cached
   tokens; fresh input = prompt − cached)
 - **Compact transcripts** — converts ATIF steps (messages, tool calls, and
@@ -49,7 +50,8 @@ word-pairs like `snowy-efraasia`).
   restores the transcript file but not Devin's conversation memory;
   cross-machine resume requires the session to exist locally.
 - Checkpoints condensed mid-session now read Devin's live SQLite session
-  store before falling back to a stub. The fallback is only used when the
+  store before falling back to a stub, and Entire-materialized transcripts
+  are refreshed on each checkpoint. The stub fallback is only used when the
   local `devin` CLI is not logged in or the session is not in the local
   `sessions.db`.
 - Devin loads `.claude/settings.json` hooks by default. If Entire is enabled
