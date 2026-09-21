@@ -160,7 +160,12 @@ const (
 )
 
 // ThreadMessage is a user, assistant, or informational entry in the transcript.
+//
+// ThreadID is written by Entire, not by Amp: the stored transcript is JSONL
+// with no thread header (session_jsonl.go), so the thread id is stamped onto
+// every message to survive a scoped slice that starts past line 0.
 type ThreadMessage struct {
+	ThreadID             string                     `json:"threadID,omitempty"`
 	Meta                 *ThreadMessageMeta         `json:"meta,omitempty"`
 	Role                 ThreadMessageRole          `json:"role"`
 	Content              []ThreadContentBlock       `json:"content,omitempty"`

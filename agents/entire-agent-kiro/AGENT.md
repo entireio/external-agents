@@ -49,7 +49,7 @@ Kiro has enough hook, session, and transcript surface area to fit the Entire ext
 - `kiro-active-turn` is a single repo-global file. Each prompt-submit overwrites it; each stop owner-checks before clearing. This is correct for the common cases — single chat, tab-switch mid-turn, sequential turns across tabs, and concurrent CLI+IDE activity (each side's payload lets the other flow stay isolated). It is best-effort under truly overlapping IDE turns (`A prompt → B prompt → A stop`): A's stop has no payload signal that distinguishes it from B's, so the resolver returns whichever IDE chat is currently in cache. The owner-check at clear time prevents A's stop from deleting B's binding, but A's session_id will still resolve to whatever the cache currently holds. Fixing this fully requires a per-turn signal in the hook payload from Kiro, which it does not provide today
 - For the same reason, post-tool-use hooks during a truly overlapping IDE turn fall back to mtime-based active-chat detection when the cache holds the wrong chat. CLI flows are unaffected because they short-circuit on payload `conversation_id`
 - Session directory: `.entire/tmp/` under the repo root
-- Session file format: cached JSON transcript, one file per session ID
+- Session file format: **JSONL, one message per line**, one file per session ID. The native CLI and IDE documents are ingestion formats only — they are converted before being written
 - Session file path: `.entire/tmp/<session-id>.json`
 - Native CLI session lookup: SQLite database at `~/Library/Application Support/kiro-cli/data.sqlite3` on macOS, `~/.local/share/kiro-cli/data.sqlite3` on Linux, or `%LOCALAPPDATA%/kiro-cli/data.sqlite3` on Windows
 - Native CLI lookup key: the current working directory is queried against `conversations_v2`
@@ -57,15 +57,38 @@ Kiro has enough hook, session, and transcript surface area to fit the Entire ext
 - IDE transcript source: the most recent entry in `sessions.json`, then `<sessionId>.json` in the same directory
 
 ## Transcript
-- CLI transcript format: JSON object with `conversation_id` and `history`
+- Stored format: **JSONL, one message per line.** Entire slices external-agent
+  transcripts by LINE offset (`transcript.SliceFromLine`) before compacting
+  them, so a single JSON document is cut mid-value and every checkpoint's
+  `transcript.jsonl` came out empty.
+- **A paired history entry becomes TWO lines.** Kiro's history entries are
+  `{"user":…,"assistant":…}` pairs, and Entire's `normalizeKind` yields exactly
+  one kind per line, so a pair cannot survive as one line without losing a half.
+  The two halves are emitted as separate records sharing an `entry` index.
+- Each stored record carries kiro's native `user`/`assistant` payload, the
+  session-level fields (`conversation_id`, `cli_version`) stamped on every
+  record because a scoped slice has no header, and an Entire-facing projection
+  (`type`, `timestamp`, `message`) built from them. Entire's generic JSONL
+  compactor needs a top-level `type`/`role` AND content under a top-level
+  `message` wrapper; kiro's own `user`/`assistant` keys are where Entire does
+  not look.
+- A record whose payload this build cannot project carries no `type`, so Entire
+  drops it rather than emitting an empty envelope, while kiro's own extractors
+  still see it.
+- Back-compat: a native whole-document transcript written by an older build
+  still parses, reported in its original history-entry unit; the next capture
+  rewrites it as JSONL and the unit moves with the bytes. A position and the
+  bytes it indexes are always stored together in one checkpoint, so historical
+  checkpoints are never re-scoped.
+- Native CLI transcript format (input to the conversion): JSON object with `conversation_id` and `history`
 - CLI history entries: paired user and assistant messages
 - User prompt shape: `history[].user.content` containing a tagged union such as `{"Prompt":{"prompt":"..."}}`
 - Assistant tool-call shape: `history[].assistant` containing `{"ToolUse": {...}}`
 - Assistant response shape: `history[].assistant` containing `{"Response": {...}}`
-- IDE transcript format: JSON object with `history`, where each entry contains a `message` object
+- Native IDE transcript format (input to the conversion): JSON object with `history`, where each entry contains a `message` object
 - IDE message shape: Anthropic-style `role` plus `content`
-- CLI transcript capture: fetched from SQLite at turn end and cached to `.entire/tmp/<session-id>.json`
-- IDE transcript capture: copied from the workspace session file into `.entire/tmp/<session-id>.json`
+- CLI transcript capture: fetched from SQLite at turn end, materialized as JSONL, and written atomically to `.entire/tmp/<session-id>.json`
+- IDE transcript capture: read from the workspace session file, converted to CLI shape, materialized as JSONL, and written atomically to `.entire/tmp/<session-id>.json`
 
 ## Protocol Mapping
 | Subcommand | Native Concept | Implementation Notes | Feasibility |
@@ -85,7 +108,7 @@ Kiro has enough hook, session, and transcript surface area to fit the Entire ext
 | `install-hooks` | `.kiro/agents/entire.json`, `.kiro/hooks/*.kiro.hook`, `.vscode/settings.json` | install both CLI and IDE support in one operation | If hooks capable |
 | `uninstall-hooks` | reverse hook installation | remove Entire-owned CLI and IDE hook files plus trusted commands | If hooks capable |
 | `are-hooks-installed` | config presence check | true when either CLI hooks or IDE hooks are present | If hooks capable |
-| `get-transcript-position` | transcript length | CLI uses history entry count; IDE uses history count from cached JSON | If transcript analyzer |
+| `get-transcript-position` | transcript length | number of stored JSONL lines (two per paired history entry); a legacy whole-document transcript still reports its history-entry count | If transcript analyzer |
 | `extract-modified-files` | transcript tool-use history | parse tool calls and file edits from cached transcript | If transcript analyzer |
 | `extract-prompts` | user prompt history | return prompt text from transcript history | If transcript analyzer |
 | `extract-summary` | last assistant response | return the final assistant response text | If transcript analyzer |

@@ -274,7 +274,15 @@ func (a *Agent) ensureCachedTranscript(cwd string, sessionID string, conversatio
 		return "", errors.New("CLI transcript has no history entries")
 	}
 
-	if err := os.WriteFile(cachePath, data, 0o600); err != nil {
+	// Store as JSONL. The native document is an ingestion format only: writing
+	// it verbatim is what made every checkpoint's compact transcript empty,
+	// because Entire slices external-agent transcripts by line before
+	// compacting them (see session_jsonl.go). A transcript this build cannot
+	// parse is stored verbatim rather than discarded.
+	if jsonl, ok := materializeTranscript(data); ok {
+		data = jsonl
+	}
+	if err := atomicWriteFile(cachePath, data, 0o600); err != nil {
 		return "", fmt.Errorf("failed to write cached transcript: %w", err)
 	}
 	return cachePath, nil
@@ -464,7 +472,11 @@ func (a *Agent) ensureIDETranscript(cwd string, entireSessionID string, ideSessi
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(cachePath, data, 0o600); err != nil {
+	// Stored as JSONL for the same reason as the CLI path above.
+	if jsonl, ok := materializeTranscript(data); ok {
+		data = jsonl
+	}
+	if err := atomicWriteFile(cachePath, data, 0o600); err != nil {
 		return "", fmt.Errorf("failed to write cached IDE transcript: %w", err)
 	}
 	return cachePath, nil
@@ -704,19 +716,27 @@ func escapeSQLString(s string) string {
 	return strings.ReplaceAll(s, "'", "''")
 }
 
+// GetTranscriptPosition reports the size of the stored transcript in the unit
+// Entire scopes by. For the JSONL form that unit is the LINE count, because
+// transcript.SliceFromLine (cmd/entire/cli/transcript/parse.go:130) is what
+// Entire applies to this file. A legacy whole-document transcript written by an
+// older build keeps reporting its history-entry count, which is the unit the
+// positions recorded against it were taken in; the next capture rewrites it as
+// JSONL and the unit moves with the bytes. See session_jsonl.go for why that
+// unit change is safe.
 func (a *Agent) GetTranscriptPosition(path string) (int, error) {
-	transcript, err := readAndParseTranscript(path)
+	scoped, err := readScopedTranscript(path, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return 0, nil
 	}
 	if err != nil {
 		return 0, err
 	}
-	return len(transcript.History), nil
+	return scoped.total, nil
 }
 
 func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, error) {
-	transcript, err := readAndParseTranscript(path)
+	scoped, err := readScopedTranscript(path, offset)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, 0, nil
 	}
@@ -724,16 +744,11 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 		return nil, 0, err
 	}
 
-	totalEntries := len(transcript.History)
-	if offset >= totalEntries {
-		return nil, totalEntries, nil
-	}
-
-	return extractModifiedFilesFromHistory(transcript.History[offset:]), totalEntries, nil
+	return extractModifiedFilesFromHistory(scoped.entries), scoped.total, nil
 }
 
 func (a *Agent) ExtractPrompts(path string, offset int) ([]string, error) {
-	transcript, err := readAndParseTranscript(path)
+	scoped, err := readScopedTranscript(path, offset)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -742,12 +757,53 @@ func (a *Agent) ExtractPrompts(path string, offset int) ([]string, error) {
 	}
 
 	var prompts []string
-	for i := offset; i < len(transcript.History); i++ {
-		if prompt := extractUserPrompt(transcript.History[i].User.Content); prompt != "" {
+	for i := range scoped.entries {
+		if prompt := extractUserPrompt(scoped.entries[i].User.Content); prompt != "" {
 			prompts = append(prompts, prompt)
 		}
 	}
 	return prompts, nil
+}
+
+// scopedTranscript is a transcript narrowed to the portion after a stored
+// offset, plus the total size of the file in the same unit that offset is
+// counted in.
+type scopedTranscript struct {
+	entries []kiroHistoryEntry
+	total   int
+}
+
+// readScopedTranscript reads a stored transcript and drops everything before
+// offset. The offset unit follows the stored format: JSONL is scoped by line
+// (matching transcript.SliceFromLine, which is what Entire applies to the same
+// file), a legacy whole-document transcript by history entry.
+func readScopedTranscript(path string, offset int) (scopedTranscript, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return scopedTranscript{}, err
+	}
+
+	if _, jsonlErr := decodeTranscriptJSONL(data); jsonlErr == nil {
+		total := countTranscriptLines(data)
+		if offset >= total {
+			return scopedTranscript{total: total}, nil
+		}
+		parsed, err := decodeTranscriptJSONL(sliceTranscriptLines(data, offset))
+		if err != nil {
+			return scopedTranscript{total: total}, fmt.Errorf("scope kiro transcript: %w", err)
+		}
+		return scopedTranscript{entries: parsed.History, total: total}, nil
+	}
+
+	transcript, err := parseTranscript(data)
+	if err != nil {
+		return scopedTranscript{}, err
+	}
+	total := len(transcript.History)
+	if offset >= total {
+		return scopedTranscript{total: total}, nil
+	}
+	return scopedTranscript{entries: transcript.History[offset:], total: total}, nil
 }
 
 func (a *Agent) ExtractSummary(path string) (string, bool, error) {
@@ -771,9 +827,17 @@ func readAndParseTranscript(path string) (*kiroTranscript, error) {
 	return parseTranscript(data)
 }
 
+// parseTranscript reads a stored kiro transcript. Transcripts are stored as
+// JSONL (see session_jsonl.go), but a native whole-document transcript written
+// by an older build is still accepted so those files keep reading; the next
+// capture rewrites them as JSONL.
 func parseTranscript(data []byte) (*kiroTranscript, error) {
 	if len(data) == 0 {
 		return &kiroTranscript{}, nil
+	}
+
+	if parsed, err := decodeTranscriptJSONL(data); err == nil {
+		return parsed, nil
 	}
 
 	var transcript kiroTranscript
@@ -816,12 +880,12 @@ func convertIDETranscript(ide *kiroIDETranscript) *kiroTranscript {
 	for i := range ide.History {
 		entry := &ide.History[i]
 		switch entry.Message.Role {
-		case "user":
+		case roleUser:
 			if pendingUser != nil {
 				transcript.History = append(transcript.History, ideEntryToPaired(pendingUser, nil))
 			}
 			pendingUser = entry
-		case "assistant":
+		case roleAssistant:
 			transcript.History = append(transcript.History, ideEntryToPaired(pendingUser, entry))
 			pendingUser = nil
 		}
@@ -1228,12 +1292,12 @@ func enrichIDETranscriptWithExecutionLogs(ideData []byte, execLogs map[string]*k
 		// Adapt meta entry to IDE entry (they share the same Message field)
 		ideEntry := &kiroIDEHistoryEntry{Message: meta.History[i].Message}
 		switch ideEntry.Message.Role {
-		case "user":
+		case roleUser:
 			if pendingUser != nil {
 				transcript.History = append(transcript.History, ideEntryToPaired(pendingUser, nil))
 			}
 			pendingUser = ideEntry
-		case "assistant":
+		case roleAssistant:
 			if execID := meta.History[i].ExecutionID; execID != "" {
 				if execLog, ok := execLogs[execID]; ok {
 					userEntry := ideEntryToPaired(pendingUser, nil)

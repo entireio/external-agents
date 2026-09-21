@@ -72,7 +72,7 @@ func TestParseHookAgentStartSkipsExportWhenPrepared(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSON), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSONL), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runner := &fakeCommandRunner{}
@@ -115,7 +115,7 @@ func TestParseHookUsesSessionRefExportedThreadModel(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSON), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(testPreparedTranscriptJSONL), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	runner := &fakeCommandRunner{}
@@ -138,14 +138,13 @@ func assertExportedThread(t *testing.T, runner *fakeCommandRunner, root string) 
 		t.Fatalf("threadID = %q, want T-123", runner.threadID)
 	}
 	wantPath := filepath.Join(root, ".entire", "tmp", "amp", "T-123.jsonl")
-	if runner.outputPath != wantPath {
-		t.Fatalf("outputPath = %q, want %q", runner.outputPath, wantPath)
-	}
 	data, err := os.ReadFile(wantPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) != testPreparedTranscriptJSON {
+	// The native single-JSON export must never reach disk: Entire scopes this
+	// file by line offset, so it is stored as one message per line.
+	if string(data) != testPreparedTranscriptJSONL {
 		t.Fatalf("exported data = %s", data)
 	}
 }

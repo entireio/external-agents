@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,13 +28,30 @@ func RepoRoot() string {
 	return filepath.Dir(filepath.Dir(file))
 }
 
-// BuildAgent compiles a single agent binary from agents/<agentName>/cmd/<agentName>/
-// into the given output directory. Returns the absolute path to the built binary.
+// BuildAgent builds a single agent binary into the given output directory.
+// Agents with mise.toml use their local build task; older Go-only agents fall
+// back to go build from cmd/<agentName>/.
 func BuildAgent(agentName, outputDir string) (string, error) {
 	agentDir := filepath.Join(RepoRoot(), "agents", agentName)
-	mainPkg := "./cmd/" + agentName
 	binPath := filepath.Join(outputDir, agentName)
 
+	if _, err := os.Stat(filepath.Join(agentDir, "mise.toml")); err == nil {
+		cmd := exec.Command("mise", "run", "build")
+		cmd.Dir = agentDir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return "", fmt.Errorf("mise build %s: %w", agentName, err)
+		}
+
+		builtPath := filepath.Join(agentDir, agentName)
+		if err := copyExecutable(builtPath, binPath); err != nil {
+			return "", fmt.Errorf("copy built %s: %w", agentName, err)
+		}
+		return binPath, nil
+	}
+
+	mainPkg := "./cmd/" + agentName
 	cmd := exec.Command("go", "build", "-o", binPath, mainPkg)
 	cmd.Dir = agentDir
 	cmd.Stdout = os.Stdout
@@ -45,7 +63,7 @@ func BuildAgent(agentName, outputDir string) (string, error) {
 }
 
 // DiscoverAgents returns relative paths (e.g. "agents/entire-agent-kiro") for
-// all agent directories that have a cmd/<name>/main.go.
+// all agent directories with either a mise build contract or a Go main package.
 func DiscoverAgents() ([]string, error) {
 	agentsDir := filepath.Join(RepoRoot(), "agents")
 	entries, err := os.ReadDir(agentsDir)
@@ -54,8 +72,17 @@ func DiscoverAgents() ([]string, error) {
 	}
 
 	var agentDirs []string
+	filter := os.Getenv("E2E_AGENT")
 	for _, entry := range entries {
 		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "entire-agent-") {
+			continue
+		}
+		if filter != "" && strings.TrimPrefix(entry.Name(), "entire-agent-") != filter {
+			continue
+		}
+		miseFile := filepath.Join(agentsDir, entry.Name(), "mise.toml")
+		if _, err := os.Stat(miseFile); err == nil {
+			agentDirs = append(agentDirs, filepath.Join("agents", entry.Name()))
 			continue
 		}
 		mainFile := filepath.Join(agentsDir, entry.Name(), "cmd", entry.Name(), "main.go")
@@ -65,4 +92,31 @@ func DiscoverAgents() ([]string, error) {
 		agentDirs = append(agentDirs, filepath.Join("agents", entry.Name()))
 	}
 	return agentDirs, nil
+}
+
+func copyExecutable(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	info, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s is a directory", src)
+	}
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode()|0o755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Chmod(info.Mode() | 0o755)
 }

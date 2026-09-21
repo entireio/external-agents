@@ -109,23 +109,40 @@ type qwenHookInputRaw struct {
 	} `json:"llm_request,omitempty"`
 }
 
+// sidecarRecord is one line of the append-only sidecar. Alongside Qwen's own
+// hook fields it carries the Entire-facing projection Type and Message, which
+// the generic compact reader needs to keep the line and read its content — see
+// sidecar_jsonl.go for the contract those two satisfy.
 type sidecarRecord struct {
-	V                    int             `json:"v"`
-	Agent                string          `json:"agent"`
-	Event                string          `json:"event"`
-	SessionID            string          `json:"session_id"`
-	TS                   string          `json:"ts"`
-	CWD                  string          `json:"cwd,omitempty"`
-	NativeTranscriptPath string          `json:"native_transcript_path,omitempty"`
-	Prompt               string          `json:"prompt,omitempty"`
-	Model                string          `json:"model,omitempty"`
-	Reason               string          `json:"reason,omitempty"`
-	Source               string          `json:"source,omitempty"`
-	PermissionMode       string          `json:"permission_mode,omitempty"`
-	StopHookActive       bool            `json:"stop_hook_active,omitempty"`
-	Trigger              string          `json:"trigger,omitempty"`
-	NotificationType     string          `json:"notification_type,omitempty"`
-	Message              string          `json:"message,omitempty"`
+	V     int    `json:"v"`
+	Agent string `json:"agent"`
+	// Type is the projected kind ("user" or "assistant") read by normalizeKind
+	// (compact.go:197). Empty for events Entire has no representation for,
+	// which drops the line from the compact transcript.
+	Type string `json:"type,omitempty"`
+	// Timestamp mirrors TS under the key parseLine reads (compact.go:391), so
+	// the compact transcript carries the time of each turn. Qwen's own "ts" is
+	// left alone.
+	Timestamp            string `json:"timestamp,omitempty"`
+	Event                string `json:"event"`
+	SessionID            string `json:"session_id"`
+	TS                   string `json:"ts"`
+	CWD                  string `json:"cwd,omitempty"`
+	NativeTranscriptPath string `json:"native_transcript_path,omitempty"`
+	Prompt               string `json:"prompt,omitempty"`
+	Model                string `json:"model,omitempty"`
+	Reason               string `json:"reason,omitempty"`
+	Source               string `json:"source,omitempty"`
+	PermissionMode       string `json:"permission_mode,omitempty"`
+	StopHookActive       bool   `json:"stop_hook_active,omitempty"`
+	Trigger              string `json:"trigger,omitempty"`
+	NotificationType     string `json:"notification_type,omitempty"`
+	// Message holds either Qwen's notification text (a JSON string) or the
+	// projected wrapper object parseMessage reads content from
+	// (compact.go:617). It is raw JSON so a record round-trips through
+	// readSidecarRecords whichever shape it carries: typed as a string, a
+	// projected line would fail to unmarshal and the whole sidecar read with it.
+	Message              json.RawMessage `json:"message,omitempty"`
 	AgentID              string          `json:"agent_id,omitempty"`
 	AgentType            string          `json:"agent_type,omitempty"`
 	AgentTranscriptPath  string          `json:"agent_transcript_path,omitempty"`

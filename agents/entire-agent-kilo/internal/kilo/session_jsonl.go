@@ -81,7 +81,7 @@ func parseKiloExport(raw []byte) ([]SessionMessage, error) {
 
 // atomicWriteFile writes data to path via a temp file + rename so a crash
 // mid-write cannot leave a partially-written transcript behind.
-func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
+func atomicWriteFile(path string, data []byte, mode os.FileMode) error { //nolint:unparam // Keep permissions configurable for callers needing other file modes.
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".kilo-write-*")
 	if err != nil {

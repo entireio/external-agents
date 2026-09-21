@@ -1,0 +1,22 @@
+[tasks.build]
+description = "Build the entire-agent-langgraph wrapper"
+run = """
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install 'entire-adapter[langgraph]==0.2.2'
+.venv/bin/python build_launcher.py
+"""
+
+[tasks.test]
+description = "Run wrapper unit tests and protocol smoke tests"
+run = """
+mise run build
+.venv/bin/python -m unittest discover -s . -p 'test_*.py'
+./entire-agent-langgraph info >/dev/null
+./entire-agent-langgraph detect >/dev/null
+printf '%s' '{"session_id":"langgraph-smoke","user_prompt":"Smoke test","raw_data":{"framework":"langgraph","agent_label":"smoke"}}' | ./entire-agent-langgraph parse-hook --hook turn-start >/dev/null
+"""
+
+[tasks.clean]
+description = "Remove generated wrapper and virtual environment"
+run = "rm -rf .venv entire-agent-langgraph"

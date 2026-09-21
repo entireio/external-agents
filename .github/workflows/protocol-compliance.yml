@@ -52,7 +52,28 @@ jobs:
       - name: Build agent binary
         run: mise run build "${{ matrix.dir }}"
 
+      - name: Install Entire for Hermes hook registration
+        if: matrix.name == 'entire-agent-hermes'
+        run: |
+          entire_bin_dir="$RUNNER_TEMP/hermes-entire-bin"
+          mkdir -p "$entire_bin_dir"
+          # Use the published Linux x64 binary on ubuntu-latest rather than
+          # rebuilding the CLI and downloading its full Go dependency graph.
+          entire_archive="$RUNNER_TEMP/entire_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 --connect-timeout 20 --max-time 180 \
+            https://github.com/entireio/cli/releases/download/v0.9.0/entire_linux_amd64.tar.gz \
+            --output "$entire_archive"
+          printf '%s  %s\n' cd1e242500ffa6342730ae1daad603f57fcf94a0a7407ede0d4f835b5e9c28c3 "$entire_archive" | sha256sum --check --strict
+          tar -xzf "$entire_archive" -C "$entire_bin_dir" entire
+          test -x "$entire_bin_dir/entire"
+          echo "$entire_bin_dir" >> "$GITHUB_PATH"
+
       - name: Run protocol compliance suite
         uses: entireio/external-agents-tests@3220ca8cc7ba2fbfc5a951ce4a5937ca1a5ca26e # main
+        env:
+          # Hermes intentionally refuses hook installation without an explicit
+          # profile. Other adapters ignore this runner-temporary directory.
+          HERMES_HOME: ${{ runner.temp }}/external-agent-hermes-profile
         with:
           binary-path: ${{ matrix.binary }}
+          fixtures-path: ${{ matrix.name == 'entire-agent-hermes' && format('{0}/testdata/compliance.json', matrix.dir) || '' }}

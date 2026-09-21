@@ -3,6 +3,7 @@ package goose
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Goose stores sessions in a SQLite database (sessions.db) inside its data
@@ -36,6 +37,9 @@ func (a *Agent) GetSessionDir(_ string) (string, error) {
 }
 
 func (a *Agent) ResolveSessionFile(sessionDirPath, sessionID string) string {
+	if !validSessionID(sessionID) {
+		return ""
+	}
 	return filepath.Join(sessionDirPath, sessionID+".json")
 }
 
@@ -46,5 +50,12 @@ func transcriptPath(sessionID string) string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, sessionID+".json")
+	return a.ResolveSessionFile(dir, sessionID)
+}
+
+// Session IDs are opaque identifiers, never paths. Reject both platform
+// separators so hook payloads cannot redirect exports outside session storage.
+func validSessionID(id string) bool {
+	return strings.TrimSpace(id) != "" && id != "." && id != ".." &&
+		!strings.ContainsAny(id, "/\\\x00:")
 }

@@ -82,7 +82,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 	var buf bytes.Buffer
 	for _, msg := range export.Conversation {
 		switch msg.Role {
-		case "user":
+		case roleUser:
 			// User messages carrying only toolResponse blocks are tool
 			// results, not prompts; they surface attached to the assistant's
 			// tool_use blocks instead.
@@ -94,13 +94,13 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 				V:          1,
 				Agent:      compactTranscriptAgent,
 				CLIVersion: cliVersion,
-				Type:       "user",
+				Type:       roleUser,
 				TS:         compactTimestamp(msg.Created),
 				Content:    content,
 			}); err != nil {
 				return nil, err
 			}
-		case "assistant":
+		case roleAssistant:
 			content := compactAssistantContent(msg.Content, results)
 			if len(content) == 0 {
 				continue
@@ -109,7 +109,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 				V:          1,
 				Agent:      compactTranscriptAgent,
 				CLIVersion: cliVersion,
-				Type:       "assistant",
+				Type:       roleAssistant,
 				TS:         compactTimestamp(msg.Created),
 				ID:         msg.ID,
 				Content:    content,
@@ -127,7 +127,7 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 func compactUserContent(blocks []gooseContent) []compactUserTextBlock {
 	out := []compactUserTextBlock{}
 	for _, block := range blocks {
-		if block.Type == "text" && block.Text != "" {
+		if block.Type == contentTypeText && block.Text != "" {
 			out = append(out, compactUserTextBlock{Text: block.Text})
 		}
 	}
@@ -138,11 +138,11 @@ func compactAssistantContent(blocks []gooseContent, results map[string]compactTo
 	out := []any{}
 	for _, block := range blocks {
 		switch block.Type {
-		case "text":
+		case contentTypeText:
 			if block.Text != "" {
-				out = append(out, compactAssistantTextBlock{Type: "text", Text: block.Text})
+				out = append(out, compactAssistantTextBlock{Type: contentTypeText, Text: block.Text})
 			}
-		case "toolRequest":
+		case contentTypeToolRequest:
 			if block.ToolCall == nil {
 				continue
 			}
@@ -167,7 +167,7 @@ func collectToolResults(messages []gooseMessage) map[string]compactToolResultJSO
 	results := map[string]compactToolResultJSON{}
 	for _, msg := range messages {
 		for _, block := range msg.Content {
-			if block.Type != "toolResponse" || block.ToolResult == nil || block.ID == "" {
+			if block.Type != contentTypeToolResponse || block.ToolResult == nil || block.ID == "" {
 				continue
 			}
 			status := "success"
@@ -176,7 +176,7 @@ func collectToolResults(messages []gooseMessage) map[string]compactToolResultJSO
 			}
 			var parts []string
 			for _, content := range block.ToolResult.Value.Content {
-				if content.Type == "text" && content.Text != "" {
+				if content.Type == contentTypeText && content.Text != "" {
 					parts = append(parts, content.Text)
 				}
 			}
