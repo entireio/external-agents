@@ -42,6 +42,9 @@ func TestInfoResponseShape(t *testing.T) {
 	if !info.Capabilities.TranscriptAnalyzer {
 		t.Fatal("transcript_analyzer = false")
 	}
+	if !info.Capabilities.TokenCalculator {
+		t.Fatal("token_calculator = false")
+	}
 	if !info.Capabilities.CompactTranscript {
 		t.Fatal("compact_transcript = false")
 	}
@@ -50,9 +53,6 @@ func TestInfoResponseShape(t *testing.T) {
 	}
 	if info.Capabilities.TranscriptPreparer {
 		t.Fatal("transcript_preparer = true")
-	}
-	if info.Capabilities.TokenCalculator {
-		t.Fatal("token_calculator = true")
 	}
 	if info.Capabilities.TextGenerator {
 		t.Fatal("text_generator = true")

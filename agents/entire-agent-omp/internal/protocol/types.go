@@ -70,6 +70,14 @@ type ExtractSummaryResponse struct {
 	HasSummary bool   `json:"has_summary"`
 }
 
+type TokenUsageResponse struct {
+	InputTokens         int `json:"input_tokens"`
+	CacheCreationTokens int `json:"cache_creation_tokens"`
+	CacheReadTokens     int `json:"cache_read_tokens"`
+	OutputTokens        int `json:"output_tokens"`
+	APICallCount        int `json:"api_call_count"`
+}
+
 type CompactTranscriptResponse struct {
 	Transcript string                       `json:"transcript"`
 	Assets     []CompactTranscriptAssetJSON `json:"assets,omitempty"`

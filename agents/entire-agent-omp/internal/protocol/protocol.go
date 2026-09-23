@@ -43,6 +43,9 @@ type transcriptAnalyzer interface {
 	ExtractPrompts(sessionRef string, offset int) ([]string, error)
 	ExtractSummary(sessionRef string) (string, bool, error)
 }
+type tokenCalculator interface {
+	CalculateTokens(content []byte, offset int) (TokenUsageResponse, error)
+}
 
 func WriteJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
@@ -187,6 +190,24 @@ func HandleFormatResumeCommand(args []string, stdout io.Writer, formatter resume
 		return err
 	}
 	return WriteJSON(stdout, ResumeCommandResponse{Command: formatter.FormatResumeCommand(*sessionID)})
+}
+
+func HandleCalculateTokens(args []string, stdin io.Reader, stdout io.Writer, calculator tokenCalculator) error {
+	fs := flag.NewFlagSet("calculate-tokens", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	offset := fs.Int("offset", 0, "offset")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	content, err := io.ReadAll(stdin)
+	if err != nil {
+		return err
+	}
+	usage, err := calculator.CalculateTokens(content, *offset)
+	if err != nil {
+		return err
+	}
+	return WriteJSON(stdout, usage)
 }
 
 func readStdinWithTimeout(r io.Reader, timeout time.Duration) ([]byte, error) {

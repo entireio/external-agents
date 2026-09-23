@@ -106,6 +106,7 @@ The adapter rejects a source unless it resolves to a regular direct-child `.json
 | `extract-modified-files` | Active-branch `write`, `edit`, and `apply_patch` tool paths after the physical-line offset |
 | `extract-prompts` | Active-branch user text after the physical-line offset |
 | `extract-summary` | Last non-empty active-branch assistant text |
+| `calculate-tokens` | Active-branch assistant-message usage sums after the physical-line offset |
 | `compact-transcript` | Full sessions or checkpoint-scoped slices to base64-wrapped Entire v1 compact JSONL with user text, assistant text, tool calls/results, and available input/output usage |
 
 ## Declared Capabilities
@@ -116,8 +117,8 @@ The adapter rejects a source unless it resolves to a regular direct-child `.json
 | `transcript_analyzer` | true | Native JSONL contains prompts, assistant text, tool calls, and paths |
 | `compact_transcript` | true | Native messages map to Entire compact JSONL |
 | `uses_terminal` | true | `omp` supports print and interactive terminal modes |
+| `token_calculator` | true | `omp` assistant messages carry per-call usage (`input`, `output`, `cacheRead`, `cacheWrite`) on the active branch |
 | `transcript_preparer` | false | Native transcript already exists on disk |
-| `token_calculator` | false | No separate aggregate-token protocol implementation |
 | `text_generator` | false | `omp` execution remains outside the adapter protocol |
 | `hook_response_writer` | false | Lifecycle forwarding needs no `omp` response channel |
 | `subagent_aware_extractor` | false | No declared external-agent subagent transcript contract |
@@ -128,6 +129,7 @@ The adapter rejects a source unless it resolves to a regular direct-child `.json
 - Explicit `--session-dir` paths fall outside the managed-directory proof and produce TurnEnd without a transcript reference.
 - Modified-file extraction covers explicit mutating tool calls. It does not infer arbitrary shell side effects.
 - The adapter ignores thinking/image/custom blocks in compact output unless they contain supported user or assistant text.
+- Token usage aggregates usage-bearing assistant messages on the active branch after the physical-line offset. Messages without usage are skipped, so `api_call_count` and the token totals always describe the same provider responses.
 - `omp` schema or lifecycle changes after 17.1.1 require renewed compatibility verification.
 
 ## Evidence
@@ -140,3 +142,4 @@ The adapter rejects a source unless it resolves to a regular direct-child `.json
 - `omp` 17.1.1 directory roots: <https://github.com/can1357/oh-my-pi/blob/v17.1.1/packages/utils/src/dirs.ts>
 - `omp` 17.1.1 cwd encoding: <https://github.com/can1357/oh-my-pi/blob/v17.1.1/packages/coding-agent/src/session/session-paths.ts>
 - `omp` 17.1.1 fixed title slot: <https://github.com/can1357/oh-my-pi/blob/v17.1.1/packages/coding-agent/src/session/session-title-slot.ts>
+- `omp` 18.2.11 transcripts (local sessions) verified to carry per-call usage on assistant messages with `input`, `output`, `cacheRead`, and `cacheWrite` fields — the token calculation basis
