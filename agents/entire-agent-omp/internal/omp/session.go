@@ -32,8 +32,10 @@ type sessionMessage struct {
 }
 
 type sessionUsage struct {
-	Input  int `json:"input"`
-	Output int `json:"output"`
+	Input      int `json:"input"`
+	Output     int `json:"output"`
+	CacheRead  int `json:"cacheRead"`
+	CacheWrite int `json:"cacheWrite"`
 }
 
 type contentBlock struct {

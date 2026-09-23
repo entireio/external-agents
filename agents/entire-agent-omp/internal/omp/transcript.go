@@ -163,6 +163,31 @@ func (a *Agent) ExtractSummary(path string) (string, bool, error) {
 	return "", false, nil
 }
 
+// CalculateTokens sums provider usage from assistant messages on the active
+// branch after the offset line. The offset follows the adapter's position
+// convention: the physical line count reported by GetTranscriptPosition.
+// Assistant messages without usage data are skipped entirely, so api_call_count
+// and the token totals always describe the same set of provider responses.
+func (a *Agent) CalculateTokens(content []byte, offset int) (protocol.TokenUsageResponse, error) {
+	session, err := parseSessionSlice(content)
+	if err != nil {
+		return protocol.TokenUsageResponse{}, err
+	}
+	var usage protocol.TokenUsageResponse
+	for _, record := range session.Active {
+		message := record.Entry.Message
+		if message == nil || message.Role != roleAssistant || message.Usage == nil || record.Line <= offset {
+			continue
+		}
+		usage.InputTokens += message.Usage.Input
+		usage.OutputTokens += message.Usage.Output
+		usage.CacheReadTokens += message.Usage.CacheRead
+		usage.CacheCreationTokens += message.Usage.CacheWrite
+		usage.APICallCount++
+	}
+	return usage, nil
+}
+
 func readParsedSession(path string) (*parsedSession, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
