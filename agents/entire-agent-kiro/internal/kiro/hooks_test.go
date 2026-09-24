@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+
 	"strings"
 	"testing"
 )
@@ -49,8 +51,12 @@ func TestInstallHooksWritesCLIAndIDEHooksAndTrustedCommands(t *testing.T) {
 		t.Fatalf("unmarshal settings.json: %v", err)
 	}
 	commands := settings["kiroAgent.trustedCommands"]
-	if len(commands) != 1 || commands[0] != "sh -c 'entire hooks *" {
-		t.Fatalf("trusted commands = %#v, want [\"sh -c 'entire hooks *\"]", commands)
+	wantCommand := "sh -c 'entire hooks *"
+	if runtime.GOOS == "windows" {
+		wantCommand = `cmd /c "entire hooks *`
+	}
+	if len(commands) != 1 || commands[0] != wantCommand {
+		t.Fatalf("trusted commands = %#v, want [%q]", commands, wantCommand)
 	}
 }
 
@@ -92,7 +98,11 @@ func TestInstallHooksLocalDevUsesLocalCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read cli hooks: %v", err)
 	}
-	if !strings.Contains(string(cliData), `go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro stop`) {
+	wantCommand := "go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks "
+	if runtime.GOOS == "windows" {
+		wantCommand = "go run %KIRO_PROJECT_DIR%/cmd/entire/main.go hooks "
+	}
+	if !strings.Contains(string(cliData), wantCommand+"kiro stop") {
 		t.Fatalf("cli hooks = %s", cliData)
 	}
 
@@ -101,7 +111,7 @@ func TestInstallHooksLocalDevUsesLocalCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read ide hook: %v", err)
 	}
-	if !strings.Contains(string(ideData), `go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks kiro stop`) {
+	if !strings.Contains(string(ideData), wantCommand+"kiro stop") {
 		t.Fatalf("ide hook = %s", ideData)
 	}
 
@@ -110,7 +120,7 @@ func TestInstallHooksLocalDevUsesLocalCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read settings: %v", err)
 	}
-	if !strings.Contains(string(settingsData), `go run ${KIRO_PROJECT_DIR}/cmd/entire/main.go hooks *`) {
+	if !strings.Contains(string(settingsData), wantCommand+"*") {
 		t.Fatalf("settings = %s", settingsData)
 	}
 }
