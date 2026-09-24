@@ -39,3 +39,11 @@ The skill files reference Claude Code tool names. Map them to Codex equivalents:
 
 The external agent protocol is defined at:
 `https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md`
+
+## Codebase Flight Recorder (Codex workflow)
+
+Before making a significant change, run the evidence-backed briefing in
+`workflows/codex-flight-recorder`. Treat its Entire checkpoint and Graph results
+as evidence to verify, not as an oracle. Give the resulting briefing to Codex
+before editing, then run focused tests and record the completed work through
+the repository's native Entire Codex hooks.
