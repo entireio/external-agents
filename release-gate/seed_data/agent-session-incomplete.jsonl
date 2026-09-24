@@ -1,0 +1,4 @@
+{"timestamp": "2026-09-06T10:00:00.000+05:30", "event": "session_started", "session_id": "trunc-1", "agent": {"name": "AcmeCode", "version": "1.4.2"}, "repository": "github.com/example/checkout-service", "branch": "feature/wip"}
+{"timestamp": "2026-09-06T10:00:05.000+05:30", "event": "file_changed", "session_id": "trunc-1", "path": "src/checkout/apply_coupon.ts", "change": "modified", "lines_added": 12, "lines_removed": 1}
+{"timestamp": "2026-09-06T10:00:09.000+05:30", "event": "agent.telemetry.unknown_new_event", "session_id": "trunc-1", "payload": {"x": 1}}
+{"timestamp": "2026-09-06T10:00:12.000+05:30", "event": "tool_result", "session_id": "trunc-1", "call_id": "t-1", "output": {"exit_code": 0, "summary": "3 pass

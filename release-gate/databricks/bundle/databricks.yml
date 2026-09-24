@@ -1,0 +1,82 @@
+# Databricks Asset Bundle for Release Gate.
+# Deploy:  databricks bundle deploy -t dev -p release-gate
+# Run:     databricks bundle run release_gate_pipeline -t dev -p release-gate
+bundle:
+  name: release-gate
+
+variables:
+  catalog:
+    description: Unity Catalog catalog for the medallion tables.
+    default: release_gate
+  bundle_path:
+    description: Volume/workspace path where an evidence bundle is dropped.
+    default: /Volumes/release_gate/bronze/inbox/latest.json
+  warehouse_id:
+    description: SQL warehouse id for the dashboard (single 2X-Small in Free Edition).
+    default: ""
+
+# One workspace per account (Free Edition). Host comes from the CLI profile.
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-02f87429-67b9.cloud.databricks.com
+
+# Shared serverless environment so every task stays on serverless compute
+# (no all-purpose clusters), well within Free Edition limits.
+resources:
+  jobs:
+    release_gate_pipeline:
+      name: release-gate-pipeline
+      tags:
+        project: release-gate
+        event: btw-buildathon-2026
+      # <= 5 concurrent tasks; these run sequentially.
+      tasks:
+        - task_key: ingest_bronze
+          spark_python_task:
+            python_file: ../jobs/ingest_bronze.py
+            parameters: ["--bundle_path", "${var.bundle_path}"]
+          environment_key: default
+        - task_key: transform_silver
+          depends_on: [{ task_key: ingest_bronze }]
+          spark_python_task:
+            python_file: ../jobs/transform_silver.py
+          environment_key: default
+        - task_key: build_gold_features
+          depends_on: [{ task_key: transform_silver }]
+          spark_python_task:
+            python_file: ../jobs/build_gold_features.py
+          environment_key: default
+        - task_key: score_and_writeback
+          depends_on: [{ task_key: build_gold_features }]
+          spark_python_task:
+            python_file: ../jobs/score_and_writeback.py
+          environment_key: default
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - jsonschema
+              - requests
+
+    release_gate_train:
+      name: release-gate-train
+      tags:
+        project: release-gate
+        event: btw-buildathon-2026
+      tasks:
+        - task_key: train_model
+          spark_python_task:
+            python_file: ../ml/train_model.py
+            parameters: ["--register"]
+          environment_key: mlenv
+      environments:
+        - environment_key: mlenv
+          spec:
+            client: "2"
+            dependencies:
+              - scikit-learn
+              - mlflow

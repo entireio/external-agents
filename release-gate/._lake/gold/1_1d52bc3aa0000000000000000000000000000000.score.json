@@ -1,0 +1,29 @@
+{
+  "pr_number": 1,
+  "revision_sha": "1d52bc3aa0000000000000000000000000000000",
+  "repo": "Yashas14/Buildathon_TriNexus",
+  "risk_score": 0.2864,
+  "gate": "PASS",
+  "model": "heuristic-v1",
+  "top_factors": [
+    {
+      "name": "unresolved_risk",
+      "label": "Unresolved risks in checkpoints (Entire Checkpoints)",
+      "contribution": 0.1,
+      "raw": 0.4
+    },
+    {
+      "name": "churn",
+      "label": "Code churn",
+      "contribution": 0.0624,
+      "raw": 0.48
+    },
+    {
+      "name": "impact_distance",
+      "label": "Depth of structural impact",
+      "contribution": 0.05,
+      "raw": 0.5
+    }
+  ],
+  "evidence_gaps": []
+}
