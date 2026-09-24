@@ -1,0 +1,7 @@
+{
+  "agent_action_name": "post_write_code",
+  "trajectory_id": "trajectory-123",
+  "execution_id": "execution-456",
+  "timestamp": "2026-09-06T00:00:01Z",
+  "tool_info": {"file_path": "/repo/main.go", "edits": []}
+}
