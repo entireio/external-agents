@@ -1,5 +1,11 @@
 # External Agents for Entire CLI
 
+## Task Manager demo
+
+A small, dependency-free task manager is available in [`task-manager/`](task-manager/). It supports adding, completing, deleting, and filtering tasks; tasks are stored in the browser's local storage.
+
+To run it, open [`task-manager/index.html`](task-manager/index.html) directly in a modern browser. Alternatively, serve the repository with any static file server and open `/task-manager/`.
+
 This repository contains standalone external agent binaries that extend the [Entire CLI](https://github.com/entireio/cli) with support for additional AI coding agents.
 
 ## What Are External Agents?
