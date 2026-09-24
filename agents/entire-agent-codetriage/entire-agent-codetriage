@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Entire CLI external agent launcher for CodeTriage."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from entire_agent_codetriage.cli import main
+
+if __name__ == "__main__":
+    raise SystemExit(main())

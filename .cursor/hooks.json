@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "cmd.exe /d /s /c \"where.exe entire >nul 2>nul & if errorlevel 1 (ver>nul) else (entire hooks cursor before-submit-prompt)\""
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "cmd.exe /d /s /c \"where.exe entire >nul 2>nul & if errorlevel 1 (ver>nul) else (entire hooks cursor pre-compact)\""
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "cmd.exe /d /s /c \"where.exe entire >nul 2>nul & if errorlevel 1 (ver>nul) else (entire hooks cursor session-end)\""
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "cmd.exe /d /s /c \"where.exe entire >nul 2>nul & if errorlevel 1 (ver>nul) else (entire hooks cursor session-start)\""
+      }
+    ],
+    "stop": [
+      {
+        "command": "cmd.exe /d /s /c \"where.exe entire >nul 2>nul & if errorlevel 1 (ver>nul) else (entire hooks cursor stop)\""
+      }
+    ],
+    "subagentStart": [
+      {
+        "command": "cmd.exe /d /s /c \"where.exe entire >nul 2>nul & if errorlevel 1 (ver>nul) else (entire hooks cursor subagent-start)\""
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "cmd.exe /d /s /c \"where.exe entire >nul 2>nul & if errorlevel 1 (ver>nul) else (entire hooks cursor subagent-stop)\""
+      }
+    ]
+  },
+  "version": 1
+}

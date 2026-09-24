@@ -1,0 +1,11 @@
+[tasks.build]
+description = "Build the entire-agent-codetriage launcher"
+run = "python scripts/build.py"
+
+[tasks.test]
+description = "Run unit tests"
+run = "python -m pytest -q"
+
+[tasks.clean]
+description = "Remove generated artifacts"
+run = "python -c \"from pathlib import Path; import shutil; [shutil.rmtree(p, ignore_errors=True) for p in ('.pytest_cache', 'src/entire_agent_codetriage/__pycache__', 'tests/__pycache__')]\""
