@@ -1,0 +1,10 @@
+[tools]
+go = "1.26.0"
+
+[tasks.build]
+description = "Build the entire-agent-devin binary"
+run = "go build -o entire-agent-devin ./cmd/entire-agent-devin"
+
+[tasks.test]
+description = "Run unit tests"
+run = "go test ./..."
