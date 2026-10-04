@@ -2,6 +2,7 @@ package kilo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -23,17 +24,51 @@ func (r *DefaultCommandRunner) ExportSession(ctx context.Context, sessionID stri
 		return nil, errors.New("session id is required")
 	}
 
-	cmd := exec.CommandContext(ctx, "kilo", "session", "show", "--format", "json", sessionID)
-	cmd.Env = kiloEnv()
-	out, err := cmd.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return nil, fmt.Errorf("kilo session show %s: %w: %s", sessionID, err, strings.TrimSpace(string(exitErr.Stderr)))
-		}
-		return nil, fmt.Errorf("kilo session show %s: %w", sessionID, err)
+	// Kilo's native session blob is spelled differently across versions:
+	// `kilo export [id]` on 7.8.x, `kilo session show --format json <id>`
+	// where that subcommand exists. An unknown subcommand prints help and
+	// still exits 0, so the output is validated rather than trusted: only a
+	// payload that actually parses as a session export is accepted.
+	candidates := [][]string{
+		{"export", sessionID},
+		{"session", "show", "--format", "json", sessionID},
 	}
-	return out, nil
+	var failures []string
+	for _, args := range candidates {
+		cmd := exec.CommandContext(ctx, "kilo", args...)
+		cmd.Env = kiloEnv()
+		out, err := cmd.Output()
+		if err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+				failures = append(failures, fmt.Sprintf("kilo %s: %s", strings.Join(args, " "),
+					strings.TrimSpace(string(exitErr.Stderr))))
+				continue
+			}
+			failures = append(failures, fmt.Sprintf("kilo %s: %v", strings.Join(args, " "), err))
+			continue
+		}
+		if !isSessionExport(out) {
+			failures = append(failures, fmt.Sprintf("kilo %s: output is not a session export (%d bytes)",
+				strings.Join(args, " "), len(out)))
+			continue
+		}
+		return out, nil
+	}
+	return nil, fmt.Errorf("cannot export kilo session %s: %s", sessionID, strings.Join(failures, "; "))
+}
+
+// isSessionExport reports whether raw looks like Kilo's native session export:
+// a JSON object with a non-empty `messages` array. Anything else — help text,
+// an error page, an empty object — is a failed attempt, not a session.
+func isSessionExport(raw []byte) bool {
+	var probe struct {
+		Messages []json.RawMessage `json:"messages"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return false
+	}
+	return len(probe.Messages) > 0
 }
 
 // kiloEnv returns the parent environment without Bun bootstrap variables.

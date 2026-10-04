@@ -101,7 +101,20 @@ func (a *Agent) PrepareTranscript(sessionRef string) error {
 	}
 	data, err := os.ReadFile(sessionRef)
 	if err != nil {
-		return fmt.Errorf("read transcript for prepare: %w", err)
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("read transcript for prepare: %w", err)
+		}
+		// No prepared transcript yet. `entire session attach` asks for one on a
+		// session that started before the plugin was installed, and a plugin
+		// write lost to a `kilo run` exit leaves the same gap. The ref is
+		// <session-dir>/<session-id>.json, and those ids are `ses_`-prefixed,
+		// so the name is enough to fetch the transcript instead of failing
+		// with a bare "no such file".
+		sessionID := sessionIDFromRefPath(sessionRef)
+		if sessionID == "" {
+			return fmt.Errorf("read transcript for prepare: %w", err)
+		}
+		return a.fetchSession(sessionID, sessionRef)
 	}
 	sessionID, err := sessionIDFromTranscriptData(data)
 	if err != nil {
@@ -111,6 +124,18 @@ func (a *Agent) PrepareTranscript(sessionRef string) error {
 		return nil
 	}
 	return a.fetchSession(sessionID, sessionRef)
+}
+
+// sessionIDFromRefPath recovers a Kilo session id from a transcript path of the
+// shape resolve-session-file produces. Anything that is not a recognisable
+// session id yields "", so an unrelated path is never turned into a fetch.
+func sessionIDFromRefPath(sessionRef string) string {
+	base := filepath.Base(sessionRef)
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	if !strings.HasPrefix(base, "ses_") || len(base) <= len("ses_") {
+		return ""
+	}
+	return base
 }
 
 func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
