@@ -250,8 +250,9 @@ func TestParseHookLifecycleEvents(t *testing.T) {
 			if event.SessionID != "grok-test-session" {
 				t.Fatalf("unexpected session id %q", event.SessionID)
 			}
-			if !strings.HasSuffix(event.SessionRef, "grok-test-session/chat_history.jsonl") {
-				t.Fatalf("unexpected session ref %q", event.SessionRef)
+			wantSessionRef := nativeTranscriptPath("/repo", "grok-test-session")
+			if event.SessionRef != wantSessionRef {
+				t.Fatalf("session ref = %q, want %q", event.SessionRef, wantSessionRef)
 			}
 			if event.Metadata["native_transcript_path"] != "/tmp/grok-native.jsonl" {
 				t.Fatalf("native transcript path missing from metadata: %#v", event.Metadata)
