@@ -1,0 +1,10 @@
+[tools]
+go = "1.26.0"
+
+[tasks.build]
+description = "Build the Aider external agent"
+run = "go build ./cmd/entire-agent-aider"
+
+[tasks.test]
+description = "Run Aider unit tests"
+run = "go test ./..."
