@@ -33,7 +33,7 @@ mise run test        # go test ./...
 ## Install
 
 Put `entire-agent-goose` on your `PATH`, then opt in to external agents in
-the repo's `.entire/settings.json`:
+the repo's untracked `.entire/settings.local.json` (`entire enable --agent goose` does this for you):
 
 ```json
 {

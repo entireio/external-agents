@@ -54,7 +54,7 @@ go install ./cmd/entire-agent-kilo
 Then opt the project in:
 
 ```json
-// .entire/settings.json
+// .entire/settings.local.json (untracked)
 { "external_agents": true }
 ```
 
