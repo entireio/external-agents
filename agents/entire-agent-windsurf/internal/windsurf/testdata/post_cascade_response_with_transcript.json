@@ -1,0 +1,9 @@
+{
+  "agent_action_name": "post_cascade_response_with_transcript",
+  "trajectory_id": "trajectory-123",
+  "execution_id": "execution-456",
+  "timestamp": "2026-09-06T00:00:03Z",
+  "tool_info": {
+    "transcript_path": "/home/user/.windsurf/transcripts/trajectory-123.jsonl"
+  }
+}

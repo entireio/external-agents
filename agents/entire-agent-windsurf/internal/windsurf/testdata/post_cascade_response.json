@@ -1,0 +1,7 @@
+{
+  "agent_action_name": "post_cascade_response",
+  "trajectory_id": "trajectory-123",
+  "execution_id": "execution-456",
+  "timestamp": "2026-09-06T00:00:02Z",
+  "tool_info": {"response": "done"}
+}
