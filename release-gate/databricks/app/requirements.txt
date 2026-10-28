@@ -1,0 +1,3 @@
+streamlit
+databricks-sql-connector
+databricks-sdk

@@ -1,0 +1,319 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://release-gate.internal/schemas/evidence_bundle.schema.json",
+  "title": "Release Gate Evidence Bundle",
+  "description": "Versioned, additive evidence bundle produced by the Entire CI hook and ingested by Databricks. New optional fields may be added in future versions without breaking older consumers.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Semantic version of this schema, e.g. 1.0.0.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "bundle_id": {
+      "type": "string",
+      "description": "Unique identifier for this evidence bundle instance."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp when the bundle was assembled."
+    },
+    "source": {
+      "type": "string",
+      "description": "Identifier of the system/process that produced the bundle, e.g. 'entire-ci-hook'."
+    },
+    "pr": {
+      "$ref": "#/$defs/pr"
+    },
+    "graph_impact": {
+      "$ref": "#/$defs/graph_impact"
+    },
+    "checkpoint_signals": {
+      "$ref": "#/$defs/checkpoint_signals"
+    },
+    "test_results": {
+      "$ref": "#/$defs/test_results"
+    }
+  },
+  "required": [
+    "schema_version",
+    "bundle_id",
+    "generated_at",
+    "source",
+    "pr",
+    "graph_impact",
+    "checkpoint_signals",
+    "test_results"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "pr": {
+      "type": "object",
+      "description": "Metadata about the pull request under evaluation.",
+      "properties": {
+        "repo": {
+          "type": "string",
+          "description": "Repository in owner/name form."
+        },
+        "number": {
+          "type": "integer",
+          "description": "Pull request number."
+        },
+        "revision_sha": {
+          "type": "string",
+          "description": "SHA of the PR head commit being evaluated."
+        },
+        "base_sha": {
+          "type": "string",
+          "description": "SHA of the base commit the PR targets."
+        },
+        "author": {
+          "type": "string",
+          "description": "GitHub username of the PR author."
+        },
+        "title": {
+          "type": "string",
+          "description": "Pull request title."
+        },
+        "changed_files": {
+          "type": "array",
+          "description": "List of file paths changed by the PR.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "churn": {
+          "type": "object",
+          "description": "Aggregate line and file churn stats for the PR.",
+          "properties": {
+            "additions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "deletions": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "files_changed": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": ["additions", "deletions", "files_changed"],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "repo",
+        "number",
+        "revision_sha",
+        "base_sha",
+        "author",
+        "title",
+        "changed_files",
+        "churn"
+      ],
+      "additionalProperties": true
+    },
+    "graph_impact": {
+      "type": "object",
+      "description": "Structural impact evidence derived from Entire Graph for the changed files.",
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "Whether graph impact data could be computed for this PR."
+        },
+        "impacted_symbols": {
+          "type": "array",
+          "description": "Symbols structurally impacted by the change.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "symbol": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "description": "Symbol kind, e.g. function, class, method, type."
+              },
+              "relationship": {
+                "type": "string",
+                "description": "Relationship to the changed code, e.g. CALLS, INHERITS, REFERENCES."
+              },
+              "distance": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Graph distance (hops) from the changed symbol."
+              }
+            },
+            "required": ["symbol", "file", "kind", "relationship", "distance"],
+            "additionalProperties": true
+          }
+        },
+        "blast_radius": {
+          "type": "object",
+          "description": "Aggregate summary of the impacted symbol set.",
+          "properties": {
+            "symbol_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "file_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "max_distance": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": ["symbol_count", "file_count", "max_distance"],
+          "additionalProperties": true
+        }
+      },
+      "required": ["available", "impacted_symbols", "blast_radius"],
+      "additionalProperties": true
+    },
+    "checkpoint_signals": {
+      "type": "object",
+      "description": "Intent and risk evidence derived from Entire Checkpoints referenced by the PR.",
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "Whether checkpoint signal data could be computed for this PR."
+        },
+        "checkpoints": {
+          "type": "array",
+          "description": "Checkpoints relevant to the changed paths.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "checkpoint_id": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "intent_summary": {
+                "type": "string"
+              },
+              "rejected_options": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "assumptions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "unresolved_risks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "referenced_paths": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "checkpoint_id",
+              "created_at",
+              "intent_summary",
+              "rejected_options",
+              "assumptions",
+              "unresolved_risks",
+              "referenced_paths"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "unresolved_risk_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total count of unresolved risks across all referenced checkpoints."
+        }
+      },
+      "required": ["available", "checkpoints", "unresolved_risk_count"],
+      "additionalProperties": true
+    },
+    "test_results": {
+      "type": "object",
+      "description": "Correctness evidence from the test runner executed against the PR.",
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "Whether test result data could be computed for this PR."
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "passed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "failed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "skipped": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "duration_s": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": ["total", "passed", "failed", "skipped", "duration_s"],
+          "additionalProperties": true
+        },
+        "cases": {
+          "type": "array",
+          "description": "Individual test case results.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["passed", "failed", "skipped"]
+              },
+              "duration_s": {
+                "type": "number",
+                "minimum": 0
+              },
+              "touched_symbols": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["name", "status", "duration_s", "touched_symbols"],
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": ["available", "summary", "cases"],
+      "additionalProperties": true
+    }
+  }
+}

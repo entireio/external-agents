@@ -1,0 +1,7 @@
+{"type": "start", "repo": "github.com/example/checkout-service", "branch": "feature/add-coupon-validation"}
+{"type": "prompt", "text": "Add coupon validation to checkout."}
+{"type": "edit", "file": "src/checkout/apply_coupon.ts", "added": 24, "removed": 3}
+{"type": "edit", "file": "tests/checkout/apply_coupon.test.ts", "added": 71, "removed": 0}
+{"type": "test", "passed": 8, "failed": 0}
+{"type": "checkpoint", "id": "cp-001", "intent": "Reject expired, disabled, or minimum-cart-value-ineligible coupons during checkout.", "risks": ["Should expiry or disabled state take precedence in user-facing errors?"]}
+{"type": "end"}
