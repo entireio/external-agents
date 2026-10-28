@@ -69,8 +69,21 @@ type gooseSessionMeta struct {
 	CreatedAt              string            `json:"created_at,omitempty"`
 	AccumulatedInputTokens int               `json:"accumulated_input_tokens,omitempty"`
 	AccumulatedOutput      int               `json:"accumulated_output_tokens,omitempty"`
+	Usage                  *gooseUsage       `json:"usage,omitempty"`
+	AccumulatedUsage       *gooseUsage       `json:"accumulated_usage,omitempty"`
 	ProviderName           string            `json:"provider_name,omitempty"`
 	ModelConfig            *gooseModelConfig `json:"model_config,omitempty"`
+}
+
+// gooseUsage is goose's Usage object, which replaced the flat
+// accumulated_*_tokens export fields in goose 1.39.0. Every field is nullable
+// in goose (Option<i32>), so nil means "not reported" rather than zero.
+type gooseUsage struct {
+	InputTokens           *int `json:"input_tokens,omitempty"`
+	OutputTokens          *int `json:"output_tokens,omitempty"`
+	TotalTokens           *int `json:"total_tokens,omitempty"`
+	CacheReadInputTokens  *int `json:"cache_read_input_tokens,omitempty"`
+	CacheWriteInputTokens *int `json:"cache_write_input_tokens,omitempty"`
 }
 
 type gooseModelConfig struct {
