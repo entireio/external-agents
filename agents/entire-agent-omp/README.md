@@ -60,6 +60,7 @@ Interactive `omp` sessions use the same extension. Entire can resume a recorded 
 |---|---|
 | `hooks` | Maps `omp` initial load, session switch/branch, the first actual `agent_start`, and the final `agent_end` to Entire session start, turn start, and turn end events. The preceding prompt is captured from `before_agent_start`; automatic continuations remain within the open Entire turn. |
 | `transcript_analyzer` | Reads `omp` JSONL, follows the active parent chain, extracts user prompts, the latest assistant text, and paths from `write`, `edit`, and `apply_patch` tool calls. |
+| `token_calculator` | Sums input, output, cache-read, and cache-write tokens from usage-bearing assistant messages on the active branch after the offset; `api_call_count` counts those same messages. |
 | `compact_transcript` | Emits Entire v1 compact JSONL with user text, assistant text, tool calls/results, and available per-message token counts. |
 | `uses_terminal` | Supports print and interactive `omp` sessions. |
 

@@ -513,3 +513,85 @@ func TestChunkAndReassembleBoundaries(t *testing.T) {
 		t.Fatalf("reassembled = %q, err = %v", data, err)
 	}
 }
+
+func ompTokensFixture() []byte {
+	return []byte(ompTitleSlot() + ompHeader() +
+		`{"type":"message","id":"u1","parentId":null,"timestamp":"2026-07-26T03:14:09Z","message":{"role":"user","content":"hi"}}` + "\n" +
+		`{"type":"message","id":"a1","parentId":"u1","timestamp":"2026-07-26T03:14:10Z","message":{"role":"assistant","content":[{"type":"text","text":"one"}],"usage":{"input":10,"output":5,"cacheRead":100,"cacheWrite":3}}}` + "\n" +
+		`{"type":"message","id":"fork","parentId":"u1","timestamp":"2026-07-26T03:14:11Z","message":{"role":"assistant","content":[{"type":"text","text":"abandoned"}],"usage":{"input":999,"output":999}}}` + "\n" +
+		`{"type":"message","id":"u2","parentId":"a1","timestamp":"2026-07-26T03:14:12Z","message":{"role":"user","content":"more"}}` + "\n" +
+		`{"type":"message","id":"a2","parentId":"u2","timestamp":"2026-07-26T03:14:12Z","message":{"role":"assistant","content":[{"type":"text","text":"two"}],"usage":{"input":7,"output":2}}}` + "\n" +
+		`{"type":"message","id":"a3","parentId":"a2","timestamp":"2026-07-26T03:14:13Z","message":{"role":"assistant","content":[{"type":"text","text":"three"}]}}` + "\n")
+}
+
+func TestCalculateTokensSumsActiveBranchUsage(t *testing.T) {
+	agent := &Agent{}
+	usage, err := agent.CalculateTokens(ompTokensFixture(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Active branch carries a1 and a2; the abandoned fork and the usage-less a3
+	// must not contribute.
+	want := protocol.TokenUsageResponse{
+		InputTokens:         17,
+		OutputTokens:        7,
+		CacheReadTokens:     100,
+		CacheCreationTokens: 3,
+		APICallCount:        2,
+	}
+	if usage != want {
+		t.Fatalf("usage = %+v, want %+v", usage, want)
+	}
+}
+
+func TestCalculateTokensHonorsOffset(t *testing.T) {
+	agent := &Agent{}
+	// a1 sits on line 4 of the fixture; only a2 (line 7) survives the offset.
+	usage, err := agent.CalculateTokens(ompTokensFixture(), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := protocol.TokenUsageResponse{InputTokens: 7, OutputTokens: 2, APICallCount: 1}
+	if usage != want {
+		t.Fatalf("usage = %+v, want %+v", usage, want)
+	}
+
+	if usage, err := agent.CalculateTokens(ompTokensFixture(), 99); err != nil || usage != (protocol.TokenUsageResponse{}) {
+		t.Fatalf("past-end usage = %+v, err = %v, want zero usage", usage, err)
+	}
+}
+
+func TestCalculateTokensOnHeaderlessSlice(t *testing.T) {
+	parts := strings.SplitN(string(ompTokensFixture()), "\n", 3)
+	if len(parts) < 3 {
+		t.Fatal("fixture missing session entries")
+	}
+	agent := &Agent{}
+	usage, err := agent.CalculateTokens([]byte(parts[2]), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := protocol.TokenUsageResponse{
+		InputTokens:         17,
+		OutputTokens:        7,
+		CacheReadTokens:     100,
+		CacheCreationTokens: 3,
+		APICallCount:        2,
+	}
+	if usage != want {
+		t.Fatalf("usage = %+v, want %+v", usage, want)
+	}
+}
+
+func TestCalculateTokensToleratesNonTranscriptInput(t *testing.T) {
+	agent := &Agent{}
+	for _, input := range []string{"{}", "", "{broken"} {
+		usage, err := agent.CalculateTokens([]byte(input), 0)
+		if err != nil {
+			t.Fatalf("input %q: %v", input, err)
+		}
+		if usage != (protocol.TokenUsageResponse{}) {
+			t.Fatalf("input %q: usage = %+v, want zero", input, usage)
+		}
+	}
+}

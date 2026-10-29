@@ -56,6 +56,8 @@ func main() {
 		err = protocol.HandleExtractPrompts(os.Args[2:], os.Stdout, agent)
 	case "extract-summary":
 		err = protocol.HandleExtractSummary(os.Args[2:], os.Stdout, agent)
+	case "calculate-tokens":
+		err = protocol.HandleCalculateTokens(os.Args[2:], os.Stdin, os.Stdout, agent)
 	default:
 		fatalf("unknown subcommand: %s", os.Args[1])
 	}
