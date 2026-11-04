@@ -1,0 +1,120 @@
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #181822;
+    color: #e0e5ec;
+}
+header {
+    background: linear-gradient(90deg,#1a6bcd 60%,#7d31ec 100%);
+    color: #fff;
+    padding: 2rem 1rem 1rem 1rem;
+    text-align: center;
+}
+#subtitle {
+    margin-top: .4rem;
+    font-size: 1.25rem;
+    font-weight: 400;
+    color: #d1cfff;
+}
+main {
+    max-width: 800px;
+    margin: 2rem auto;
+    padding: 1rem;
+    background: #212439;
+    border-radius: 12px;
+    box-shadow: 0 2px 16px #0f102849;
+}
+section {
+    margin-bottom: 2.5rem;
+}
+h2 {
+    color: #77adfd;
+    border-left: 4px solid #77adfd;
+    padding-left: 8px;
+    margin-bottom: 1rem;
+}
+ul {
+    padding-left: 1.5rem;
+    margin-top: .2rem;
+}
+.project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+}
+.project {
+    background: #24273d;
+    padding: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px #0002;
+}
+.project h3 {
+    margin: 0 0 .5rem 0;
+    color: #cb6ce6;
+}
+.tags {
+    display: inline-block;
+    color: #5996d1;
+    font-size: .95em;
+    margin-top: .6em;
+}
+#contact-form {
+    display: flex;
+    flex-direction: column;
+    gap: .9rem;
+}
+#contact-form input,
+#contact-form textarea {
+    background: #232431;
+    color: #faf9fd;
+    border: 1px solid #444681;
+    border-radius: 4px;
+    padding: .55em .7em;
+    font-size: 1em;
+}
+#contact-form button {
+    width: max-content;
+    background: linear-gradient(90deg,#5e81ec 40%,#7d31ec 100%);
+    color: #fff;
+    font-weight: bold;
+    border: none;
+    border-radius: 4px;
+    padding: .6em 2.2em;
+    cursor: pointer;
+    box-shadow: 0 1px 4px #0a0b1e4d;
+    transition: background .2s;
+}
+#contact-form button:hover {
+    background: linear-gradient(90deg,#306bbc 40%,#561ec6 100%);
+}
+#form-success {
+    background: #293b19;
+    color: #b3f989;
+    margin-top: 1em;
+    padding: .7em;
+    border-radius: 6px;
+    text-align: center;
+    font-weight: 500;
+}
+.hidden {
+    display: none;
+}
+footer {
+    text-align: center;
+    font-size: .92em;
+    color: #8e93b6;
+    margin: 2rem auto 0 auto;
+    padding-bottom: 1.5rem;
+    letter-spacing: .02em;
+}
+@media (max-width: 640px) {
+    main {
+        padding: .5rem;
+    }
+    header {
+        font-size: .95em;
+    }
+    .project-list {
+        gap: .7rem;
+    }
+}

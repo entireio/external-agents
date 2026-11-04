@@ -1,0 +1,1 @@
+import{a as e}from"./isSymbol.CmW3dkoN.js";import{i as t,r as n}from"./toString.tRXNBxtF.js";import{r}from"./_baseEach.PLhpSRgM.js";import{t as i}from"./_baseMap.OhVc4KF-.js";var a=function(){return e.Date.now()};function o(e,a){return(n(e)?t:i)(e,r(a,3))}export{a as n,o as t};
