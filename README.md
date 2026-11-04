@@ -2,6 +2,10 @@
 
 This repository contains standalone external agent binaries that extend the [Entire CLI](https://github.com/entireio/cli) with support for additional AI coding agents.
 
+## Buildathon Track 3 submission: Codebase Flight Recorder
+
+The Buildathon project in this branch is [Codebase Flight Recorder](workflows/codex-flight-recorder/): an evidence-backed **Before You Code** workflow for Codex that combines Entire checkpoints, Entire Graph, reviewed development history, Curveball-safe JSONL transcript support, and Databricks risk analytics. Start with its [detailed README](workflows/codex-flight-recorder/README.md) and [judge demo runbook](workflows/codex-flight-recorder/DEMO.md).
+
 ## What Are External Agents?
 
 External agents are standalone binaries (named `entire-agent-<name>`) that teach Entire CLI how to work with AI coding agents it doesn't natively support. When an external agent is installed on your `PATH`, Entire discovers it automatically and gains the ability to:
