@@ -1,0 +1,14 @@
+[tools]
+go = "1.26.0"
+
+[tasks.build]
+description = "Build the entire-agent-dsh binary"
+run = "go build -o entire-agent-dsh ./cmd/entire-agent-dsh"
+
+[tasks.test]
+description = "Run unit tests"
+run = "go test ./..."
+
+[tasks.clean]
+description = "Remove the built binary"
+run = "rm -f entire-agent-dsh"
