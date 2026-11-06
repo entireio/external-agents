@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -239,8 +240,25 @@ func (a *Agent) appendSidecar(raw qwenHookInputRaw) error {
 			record.Message = encoded
 		}
 	}
-	data, err := json.Marshal(record)
-	if err != nil {
+	if err := appendSidecarRecords(path, []sidecarRecord{record}); err != nil {
+		return err
+	}
+	return a.writeSessionMarker(raw, path)
+}
+
+// appendSidecarRecords appends records to the sidecar in one write, one line
+// each.
+func appendSidecarRecords(path string, records []sidecarRecord) error {
+	var buf bytes.Buffer
+	for _, record := range records {
+		data, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		buf.Write(data)
+		buf.WriteByte('\n')
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
@@ -248,10 +266,8 @@ func (a *Agent) appendSidecar(raw qwenHookInputRaw) error {
 		return err
 	}
 	defer func() { _ = f.Close() }()
-	if _, err := f.Write(append(data, '\n')); err != nil {
-		return err
-	}
-	return a.writeSessionMarker(raw, path)
+	_, err = f.Write(buf.Bytes())
+	return err
 }
 
 func (a *Agent) sessionIDAndRef(input *protocol.HookInputJSON) (string, string) {
@@ -355,9 +371,14 @@ func readSidecarRecords(path string) ([]sidecarRecord, error) {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
+	return decodeSidecarRecords(f)
+}
 
+// decodeSidecarRecords is readSidecarRecords over any reader, for callers
+// handed the sidecar's bytes rather than its path (calculate-tokens).
+func decodeSidecarRecords(r io.Reader) ([]sidecarRecord, error) {
 	var records []sidecarRecord
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64*1024), maxSidecarLine)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())

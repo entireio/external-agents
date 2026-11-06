@@ -39,6 +39,7 @@ Session filename portability: Windows reserved device basenames (case-insensitiv
 | `extract-prompts` | `UserPromptSubmit` | Reads sidecar prompt records |
 | `extract-summary` | `Stop`/failure | Reads final assistant/error message |
 | `compact-transcript` | Sidecar JSONL | Emits base64 Entire Transcript Format JSONL |
+| `calculate-tokens` | Native chat-log usage | Sums the `AssistantUsage` sidecar records after `--offset`; see Token Usage |
 
 ## Sidecar Record Shape
 
@@ -63,11 +64,38 @@ The projection is derived data — `readSidecarRecords` ignores `type` and
 | `PreToolUse` | `assistant` | `tool_use` (`type`/`id`/`name`/`input`, the only fields `stripAssistantContent` keeps) |
 | `PostToolUse` / `PostToolUseFailure` | `user` | `tool_result` with snake_case `tool_use_id`, so cli inlines the output into the preceding `tool_use` |
 | `Stop` / `StopFailure` | `assistant` | text block with the final message or error details |
+| `AssistantUsage` (adapter-written, see Token Usage) | not projected | dropped from the compact transcript |
 | everything else | not projected | dropped from the compact transcript |
 
 `message` is stored as raw JSON so a record round-trips whichever shape it
 carries. Typed as a string, a projected line would fail to unmarshal and take
 the whole sidecar read with it.
+
+## Token Usage
+
+Read from Qwen Code 0.26.9 source (`QwenLM/qwen-code` 11c83aa) and checked
+with a live run of the 0.26.9 npm package against a local OpenAI-compatible
+mock that streams usage: `ChatRecordingService.recordAssistantTurn` stores the
+provider's usage, normalized to Gemini field names (`promptTokenCount`,
+`candidatesTokenCount`, `cachedContentTokenCount`, `thoughtsTokenCount`,
+`totalTokenCount`), as `usageMetadata` on each assistant record of the native
+chat log. The OpenAI-compatible pipeline requests it with
+`stream_options.include_usage`; the Anthropic and Responses generators convert
+their usage to the same shape.
+
+| Step | Behavior |
+|---|---|
+| Copy | At `PreToolUse`, `Stop`, `StopFailure`, `SubagentStop` and `SessionEnd`, each native `assistant` record with `usageMetadata` not yet copied becomes an `AssistantUsage` sidecar record holding its usage, `uuid` (`native_uuid`) and the byte offset of its line (`native_offset`) |
+| Resume | The next copy starts after the furthest copied line while that line still holds the same record, and rereads the log otherwise (Qwen can rewrite it, e.g. when prompts are deleted); `native_uuid` keeps a call from being copied twice |
+| Skip | Lines still being written (no newline yet), records `/branch` copied from a parent session (`forkedFrom`), subagent records (`isSidechain`), and records older than the sidecar's first record, such as the history of a resumed session whose sidecar was removed from the temp directory |
+| Count | `calculate-tokens --offset <line>` sums `AssistantUsage` records from that sidecar line, counting each `native_uuid` once. Input is `promptTokenCount` minus `cachedContentTokenCount`, cache reads are `cachedContentTokenCount`, and output counts reasoning once, decided by `totalTokenCount` as in Qwen's own `outputTokenCount` |
+
+Qwen fires `Stop` without waiting for its write queue, so the last API call of
+a turn can land after the `Stop` hook (seen once in six live runs, at
+`PreToolUse`). It is copied at the next hook and counted with that turn or
+checkpoint. Calls outside the session's chat log (subagents, the auto-memory
+extractor and other background helpers) are not counted, and Qwen keeps no
+separate cache-write count.
 
 ## Lifecycle Mapping
 

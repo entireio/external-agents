@@ -158,4 +158,24 @@ type sidecarRecord struct {
 	LastAssistantMessage string          `json:"last_assistant_message,omitempty"`
 	CustomInstructions   string          `json:"custom_instructions,omitempty"`
 	CompactSummary       string          `json:"compact_summary,omitempty"`
+	// NativeUUID, NativeOffset and Usage are set only on AssistantUsage
+	// records, each a copy of one assistant record's usageMetadata from
+	// Qwen's own chat log (see tokens.go). NativeOffset is the byte offset at
+	// which that record's line starts in NativeTranscriptPath.
+	NativeUUID   string             `json:"native_uuid,omitempty"`
+	NativeOffset int64              `json:"native_offset,omitempty"`
+	Usage        *qwenUsageMetadata `json:"usage,omitempty"`
+}
+
+// qwenUsageMetadata is the usageMetadata Qwen Code stores on each assistant
+// record of its chat log: the provider's token counts, normalized by Qwen to
+// the Gemini field names whichever provider answered (see
+// ChatRecordingService.recordAssistantTurn in packages/core). Only the counts
+// calculate-tokens reads are kept.
+type qwenUsageMetadata struct {
+	PromptTokenCount        int `json:"promptTokenCount,omitempty"`
+	CandidatesTokenCount    int `json:"candidatesTokenCount,omitempty"`
+	CachedContentTokenCount int `json:"cachedContentTokenCount,omitempty"`
+	ThoughtsTokenCount      int `json:"thoughtsTokenCount,omitempty"`
+	TotalTokenCount         int `json:"totalTokenCount,omitempty"`
 }
