@@ -25,7 +25,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		// Copy token usage from Qwen's own chat log first, so it precedes
 		// this hook's record; see tokens.go. Best effort: the hook itself
 		// must not fail because the native log could not be read.
-		_ = a.syncNativeUsage(raw)
+		_ = a.syncNativeUsage(hookName, raw)
 	}
 	if err := a.appendSidecar(raw); err != nil {
 		return nil, err

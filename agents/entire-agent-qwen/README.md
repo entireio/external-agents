@@ -24,11 +24,14 @@ after `--offset`. The sidecar stays the only transcript, so a stored checkpoint
 still reports its tokens on a machine without the chat log.
 
 Qwen writes its log through a queue and fires `Stop` without waiting for it,
-so a turn's last API call can reach the log after the `Stop` hook. It is then
-copied at the next hook and counted with the next turn or checkpoint; totals
-are unaffected. Calls Qwen does not record in the session's chat log, such as
-subagents and background helpers like its auto-memory extractor, are not
-counted. Cache writes are not reported separately: for Anthropic models Qwen
+so a turn's last API call can still be on its way when the `Stop` hook reads
+the log. While the log ends with a prompt or tool result the model has not
+answered yet, `Stop` waits up to a second for that call. One that arrives later
+still is copied at the next hook and counted with the next turn or checkpoint;
+totals are unaffected. A session that an older adapter started is counted from
+the first hook after the upgrade. Calls Qwen does not record in the session's
+chat log, such as subagents and background helpers like its auto-memory
+extractor, are not counted. Cache writes are not reported separately: for Anthropic models Qwen
 folds them into the prompt count, so they appear as input tokens.
 
 ## Installation

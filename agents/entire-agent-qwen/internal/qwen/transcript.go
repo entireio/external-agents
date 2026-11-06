@@ -198,7 +198,7 @@ func (a *Agent) appendSidecar(raw qwenHookInputRaw) error {
 		return err
 	}
 	record := sidecarRecord{
-		V:                    1,
+		V:                    sidecarVersion,
 		Agent:                AgentName,
 		Event:                raw.HookEventName,
 		SessionID:            raw.SessionID,

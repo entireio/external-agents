@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/entireio/external-agents/agents/entire-agent-qwen/internal/protocol"
 )
@@ -59,14 +61,30 @@ func (s *qwenSession) hook(name, timestamp string, extra map[string]any) {
 // is a record Qwen is still writing.
 func (s *qwenSession) writeNative(text string) {
 	s.t.Helper()
-	f, err := os.OpenFile(s.nativePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err := appendFile(s.nativePath, text); err != nil {
+		s.t.Fatal(err)
+	}
+}
+
+func appendFile(path, text string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		s.t.Fatal(err)
+		return err
 	}
-	defer func() { _ = f.Close() }()
-	if _, err := f.WriteString(text); err != nil {
-		s.t.Fatal(err)
+	_, err = f.WriteString(text)
+	return errors.Join(err, f.Close())
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return data
 }
 
 func (s *qwenSession) sidecar() []byte {
@@ -180,9 +198,12 @@ func TestTurnTokenUsageComesFromNativeChatLog(t *testing.T) {
 	}
 }
 
-// Qwen fires Stop without waiting for its write queue, so the turn's last API
-// call can land after the Stop hook. It is copied at the next sync and counted
-// with the next turn; the session total is unaffected.
+// Qwen fires Stop without waiting for its write queue, so the turn's final
+// record can still be on its way. While the log ends with a record the model
+// has yet to answer, Stop waits for it; the next test covers that. Here the
+// log already ends with an assistant record, so Stop has nothing to wait for,
+// and the late call is copied at the next sync and counted with the next turn.
+// The session total is unaffected.
 func TestUsageWrittenAfterStopIsCountedWithNextTurn(t *testing.T) {
 	s := newQwenSession(t)
 	s.hook(HookNameSessionStart, "2026-11-06T10:00:00Z", nil)
@@ -205,6 +226,37 @@ func TestUsageWrittenAfterStopIsCountedWithNextTurn(t *testing.T) {
 	wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 600, OutputTokens: 60, APICallCount: 3})
 }
 
+// Qwen queues the turn's final record before it fires Stop, but the write can
+// still be in flight when the hook reads the log. Stop waits for it, so the
+// turn that made the call counts it.
+func TestStopWaitsForTheTurnsFinalRecord(t *testing.T) {
+	s := newQwenSession(t)
+	s.hook(HookNameSessionStart, "2026-11-06T10:00:00Z", nil)
+	turn := s.position()
+	s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01Z", map[string]any{"prompt": "go"})
+	s.writeNative(nativeLine("u-1", "user", "2026-11-06T10:00:01.1Z", ""))
+	s.writeNative(nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
+	s.hook(HookNamePreToolUse, "2026-11-06T10:00:02.1Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1"})
+	s.writeNative(nativeLine("t-1", "tool_result", "2026-11-06T10:00:02.5Z", "") +
+		nativeLine("sys-1", "system", "2026-11-06T10:00:02.6Z", ""))
+
+	// The final record is half written when Stop fires, and finished while
+	// the hook waits.
+	final := nativeLine("a-2", "assistant", "2026-11-06T10:00:04Z", openAIUsage(200, 20, 0, 0))
+	s.writeNative(final[:len(final)/2])
+	written := make(chan error, 1)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		written <- appendFile(s.nativePath, final[len(final)/2:])
+	}()
+	s.hook(HookNameStop, "2026-11-06T10:00:04.1Z", map[string]any{"last_assistant_message": "done"})
+	if err := <-written; err != nil {
+		t.Fatal(err)
+	}
+
+	wantUsage(t, s.tokens(turn), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
+}
+
 // A record Qwen is still writing has no newline yet. It must not be copied
 // half-read or skipped: the next sync copies it whole.
 func TestPartialNativeLineIsCopiedOnceComplete(t *testing.T) {
@@ -212,7 +264,7 @@ func TestPartialNativeLineIsCopiedOnceComplete(t *testing.T) {
 	s.hook(HookNameSessionStart, "2026-11-06T10:00:00Z", nil)
 	line := nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0))
 	s.writeNative(line[:len(line)/2])
-	s.hook(HookNameStop, "2026-11-06T10:00:03Z", nil)
+	s.hook(HookNamePreToolUse, "2026-11-06T10:00:03Z", map[string]any{"tool_name": "read_file", "tool_use_id": "call-1"})
 	wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{})
 
 	s.writeNative(line[len(line)/2:])
@@ -287,6 +339,35 @@ func TestNativeHistoryBeforeTheSidecarIsNotCopied(t *testing.T) {
 	s.hook(HookNameStop, "2026-11-06T10:00:03Z", nil)
 
 	wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 100, OutputTokens: 10, APICallCount: 1})
+}
+
+// A session whose sidecar an older adapter started has no usage copied yet.
+// After the upgrade, counting starts with the first record the new adapter
+// wrote, instead of the session's whole history landing in the next turn.
+func TestSidecarFromAnOlderAdapterStartsAtTheUpgrade(t *testing.T) {
+	s := newQwenSession(t)
+	older := `{"v":1,"agent":"qwen","event":"SessionStart","session_id":"` + s.id + `","ts":"2026-11-01T09:00:00Z","source":"startup"}` + "\n" +
+		`{"v":1,"agent":"qwen","event":"UserPromptSubmit","session_id":"` + s.id + `","ts":"2026-11-01T09:00:01Z","prompt":"first"}` + "\n" +
+		`{"v":1,"agent":"qwen","event":"Stop","session_id":"` + s.id + `","ts":"2026-11-01T09:00:09Z"}` + "\n"
+	if err := appendFile(s.agent.sidecarPath(s.id), older); err != nil {
+		t.Fatal(err)
+	}
+	s.writeNative(nativeLine("old-1", "assistant", "2026-11-01T09:00:05Z", openAIUsage(5000, 500, 0, 0)))
+
+	turn := s.position()
+	s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01Z", map[string]any{"prompt": "continue"})
+	s.writeNative(nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
+	s.hook(HookNameStop, "2026-11-06T10:00:03Z", nil)
+	// A later reread of the whole log, after Qwen rewrites it, still leaves
+	// the older history out.
+	s.writeNative(nativeLine("a-2", "assistant", "2026-11-06T10:01:02Z", openAIUsage(200, 20, 0, 0)))
+	if err := os.WriteFile(s.nativePath, append([]byte(nativeLine("u-0", "user", "2026-11-01T09:00:01Z", "")), mustRead(t, s.nativePath)...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s.hook(HookNameStop, "2026-11-06T10:01:03Z", nil)
+
+	wantUsage(t, s.tokens(turn), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
+	wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
 }
 
 // Records /branch copied from a parent session, and subagent records, were

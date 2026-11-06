@@ -109,6 +109,12 @@ type qwenHookInputRaw struct {
 	} `json:"llm_request,omitempty"`
 }
 
+// sidecarVersion is the v of each sidecar record this adapter writes. Version
+// 2 marks a record written by an adapter that copies token usage into the
+// sidecar (tokens.go); version 1 records come from an older adapter and
+// differ in nothing else.
+const sidecarVersion = 2
+
 // sidecarRecord is one line of the append-only sidecar. Alongside Qwen's own
 // hook fields it carries the Entire-facing projection Type and Message, which
 // the generic compact reader needs to keep the line and read its content — see

@@ -30,15 +30,32 @@ import (
 // Entire's compact transcript drops them.
 //
 // Qwen queues its log writes and fires Stop without waiting for the queue, so
-// a turn's last API call can reach the log after the Stop hook has read it.
-// That call is copied at the next sync and counted with the turn and the
-// checkpoint in which it was copied: totals stay right, but one turn's share
-// can move to the next.
+// a turn's last API call can still be on its way when the Stop hook reads the
+// log. Stop therefore waits, up to finalRecordWait, while the log ends with a
+// record the model has yet to answer. A call that arrives later still is
+// copied at the next sync and counted with the turn and the checkpoint in
+// which it was copied: totals stay right, but one turn's share can move to the
+// next.
 
 const eventAssistantUsage = "AssistantUsage"
 
-// nativeTypeAssistant is the type of the chat-log records that carry usage.
-const nativeTypeAssistant = "assistant"
+// Types of chat-log records. Assistant records carry usage; a user or
+// tool_result record is answered by one; system records (telemetry, titles,
+// compression) come and go around them.
+const (
+	nativeTypeAssistant  = "assistant"
+	nativeTypeUser       = "user"
+	nativeTypeToolResult = "tool_result"
+	nativeTypeSystem     = "system"
+)
+
+// finalRecordWait bounds how long Stop waits for the turn's final assistant
+// record to reach the log, polling every finalRecordPoll. Qwen queues that
+// record before it fires Stop, so the wait ends once that queued write lands.
+const (
+	finalRecordWait = time.Second
+	finalRecordPoll = 25 * time.Millisecond
+)
 
 // maxNativeLine bounds one line read while syncing usage. A native record can
 // embed a whole tool result or written file, and a sidecar record a whole tool
@@ -47,7 +64,8 @@ const nativeTypeAssistant = "assistant"
 const maxNativeLine = 64 * 1024 * 1024
 
 // usageMetadataKey prefilters native lines: only a line containing it can
-// carry usage, so the rest are never decoded.
+// carry usage, so unless a Stop is waiting for the final record the rest are
+// never decoded.
 var usageMetadataKey = []byte(`"usageMetadata"`)
 
 // nativeUUIDKey prefilters sidecar lines the same way for AssistantUsage
@@ -91,18 +109,22 @@ type usageSyncState struct {
 	// the native log in use: the sync resumes after that line when it still
 	// holds the same record.
 	anchor *sidecarRecord
-	// floor is the time of the sidecar's first record. A native record older
-	// than it predates the part of the session Entire saw, such as the
-	// history of a resumed session whose sidecar was cleaned out of the temp
-	// directory, and is not copied.
+	// floor is the time of the sidecar's first record written by an adapter
+	// that copies usage (sidecarVersion or later). A native record older than
+	// it predates the part of the session whose usage the sidecar records and
+	// is not copied: the history of a resumed session whose sidecar was
+	// cleaned out of the temp directory, or of a session whose sidecar an
+	// older adapter started, which would otherwise all land in the first turn
+	// after the upgrade.
 	floor time.Time
 }
 
 // syncNativeUsage copies into the sidecar the usage of assistant records the
-// native log gained since the last sync. It is best effort for the hook that
+// native log gained since the last sync. At Stop it first gives the turn's
+// final record finalRecordWait to arrive. It is best effort for the hook that
 // calls it: an unreadable native log costs the usage of this sync, never the
 // hook.
-func (a *Agent) syncNativeUsage(raw qwenHookInputRaw) error {
+func (a *Agent) syncNativeUsage(hookName string, raw qwenHookInputRaw) error {
 	nativePath := strings.TrimSpace(raw.TranscriptPath)
 	if nativePath == "" {
 		return nil
@@ -112,11 +134,16 @@ func (a *Agent) syncNativeUsage(raw qwenHookInputRaw) error {
 	if err != nil {
 		return err
 	}
-	records, err := scanNativeUsage(nativePath, raw.SessionID, state)
-	if err != nil || len(records) == 0 {
+	scan := &nativeScan{path: nativePath, sessionID: raw.SessionID, state: state, offset: -1, waits: hookName == HookNameStop}
+	pending, err := scan.next()
+	for waited := time.Duration(0); err == nil && pending && waited < finalRecordWait; waited += finalRecordPoll {
+		time.Sleep(finalRecordPoll)
+		pending, err = scan.next()
+	}
+	if len(scan.records) == 0 {
 		return err
 	}
-	return appendSidecarRecords(sidecarPath, records)
+	return errors.Join(err, appendSidecarRecords(sidecarPath, scan.records))
 }
 
 // readUsageSyncState reads the copied UUIDs, the anchor for nativePath and
@@ -136,7 +163,7 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 	defer func() { _ = f.Close() }()
 
 	reader := bufio.NewReaderSize(f, 64*1024)
-	first := true
+	floorFound := false
 	for {
 		line, _, complete, err := readLine(reader, maxNativeLine)
 		if err != nil {
@@ -145,12 +172,13 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 		if !complete {
 			break
 		}
-		if first && len(bytes.TrimSpace(line)) > 0 {
-			first = false
+		if !floorFound {
 			var head struct {
+				V  int    `json:"v"`
 				TS string `json:"ts"`
 			}
-			if json.Unmarshal(line, &head) == nil {
+			if json.Unmarshal(line, &head) == nil && head.V >= sidecarVersion {
+				floorFound = true
 				state.floor = parseTimestamp(head.TS)
 			}
 		}
@@ -167,64 +195,94 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 			state.anchor = &anchor
 		}
 	}
-	if first {
+	if !floorFound {
 		state.floor = parseTimestamp(hookTimestamp)
 	}
 	return state, nil
 }
 
-// scanNativeUsage returns an AssistantUsage record for each assistant record
-// in the native log that carries usage and has not been copied. It resumes
-// after the anchor when that line still holds the anchored record and reads
-// the whole log otherwise (Qwen can rewrite it, e.g. when prompts are
-// deleted), relying on the copied UUIDs to skip what is already recorded. A
-// trailing line without its newline is still being written and is left for
-// the next sync.
-func scanNativeUsage(nativePath, sessionID string, state usageSyncState) ([]sidecarRecord, error) {
-	f, err := os.Open(nativePath)
+// nativeScan reads the native log forward from where its last read stopped,
+// collecting an AssistantUsage record for each assistant record that carries
+// usage and has not been copied. Its first read resumes after the anchor when
+// that line still holds the anchored record and reads the whole log otherwise
+// (Qwen can rewrite it, e.g. when prompts are deleted), relying on the copied
+// UUIDs to skip what is already recorded.
+type nativeScan struct {
+	path      string
+	sessionID string
+	state     usageSyncState
+	// offset is where the next read starts, just past the last complete
+	// line; -1 until the first read places it.
+	offset int64
+	// waits is set when the caller waits for the turn's final record: every
+	// line is then decoded so that last is known.
+	waits bool
+	// last is the type of the last record read other than a system record.
+	last    string
+	records []sidecarRecord
+}
+
+// next reads what the native log gained since the last read. When the scan
+// waits, it reports whether the turn's final record may still be on its way:
+// the log ends with a line still being written, which is left for a later
+// read, or with a user or tool_result record the model has yet to answer.
+func (s *nativeScan) next() (bool, error) {
+	f, err := os.Open(s.path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return false, nil
 	}
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, nil
+		return false, nil
 	}
-
-	offset := resumeOffset(f, state.anchor)
-	if _, err := f.Seek(offset, io.SeekStart); err != nil {
-		return nil, err
+	if s.offset < 0 {
+		s.offset = resumeOffset(f, s.state.anchor)
+		if s.offset > 0 {
+			s.last = nativeTypeAssistant
+		}
+	}
+	if _, err := f.Seek(s.offset, io.SeekStart); err != nil {
+		return false, err
 	}
 	reader := bufio.NewReaderSize(f, 64*1024)
-	var records []sidecarRecord
 	for {
 		line, n, complete, err := readLine(reader, maxNativeLine)
 		if err != nil {
-			return nil, err
+			return false, err
 		}
 		if !complete {
-			return records, nil
+			return s.waits && (n > 0 || s.last == nativeTypeUser || s.last == nativeTypeToolResult), nil
 		}
-		lineStart := offset
-		offset += n
-		native, ok := nativeUsage(line, state)
-		if !ok {
+		lineStart := s.offset
+		s.offset += n
+		if !s.waits && !bytes.Contains(line, usageMetadataKey) {
 			continue
 		}
-		state.copied[native.UUID] = struct{}{}
-		records = append(records, sidecarRecord{
-			V:                    1,
+		var native nativeChatRecord
+		if json.Unmarshal(line, &native) != nil {
+			continue
+		}
+		if native.Type != nativeTypeSystem {
+			s.last = native.Type
+		}
+		if !s.state.wants(native) {
+			continue
+		}
+		s.state.copied[native.UUID] = struct{}{}
+		s.records = append(s.records, sidecarRecord{
+			V:                    sidecarVersion,
 			Agent:                AgentName,
 			Event:                eventAssistantUsage,
-			SessionID:            sessionID,
+			SessionID:            s.sessionID,
 			TS:                   native.Timestamp,
-			NativeTranscriptPath: nativePath,
+			NativeTranscriptPath: s.path,
 			Model:                native.Model,
 			NativeUUID:           native.UUID,
 			NativeOffset:         lineStart,
@@ -233,27 +291,18 @@ func scanNativeUsage(nativePath, sessionID string, state usageSyncState) ([]side
 	}
 }
 
-// nativeUsage decodes a native line that is an assistant record of this
+// wants reports whether a native record is an assistant record of this
 // session with usage not yet copied.
-func nativeUsage(line []byte, state usageSyncState) (nativeChatRecord, bool) {
-	if !bytes.Contains(line, usageMetadataKey) {
-		return nativeChatRecord{}, false
-	}
-	var record nativeChatRecord
-	if json.Unmarshal(line, &record) != nil {
-		return nativeChatRecord{}, false
-	}
+func (s usageSyncState) wants(record nativeChatRecord) bool {
 	if record.Type != nativeTypeAssistant || record.UsageMetadata == nil || record.UUID == "" ||
 		record.IsSidechain || record.ForkedFrom != nil {
-		return nativeChatRecord{}, false
+		return false
 	}
-	if _, copied := state.copied[record.UUID]; copied {
-		return nativeChatRecord{}, false
+	if _, copied := s.copied[record.UUID]; copied {
+		return false
 	}
-	if at := parseTimestamp(record.Timestamp); !state.floor.IsZero() && !at.IsZero() && at.Before(state.floor) {
-		return nativeChatRecord{}, false
-	}
-	return record, true
+	at := parseTimestamp(record.Timestamp)
+	return s.floor.IsZero() || at.IsZero() || !at.Before(s.floor)
 }
 
 // resumeOffset returns the offset just past the anchor's line when that line
