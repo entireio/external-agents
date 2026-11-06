@@ -101,13 +101,9 @@ type nativeChatRecord struct {
 
 // usageSyncState is what the sidecar already records about native usage.
 type usageSyncState struct {
-	// copied holds the native UUID of every AssistantUsage record, so a call
-	// is copied once even when the native log is rewritten or two hooks sync
-	// at the same time.
-	copied map[string]struct{}
-	// anchor is the AssistantUsage record copied from the furthest line of
-	// the native log in use: the sync resumes after that line when it still
-	// holds the same record.
+	// anchor is the last AssistantUsage record copied from the native log in
+	// use: the sync resumes after its line when that line still holds the
+	// same record.
 	anchor *sidecarRecord
 	// floor is the time of the sidecar's first record written by an adapter
 	// that copies usage (sidecarVersion or later). A native record older than
@@ -146,15 +142,14 @@ func (a *Agent) syncNativeUsage(hookName string, raw qwenHookInputRaw) error {
 	return errors.Join(err, appendSidecarRecords(sidecarPath, scan.records))
 }
 
-// readUsageSyncState reads the copied UUIDs, the anchor for nativePath and
-// the floor from the sidecar. Only lines that can be AssistantUsage records
-// are decoded, so the cost of a hook stays small as the sidecar grows. An
-// empty or missing sidecar takes its floor from the hook now running.
+// readUsageSyncState reads the floor from the start of the sidecar and the
+// anchor for nativePath from its end, so a hook reads what was appended since
+// the last copy, not the whole session. An empty or missing sidecar takes its
+// floor from the hook now running.
 func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyncState, error) {
-	state := usageSyncState{copied: map[string]struct{}{}}
+	state := usageSyncState{floor: parseTimestamp(hookTimestamp)}
 	f, err := os.Open(sidecarPath)
 	if errors.Is(err, os.ErrNotExist) {
-		state.floor = parseTimestamp(hookTimestamp)
 		return state, nil
 	}
 	if err != nil {
@@ -163,7 +158,6 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 	defer func() { _ = f.Close() }()
 
 	reader := bufio.NewReaderSize(f, 64*1024)
-	floorFound := false
 	for {
 		line, _, complete, err := readLine(reader, maxNativeLine)
 		if err != nil {
@@ -172,41 +166,90 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 		if !complete {
 			break
 		}
-		if !floorFound {
-			var head struct {
-				V  int    `json:"v"`
-				TS string `json:"ts"`
-			}
-			if json.Unmarshal(line, &head) == nil && head.V >= sidecarVersion {
-				floorFound = true
-				state.floor = parseTimestamp(head.TS)
-			}
+		var head struct {
+			V  int    `json:"v"`
+			TS string `json:"ts"`
 		}
-		if !bytes.Contains(line, nativeUUIDKey) {
-			continue
-		}
-		var record sidecarRecord
-		if json.Unmarshal(line, &record) != nil || !isUsageRecord(record) || record.NativeUUID == "" {
-			continue
-		}
-		state.copied[record.NativeUUID] = struct{}{}
-		if record.NativeTranscriptPath == nativePath && (state.anchor == nil || record.NativeOffset > state.anchor.NativeOffset) {
-			anchor := record
-			state.anchor = &anchor
+		if json.Unmarshal(line, &head) == nil && head.V >= sidecarVersion {
+			state.floor = parseTimestamp(head.TS)
+			break
 		}
 	}
-	if !floorFound {
-		state.floor = parseTimestamp(hookTimestamp)
+	state.anchor, err = lastUsageRecord(f, nativePath)
+	return state, err
+}
+
+// lastUsageRecord returns the last AssistantUsage record in the sidecar that
+// was copied from nativePath, reading the sidecar backwards from its end. A
+// trailing line without its newline is still being written and is skipped.
+// AssistantUsage lines are small, so a line longer than one block is skipped
+// without being held in memory.
+func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, error) {
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
 	}
-	return state, nil
+	const block = 64 * 1024
+	var (
+		pos      = info.Size()
+		carry    []byte // the end of a line whose start lies before pos
+		trailing = true // the bytes after the last newline are no line yet
+		long     bool   // the line in carry is longer than a block
+	)
+	for pos > 0 {
+		n := min(int64(block), pos)
+		pos -= n
+		data := make([]byte, n, n+int64(len(carry)))
+		if _, err := f.ReadAt(data, pos); err != nil {
+			return nil, err
+		}
+		data = append(data, carry...)
+		for {
+			i := bytes.LastIndexByte(data, '\n')
+			if i < 0 {
+				break
+			}
+			line := data[i+1:]
+			data = data[:i]
+			if trailing || long {
+				trailing, long = false, false
+				continue
+			}
+			if record := usageRecordFrom(line, nativePath); record != nil {
+				return record, nil
+			}
+		}
+		carry = data
+		if len(carry) > block {
+			carry, long = nil, true
+		}
+	}
+	if trailing || long {
+		return nil, nil
+	}
+	return usageRecordFrom(carry, nativePath), nil
+}
+
+// usageRecordFrom decodes a sidecar line that is an AssistantUsage record
+// copied from nativePath, or returns nil.
+func usageRecordFrom(line []byte, nativePath string) *sidecarRecord {
+	if !bytes.Contains(line, nativeUUIDKey) {
+		return nil
+	}
+	var record sidecarRecord
+	if json.Unmarshal(line, &record) != nil || !isUsageRecord(record) || record.NativeUUID == "" ||
+		record.NativeTranscriptPath != nativePath {
+		return nil
+	}
+	return &record
 }
 
 // nativeScan reads the native log forward from where its last read stopped,
 // collecting an AssistantUsage record for each assistant record that carries
-// usage and has not been copied. Its first read resumes after the anchor when
-// that line still holds the anchored record and reads the whole log otherwise
-// (Qwen can rewrite it, e.g. when prompts are deleted), relying on the copied
-// UUIDs to skip what is already recorded.
+// usage. Its first read resumes after the anchor when that line still holds
+// the anchored record. Otherwise it reads the whole log (Qwen can rewrite it,
+// e.g. when prompts are deleted) and copies again what an earlier sync
+// copied; CalculateTokens counts each call once.
 type nativeScan struct {
 	path      string
 	sessionID string
@@ -275,7 +318,6 @@ func (s *nativeScan) next() (bool, error) {
 		if !s.state.wants(native) {
 			continue
 		}
-		s.state.copied[native.UUID] = struct{}{}
 		s.records = append(s.records, sidecarRecord{
 			V:                    sidecarVersion,
 			Agent:                AgentName,
@@ -292,13 +334,10 @@ func (s *nativeScan) next() (bool, error) {
 }
 
 // wants reports whether a native record is an assistant record of this
-// session with usage not yet copied.
+// session, with usage, from no earlier than the floor.
 func (s usageSyncState) wants(record nativeChatRecord) bool {
 	if record.Type != nativeTypeAssistant || record.UsageMetadata == nil || record.UUID == "" ||
 		record.IsSidechain || record.ForkedFrom != nil {
-		return false
-	}
-	if _, copied := s.copied[record.UUID]; copied {
 		return false
 	}
 	at := parseTimestamp(record.Timestamp)
@@ -374,8 +413,9 @@ func isUsageRecord(record sidecarRecord) bool {
 
 // CalculateTokens sums the AssistantUsage records at or after offset, a
 // sidecar line index like every other offset this adapter reports. A native
-// call recorded twice, by two hooks syncing at once or once before offset and
-// again after it, is counted once.
+// call recorded twice (by two hooks syncing at once, or copied again after Qwen
+// rewrote its log), whether both copies follow offset or one precedes it, is
+// counted once.
 func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageResponse, error) {
 	records, err := decodeSidecarRecords(bytes.NewReader(data))
 	if err != nil {

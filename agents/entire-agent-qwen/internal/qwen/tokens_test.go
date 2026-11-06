@@ -292,6 +292,76 @@ func TestRewrittenNativeLogIsNotCountedTwice(t *testing.T) {
 	s.hook(HookNameStop, "2026-11-06T10:00:06Z", nil)
 
 	wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 600, OutputTokens: 60, APICallCount: 3})
+
+	// The copy made after the rewrite anchors later syncs in the rewritten
+	// log, so they resume instead of rereading it.
+	state, err := readUsageSyncState(s.agent.sidecarPath(s.id), s.nativePath, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(s.nativePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	if got := resumeOffset(f, state.anchor); state.anchor == nil || state.anchor.NativeUUID != "a-3" || got != int64(len(rewritten)) {
+		t.Fatalf("anchor = %+v, resumeOffset = %d; want a-3, %d", state.anchor, got, len(rewritten))
+	}
+	s.writeNative(nativeLine("a-4", "assistant", "2026-11-06T10:00:07Z", openAIUsage(400, 40, 0, 0)))
+	s.hook(HookNameStop, "2026-11-06T10:00:08Z", nil)
+	wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 1000, OutputTokens: 100, APICallCount: 4})
+}
+
+// The anchor is read from the end of the sidecar: the last AssistantUsage
+// record copied from the given log, past long lines and a line still being
+// written, without reading the whole session.
+func TestLastUsageRecordReadsTheSidecarBackwards(t *testing.T) {
+	t.Parallel()
+	usage := func(uuid, native string) string {
+		data, err := json.Marshal(sidecarRecord{
+			V: sidecarVersion, Agent: AgentName, Event: eventAssistantUsage, NativeTranscriptPath: native,
+			NativeUUID: uuid, Usage: &qwenUsageMetadata{PromptTokenCount: 1},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data) + "\n"
+	}
+	long := `{"v":2,"agent":"qwen","event":"PostToolUse","tool_response":"` + strings.Repeat("x", 200*1024) + `"}` + "\n"
+	for _, tc := range []struct {
+		name, sidecar, want string
+	}{
+		{"first line", usage("a-1", "/n.jsonl"), "a-1"},
+		{"last of several", usage("a-1", "/n.jsonl") + usage("a-2", "/n.jsonl") + long, "a-2"},
+		{"past long lines and other logs", usage("a-1", "/n.jsonl") + long + usage("b-1", "/other.jsonl") + long, "a-1"},
+		{"partial trailing line", usage("a-1", "/n.jsonl") + strings.TrimSuffix(usage("a-2", "/n.jsonl"), "\n"), "a-1"},
+		{"none", long + usage("b-1", "/other.jsonl"), ""},
+		{"empty", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "sidecar.jsonl")
+			if err := os.WriteFile(path, []byte(tc.sidecar), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			f, err := os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = f.Close() }()
+			record, err := lastUsageRecord(f, "/n.jsonl")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := ""
+			if record != nil {
+				got = record.NativeUUID
+			}
+			if got != tc.want {
+				t.Fatalf("last usage record = %q, want %q", got, tc.want)
+			}
+		})
+	}
 }
 
 // A sync resumes after the last copied line instead of rereading the log, as
