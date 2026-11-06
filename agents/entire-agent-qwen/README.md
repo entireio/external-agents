@@ -25,10 +25,10 @@ still reports its tokens on a machine without the chat log.
 
 Qwen writes its log through a queue and fires `Stop` without waiting for it,
 so a turn's last API call can still be on its way when the `Stop` hook reads
-the log. While the log ends with a prompt or tool result the model has not
-answered yet, `Stop` waits up to a second for that call. One that arrives later
-still is copied at the next hook and counted with the next turn or checkpoint;
-totals are unaffected. A session that an older adapter started is counted from
+the log. Until the log holds the model's answer to the turn's last prompt,
+`Stop` waits up to a second for it. A call that arrives later still is copied
+at the next hook and counted with the next turn or checkpoint; totals are
+unaffected. A session that an older adapter started is counted from
 the first hook after the upgrade. Calls Qwen does not record in the session's
 chat log, such as subagents and background helpers like its auto-memory
 extractor, are not counted. Cache writes are not reported separately: for Anthropic models Qwen

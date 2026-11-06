@@ -31,8 +31,8 @@ import (
 //
 // Qwen queues its log writes and fires Stop without waiting for the queue, so
 // a turn's last API call can still be on its way when the Stop hook reads the
-// log. Stop therefore waits, up to finalRecordWait, while the log ends with a
-// record the model has yet to answer. A call that arrives later still is
+// log. Stop therefore waits, up to finalRecordWait, until the log holds the
+// model's answer to the turn's last prompt. A call that arrives later still is
 // copied at the next sync and counted with the turn and the checkpoint in
 // which it was copied: totals stay right, but one turn's share can move to the
 // next.
@@ -40,16 +40,16 @@ import (
 const eventAssistantUsage = "AssistantUsage"
 
 // eventUserPromptSubmit is the event of the sidecar record a turn starts with.
+// Qwen 0.26.9 also fires UserPromptSubmit, with an empty prompt, before the
+// call that follows a tool round, so each API call of a turn follows one.
 const eventUserPromptSubmit = "UserPromptSubmit"
 
-// Types of chat-log records. Assistant records carry usage; a user or
-// tool_result record is answered by one; system records (telemetry, titles,
+// Types of chat-log records. Assistant records carry usage; user and
+// tool_result records come between them; system records (telemetry, titles,
 // compression) come and go around them.
 const (
-	nativeTypeAssistant  = "assistant"
-	nativeTypeUser       = "user"
-	nativeTypeToolResult = "tool_result"
-	nativeTypeSystem     = "system"
+	nativeTypeAssistant = "assistant"
+	nativeTypeSystem    = "system"
 )
 
 // finalRecordWait bounds how long Stop waits for the turn's final assistant
@@ -72,8 +72,11 @@ const maxNativeLine = 64 * 1024 * 1024
 var usageMetadataKey = []byte(`"usageMetadata"`)
 
 // nativeUUIDKey prefilters sidecar lines the same way for AssistantUsage
-// records.
-var nativeUUIDKey = []byte(`"native_uuid"`)
+// records, and promptEventKey for UserPromptSubmit records.
+var (
+	nativeUUIDKey  = []byte(`"native_uuid"`)
+	promptEventKey = []byte(`"` + eventUserPromptSubmit + `"`)
+)
 
 // syncsUsage reports whether a hook copies new native usage into the sidecar:
 // PreToolUse, so a commit a tool makes mid-turn sees the API calls before it,
@@ -100,6 +103,28 @@ type nativeChatRecord struct {
 	// ForkedFrom marks a record /branch copied from the parent session: its
 	// API call was made, and counted, there.
 	ForkedFrom *struct{} `json:"forkedFrom"`
+	// Message is kept raw: only a Stop waiting for the turn's answer reads
+	// it, and a shape it does not expect must not cost the record its usage.
+	Message json.RawMessage `json:"message"`
+}
+
+// callsTools reports whether an assistant record asks for a tool call, after
+// which Qwen sends the results back and the turn goes on.
+func (r nativeChatRecord) callsTools() bool {
+	var message struct {
+		Parts []struct {
+			FunctionCall json.RawMessage `json:"functionCall"`
+		} `json:"parts"`
+	}
+	if json.Unmarshal(r.Message, &message) != nil {
+		return false
+	}
+	for _, part := range message.Parts {
+		if len(part.FunctionCall) > 0 && !bytes.Equal(part.FunctionCall, []byte("null")) {
+			return true
+		}
+	}
+	return false
 }
 
 // usageSyncState is what the sidecar already records about native usage.
@@ -115,9 +140,14 @@ type usageSyncState struct {
 	// cleaned out of the temp directory, or of a session whose sidecar an
 	// older adapter started, which would otherwise all land in the first turn
 	// after the upgrade. Until a sidecar an older adapter started has such a
-	// record, the floor is its last prompt, so an upgrade in the middle of a
-	// turn still copies that turn's calls.
+	// record, the floor is the last prompt typed in it (not an empty one
+	// before a tool round's next call), so an upgrade in the middle of a turn
+	// still copies that turn's calls.
 	floor time.Time
+	// prompt is the time of the last UserPromptSubmit record after the
+	// anchor, zero when there is none: the API call that answers it has not
+	// been copied yet.
+	prompt time.Time
 }
 
 // syncNativeUsage copies into the sidecar the usage of assistant records the
@@ -147,10 +177,10 @@ func (a *Agent) syncNativeUsage(hookName string, raw qwenHookInputRaw) error {
 	return errors.Join(err, appendSidecarRecords(sidecarPath, scan.records))
 }
 
-// readUsageSyncState reads the floor from the start of the sidecar and the
-// anchor for nativePath from its end, so a hook reads what was appended since
-// the last copy, not the whole session. An empty or missing sidecar takes its
-// floor from the hook now running.
+// readUsageSyncState reads the floor from the start of the sidecar, and the
+// anchor for nativePath and the last prompt after it from its end, so a hook
+// reads what was appended since the last copy, not the whole session. An empty
+// or missing sidecar takes its floor from the hook now running.
 func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyncState, error) {
 	state := usageSyncState{floor: parseTimestamp(hookTimestamp)}
 	f, err := os.Open(sidecarPath)
@@ -172,9 +202,10 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 			break
 		}
 		var head struct {
-			V     int    `json:"v"`
-			Event string `json:"event"`
-			TS    string `json:"ts"`
+			V      int    `json:"v"`
+			Event  string `json:"event"`
+			TS     string `json:"ts"`
+			Prompt string `json:"prompt"`
 		}
 		if json.Unmarshal(line, &head) != nil {
 			continue
@@ -183,23 +214,26 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 			state.floor = parseTimestamp(head.TS)
 			break
 		}
-		if at := parseTimestamp(head.TS); head.Event == eventUserPromptSubmit && !at.IsZero() {
+		at := parseTimestamp(head.TS)
+		if head.Event == eventUserPromptSubmit && strings.TrimSpace(head.Prompt) != "" && !at.IsZero() {
 			state.floor = at
 		}
 	}
-	state.anchor, err = lastUsageRecord(f, nativePath)
+	state.anchor, state.prompt, err = lastUsageRecord(f, nativePath)
 	return state, err
 }
 
 // lastUsageRecord returns the last AssistantUsage record in the sidecar that
-// was copied from nativePath, reading the sidecar backwards from its end. A
-// trailing line without its newline is still being written and is skipped.
-// AssistantUsage lines are small, so a line longer than one block is skipped
-// without being held in memory.
-func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, error) {
+// was copied from nativePath, and the time of the last UserPromptSubmit record
+// after it, reading the sidecar backwards from its end. A trailing line
+// without its newline is still being written and is skipped. AssistantUsage
+// lines are small, so a line longer than one block is skipped without being
+// held in memory; a prompt that long goes unseen, which leaves the Stop wait
+// to the tool-call check alone.
+func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, time.Time, error) {
 	info, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
 	const block = 64 * 1024
 	var (
@@ -207,13 +241,23 @@ func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, error) {
 		carry    []byte // the end of a line whose start lies before pos
 		trailing = true // the bytes after the last newline are no line yet
 		long     bool   // the line in carry is longer than a block
+		prompt   time.Time
 	)
+	// visit returns the record when line is the anchor, and otherwise notes
+	// the last prompt seen on the way to it.
+	visit := func(line []byte) *sidecarRecord {
+		record := usageRecordFrom(line, nativePath)
+		if record == nil && prompt.IsZero() {
+			prompt = promptTime(line)
+		}
+		return record
+	}
 	for pos > 0 {
 		n := min(int64(block), pos)
 		pos -= n
 		data := make([]byte, n, n+int64(len(carry)))
 		if _, err := f.ReadAt(data, pos); err != nil {
-			return nil, err
+			return nil, time.Time{}, err
 		}
 		data = append(data, carry...)
 		for {
@@ -227,8 +271,8 @@ func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, error) {
 				trailing, long = false, false
 				continue
 			}
-			if record := usageRecordFrom(line, nativePath); record != nil {
-				return record, nil
+			if record := visit(line); record != nil {
+				return record, prompt, nil
 			}
 		}
 		carry = data
@@ -237,9 +281,26 @@ func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, error) {
 		}
 	}
 	if trailing || long {
-		return nil, nil
+		return nil, prompt, nil
 	}
-	return usageRecordFrom(carry, nativePath), nil
+	record := visit(carry)
+	return record, prompt, nil
+}
+
+// promptTime returns the time of a sidecar line that is a UserPromptSubmit
+// record, or zero.
+func promptTime(line []byte) time.Time {
+	if !bytes.Contains(line, promptEventKey) {
+		return time.Time{}
+	}
+	var head struct {
+		Event string `json:"event"`
+		TS    string `json:"ts"`
+	}
+	if json.Unmarshal(line, &head) != nil || head.Event != eventUserPromptSubmit {
+		return time.Time{}
+	}
+	return parseTimestamp(head.TS)
 }
 
 // usageRecordFrom decodes a sidecar line that is an AssistantUsage record
@@ -270,19 +331,20 @@ type nativeScan struct {
 	// line; -1 until the first read places it.
 	offset int64
 	// waits is set when the caller waits for the turn's final record: every
-	// line is then decoded so that last is known.
+	// line is then decoded so that answered is known.
 	waits bool
 	// info is the log as the last read found it.
 	info os.FileInfo
-	// last is the type of the last record read other than a system record.
-	last    string
-	records []sidecarRecord
+	// answered is set while the last record read other than a system record
+	// is the model's answer to the turn's last prompt.
+	answered bool
+	records  []sidecarRecord
 }
 
 // next reads what the native log gained since the last read. When the scan
 // waits, it reports whether the turn's final record may still be on its way:
 // the log ends with a line still being written, which is left for a later
-// read, or with a user or tool_result record the model has yet to answer.
+// read, or with anything other than the answer to the turn's last prompt.
 func (s *nativeScan) next() (bool, error) {
 	f, err := os.Open(s.path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -302,14 +364,13 @@ func (s *nativeScan) next() (bool, error) {
 	// A log replaced since the last read (Qwen rewrites it by renaming a new
 	// file over it) or cut shorter is read again from the start.
 	if s.info != nil && (!os.SameFile(s.info, info) || info.Size() < s.offset) {
-		s.offset, s.last = -1, ""
+		s.offset, s.answered = -1, false
 	}
 	s.info = info
 	if s.offset < 0 {
-		s.offset = resumeOffset(f, s.state.anchor)
-		if s.offset > 0 {
-			s.last = nativeTypeAssistant
-		}
+		var anchored *nativeChatRecord
+		s.offset, anchored = resumeOffset(f, s.state.anchor)
+		s.answered = anchored != nil && s.state.answers(*anchored)
 	}
 	if _, err := f.Seek(s.offset, io.SeekStart); err != nil {
 		return false, err
@@ -321,7 +382,7 @@ func (s *nativeScan) next() (bool, error) {
 			return false, err
 		}
 		if !complete {
-			return s.waits && (n > 0 || s.last == nativeTypeUser || s.last == nativeTypeToolResult), nil
+			return s.waits && (n > 0 || !s.answered), nil
 		}
 		lineStart := s.offset
 		s.offset += n
@@ -333,7 +394,7 @@ func (s *nativeScan) next() (bool, error) {
 			continue
 		}
 		if native.Type != nativeTypeSystem {
-			s.last = native.Type
+			s.answered = s.state.answers(native)
 		}
 		if !s.state.wants(native) {
 			continue
@@ -364,26 +425,36 @@ func (s usageSyncState) wants(record nativeChatRecord) bool {
 	return s.floor.IsZero() || at.IsZero() || !at.Before(s.floor)
 }
 
-// resumeOffset returns the offset just past the anchor's line when that line
-// still holds the anchored record, and 0 (read the whole log) otherwise.
-func resumeOffset(f *os.File, anchor *sidecarRecord) int64 {
+// answers reports whether a native record is the model's answer to the turn's
+// last prompt: an assistant record that calls no tool, so the turn ends with
+// it, from no earlier than that prompt.
+func (s usageSyncState) answers(record nativeChatRecord) bool {
+	if record.Type != nativeTypeAssistant || record.callsTools() {
+		return false
+	}
+	at := parseTimestamp(record.Timestamp)
+	return s.prompt.IsZero() || at.IsZero() || !at.Before(s.prompt)
+}
+
+// resumeOffset returns the offset just past the anchor's line, and the record
+// on it, when that line still holds the anchored record, and 0 (read the
+// whole log) otherwise.
+func resumeOffset(f *os.File, anchor *sidecarRecord) (int64, *nativeChatRecord) {
 	if anchor == nil || anchor.NativeUUID == "" || anchor.NativeOffset < 0 {
-		return 0
+		return 0, nil
 	}
 	if _, err := f.Seek(anchor.NativeOffset, io.SeekStart); err != nil {
-		return 0
+		return 0, nil
 	}
 	line, n, complete, err := readLine(bufio.NewReader(f), maxNativeLine)
 	if err != nil || !complete {
-		return 0
+		return 0, nil
 	}
-	var head struct {
-		UUID string `json:"uuid"`
+	var record nativeChatRecord
+	if json.Unmarshal(line, &record) != nil || record.UUID != anchor.NativeUUID {
+		return 0, nil
 	}
-	if json.Unmarshal(line, &head) != nil || head.UUID != anchor.NativeUUID {
-		return 0
-	}
-	return anchor.NativeOffset + n
+	return anchor.NativeOffset + n, &record
 }
 
 // readLine reads one newline-terminated line and reports how many bytes it

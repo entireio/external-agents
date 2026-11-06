@@ -134,6 +134,13 @@ func nativeLine(uuid, recordType, timestamp, usage string) string {
 	return record + "}\n"
 }
 
+// toolCallLine renders an assistant record whose reply asks for a tool, as
+// Qwen records a call the turn goes on from.
+func toolCallLine(uuid, timestamp, usage string) string {
+	return strings.Replace(nativeLine(uuid, "assistant", timestamp, usage), `"parts":[{"text":"done"}]`,
+		`"parts":[{"functionCall":{"id":"call_1","name":"write_file","args":{"file_path":"hello.txt","content":"hello"}}}]`, 1)
+}
+
 // openAIUsage is what Qwen records from an OpenAI-compatible provider:
 // prompt_tokens includes the cached share and completion_tokens the reasoning.
 func openAIUsage(prompt, completion, cached, reasoning int) string {
@@ -158,7 +165,7 @@ func TestTurnTokenUsageComesFromNativeChatLog(t *testing.T) {
 	turnStart := s.position()
 	s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01.000Z", map[string]any{"prompt": "create hello.txt"})
 	s.writeNative(nativeLine("u-1", "user", "2026-11-06T10:00:01.100Z", ""))
-	s.writeNative(nativeLine("a-1", "assistant", "2026-11-06T10:00:03.000Z", openAIUsage(1200, 80, 1000, 20)))
+	s.writeNative(toolCallLine("a-1", "2026-11-06T10:00:03.000Z", openAIUsage(1200, 80, 1000, 20)))
 	s.hook(HookNamePreToolUse, "2026-11-06T10:00:03.100Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1", "tool_input": map[string]any{"file_path": "hello.txt"}})
 	s.hook(HookNamePostToolUse, "2026-11-06T10:00:03.200Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1", "tool_input": map[string]any{"file_path": "hello.txt"}, "tool_response": "ok"})
 	s.writeNative(nativeLine("t-1", "tool_result", "2026-11-06T10:00:03.300Z", ""))
@@ -199,11 +206,11 @@ func TestTurnTokenUsageComesFromNativeChatLog(t *testing.T) {
 }
 
 // Qwen fires Stop without waiting for its write queue, so the turn's final
-// record can still be on its way. While the log ends with a record the model
-// has yet to answer, Stop waits for it; the next test covers that. Here the
-// log already ends with an assistant record, so Stop has nothing to wait for,
-// and the late call is copied at the next sync and counted with the next turn.
-// The session total is unaffected.
+// record can still be on its way. Until the log holds the answer to the
+// turn's last prompt, Stop waits for it; the next tests cover that. Here the
+// log already holds an answer, so Stop has nothing to wait for, as when a
+// final record lands after the wait: the late call is copied at the next sync
+// and counted with the next turn. The session total is unaffected.
 func TestUsageWrittenAfterStopIsCountedWithNextTurn(t *testing.T) {
 	s := newQwenSession(t)
 	s.hook(HookNameSessionStart, "2026-11-06T10:00:00Z", nil)
@@ -235,7 +242,7 @@ func TestStopWaitsForTheTurnsFinalRecord(t *testing.T) {
 	turn := s.position()
 	s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01Z", map[string]any{"prompt": "go"})
 	s.writeNative(nativeLine("u-1", "user", "2026-11-06T10:00:01.1Z", ""))
-	s.writeNative(nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
+	s.writeNative(toolCallLine("a-1", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
 	s.hook(HookNamePreToolUse, "2026-11-06T10:00:02.1Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1"})
 	s.writeNative(nativeLine("t-1", "tool_result", "2026-11-06T10:00:02.5Z", "") +
 		nativeLine("sys-1", "system", "2026-11-06T10:00:02.6Z", ""))
@@ -257,6 +264,78 @@ func TestStopWaitsForTheTurnsFinalRecord(t *testing.T) {
 	wantUsage(t, s.tokens(turn), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
 }
 
+// The log can still end with an earlier assistant record when Stop fires: the
+// turn's tool call, or the answer of the turn before, when even the records
+// queued before the final one are not on disk yet. That record is no answer
+// to the turn's last prompt, so Stop waits for the final record.
+func TestStopWaitsUntilTheTurnsLastPromptIsAnswered(t *testing.T) {
+	// toolRound runs a turn to its tool call, copied at PreToolUse, and leaves
+	// the tool result and the final record on their way.
+	toolRound := func(s *qwenSession, continued bool) (int, string) {
+		turn := s.position()
+		s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01Z", map[string]any{"prompt": "go"})
+		s.writeNative(nativeLine("u-1", "user", "2026-11-06T10:00:01.1Z", "") +
+			toolCallLine("a-1", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
+		s.hook(HookNamePreToolUse, "2026-11-06T10:00:02.1Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1"})
+		if continued {
+			// Qwen's empty prompt before the call that follows the tool round.
+			s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:03Z", map[string]any{"prompt": ""})
+		}
+		return turn, nativeLine("t-1", "tool_result", "2026-11-06T10:00:02.9Z", "") +
+			nativeLine("a-2", "assistant", "2026-11-06T10:00:04Z", openAIUsage(200, 20, 0, 0))
+	}
+	for _, tc := range []struct {
+		name string
+		// before runs the turn up to its Stop and returns where the turn
+		// starts and the records still on their way when Stop fires.
+		before func(s *qwenSession) (int, string)
+		want   protocol.TokenUsageResponse
+	}{
+		{
+			name:   "tool call, then the tool round's prompt",
+			before: func(s *qwenSession) (int, string) { return toolRound(s, true) },
+			want:   protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2},
+		},
+		{
+			name:   "tool call with no prompt after it",
+			before: func(s *qwenSession) (int, string) { return toolRound(s, false) },
+			want:   protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2},
+		},
+		{
+			name: "the previous turn's answer",
+			before: func(s *qwenSession) (int, string) {
+				s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01Z", map[string]any{"prompt": "one"})
+				s.writeNative(nativeLine("u-1", "user", "2026-11-06T10:00:01.1Z", "") +
+					nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
+				s.hook(HookNameStop, "2026-11-06T10:00:02.1Z", nil)
+				turn := s.position()
+				s.hook(HookNameUserPromptSubmit, "2026-11-06T10:01:00Z", map[string]any{"prompt": "two"})
+				return turn, nativeLine("u-2", "user", "2026-11-06T10:01:00.1Z", "") +
+					nativeLine("a-2", "assistant", "2026-11-06T10:01:02Z", openAIUsage(200, 20, 0, 0))
+			},
+			want: protocol.TokenUsageResponse{InputTokens: 200, OutputTokens: 20, APICallCount: 1},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newQwenSession(t)
+			s.hook(HookNameSessionStart, "2026-11-06T10:00:00Z", nil)
+			turn, late := tc.before(s)
+			written := make(chan error, 1)
+			go func() {
+				time.Sleep(100 * time.Millisecond)
+				written <- appendFile(s.nativePath, late)
+			}()
+			s.hook(HookNameStop, "2026-11-06T10:02:00Z", nil)
+			if err := <-written; err != nil {
+				t.Fatal(err)
+			}
+
+			wantUsage(t, s.tokens(turn), tc.want)
+			wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
+		})
+	}
+}
+
 // Qwen rewrites its log by renaming a new file over it, for example when
 // messages are deleted. A log replaced while Stop waits is read again from the
 // start, so the final record is found even when it lies before the old
@@ -267,7 +346,7 @@ func TestStopRereadsALogReplacedWhileWaiting(t *testing.T) {
 	turn := s.position()
 	s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01Z", map[string]any{"prompt": "go"})
 	user := nativeLine("u-1", "user", "2026-11-06T10:00:01.1Z", "")
-	call := nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0))
+	call := toolCallLine("a-1", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0))
 	result := nativeLine("t-1", "tool_result", "2026-11-06T10:00:02.5Z", "")
 	s.writeNative(user + call)
 	s.hook(HookNamePreToolUse, "2026-11-06T10:00:02.1Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1"})
@@ -339,7 +418,7 @@ func TestRewrittenNativeLogIsNotCountedTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = f.Close() }()
-	if got := resumeOffset(f, state.anchor); state.anchor == nil || state.anchor.NativeUUID != "a-3" || got != int64(len(rewritten)) {
+	if got, _ := resumeOffset(f, state.anchor); state.anchor == nil || state.anchor.NativeUUID != "a-3" || got != int64(len(rewritten)) {
 		t.Fatalf("anchor = %+v, resumeOffset = %d; want a-3, %d", state.anchor, got, len(rewritten))
 	}
 	s.writeNative(nativeLine("a-4", "assistant", "2026-11-06T10:00:07Z", openAIUsage(400, 40, 0, 0)))
@@ -363,15 +442,22 @@ func TestLastUsageRecordReadsTheSidecarBackwards(t *testing.T) {
 		return string(data) + "\n"
 	}
 	long := `{"v":2,"agent":"qwen","event":"PostToolUse","tool_response":"` + strings.Repeat("x", 200*1024) + `"}` + "\n"
+	prompt := func(ts string) string {
+		return `{"v":2,"agent":"qwen","event":"UserPromptSubmit","ts":"` + ts + `","prompt":"go"}` + "\n"
+	}
+	// A tool payload that mentions the event is no prompt.
+	mention := `{"v":2,"agent":"qwen","event":"PostToolUse","ts":"2026-11-06T11:00:00Z","tool_response":{"event":"UserPromptSubmit"}}` + "\n"
 	for _, tc := range []struct {
-		name, sidecar, want string
+		name, sidecar, want, wantPrompt string
 	}{
-		{"first line", usage("a-1", "/n.jsonl"), "a-1"},
-		{"last of several", usage("a-1", "/n.jsonl") + usage("a-2", "/n.jsonl") + long, "a-2"},
-		{"past long lines and other logs", usage("a-1", "/n.jsonl") + long + usage("b-1", "/other.jsonl") + long, "a-1"},
-		{"partial trailing line", usage("a-1", "/n.jsonl") + strings.TrimSuffix(usage("a-2", "/n.jsonl"), "\n"), "a-1"},
-		{"none", long + usage("b-1", "/other.jsonl"), ""},
-		{"empty", "", ""},
+		{"first line", usage("a-1", "/n.jsonl"), "a-1", ""},
+		{"last of several", usage("a-1", "/n.jsonl") + usage("a-2", "/n.jsonl") + long, "a-2", ""},
+		{"past long lines and other logs", usage("a-1", "/n.jsonl") + long + usage("b-1", "/other.jsonl") + long, "a-1", ""},
+		{"partial trailing line", usage("a-1", "/n.jsonl") + strings.TrimSuffix(usage("a-2", "/n.jsonl"), "\n"), "a-1", ""},
+		{"last prompt after the anchor", usage("a-1", "/n.jsonl") + prompt("2026-11-06T10:00:01Z") + long + prompt("2026-11-06T10:00:02Z") + mention, "a-1", "2026-11-06T10:00:02Z"},
+		{"prompt before the anchor", prompt("2026-11-06T10:00:01Z") + usage("a-1", "/n.jsonl") + mention, "a-1", ""},
+		{"none", prompt("2026-11-06T10:00:01Z") + long + usage("b-1", "/other.jsonl"), "", "2026-11-06T10:00:01Z"},
+		{"empty", "", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -384,7 +470,7 @@ func TestLastUsageRecordReadsTheSidecarBackwards(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer func() { _ = f.Close() }()
-			record, err := lastUsageRecord(f, "/n.jsonl")
+			record, prompt, err := lastUsageRecord(f, "/n.jsonl")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -392,8 +478,8 @@ func TestLastUsageRecordReadsTheSidecarBackwards(t *testing.T) {
 			if record != nil {
 				got = record.NativeUUID
 			}
-			if got != tc.want {
-				t.Fatalf("last usage record = %q, want %q", got, tc.want)
+			if want := parseTimestamp(tc.wantPrompt); got != tc.want || !prompt.Equal(want) {
+				t.Fatalf("last usage record = %q, prompt %v; want %q, %v", got, prompt, tc.want, want)
 			}
 		})
 	}
@@ -421,13 +507,13 @@ func TestResumeOffsetChecksTheAnchoredRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = f.Close() }()
-	if got, want := resumeOffset(f, state.anchor), int64(len(first)+len(anchored)); got != want {
-		t.Fatalf("resumeOffset = %d, want %d", got, want)
+	if got, record := resumeOffset(f, state.anchor); got != int64(len(first)+len(anchored)) || record == nil || record.UUID != "a-1" {
+		t.Fatalf("resumeOffset = %d, %+v; want %d, a-1", got, record, len(first)+len(anchored))
 	}
 	moved := *state.anchor
 	moved.NativeUUID = "a-other"
-	if got := resumeOffset(f, &moved); got != 0 {
-		t.Fatalf("resumeOffset for a line holding another record = %d, want 0", got)
+	if got, record := resumeOffset(f, &moved); got != 0 || record != nil {
+		t.Fatalf("resumeOffset for a line holding another record = %d, %+v; want 0, nil", got, record)
 	}
 }
 
@@ -477,26 +563,53 @@ func TestSidecarFromAnOlderAdapterStartsAtTheUpgrade(t *testing.T) {
 
 // An adapter upgraded in the middle of a turn finds the turn's prompt in the
 // older adapter's records, so the calls made before its first hook are still
-// copied, and the history before that prompt is not.
+// copied, and the history before that prompt is not. The empty prompt Qwen
+// fires before the call that follows a tool round is no turn's start.
 func TestUpgradeInTheMiddleOfATurnKeepsThatTurn(t *testing.T) {
-	s := newQwenSession(t)
-	older := `{"v":1,"agent":"qwen","event":"SessionStart","session_id":"` + s.id + `","ts":"2026-11-01T09:00:00Z"}` + "\n" +
-		`{"v":1,"agent":"qwen","event":"UserPromptSubmit","session_id":"` + s.id + `","ts":"2026-11-01T09:00:01Z","prompt":"first"}` + "\n" +
-		`{"v":1,"agent":"qwen","event":"Stop","session_id":"` + s.id + `","ts":"2026-11-01T09:00:09Z"}` + "\n" +
-		`{"v":1,"agent":"qwen","event":"UserPromptSubmit","session_id":"` + s.id + `","ts":"2026-11-06T10:00:01Z","prompt":"second"}` + "\n"
-	if err := appendFile(s.agent.sidecarPath(s.id), older); err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct {
+		name string
+		// tool is what the older adapter recorded of the tool round; hooks
+		// runs what the upgraded adapter sees of it.
+		tool  string
+		hooks func(s *qwenSession)
+	}{
+		{
+			name: "before the tool call",
+			hooks: func(s *qwenSession) {
+				s.hook(HookNamePreToolUse, "2026-11-06T10:00:02.1Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1"})
+			},
+		},
+		{
+			name: "after the tool round",
+			tool: `{"v":1,"agent":"qwen","event":"PreToolUse","ts":"2026-11-06T10:00:02.1Z","tool_name":"write_file"}` + "\n" +
+				`{"v":1,"agent":"qwen","event":"PostToolUse","ts":"2026-11-06T10:00:02.8Z","tool_name":"write_file"}` + "\n" +
+				`{"v":1,"agent":"qwen","event":"UserPromptSubmit","ts":"2026-11-06T10:00:03Z"}` + "\n",
+			hooks: func(*qwenSession) {},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newQwenSession(t)
+			older := `{"v":1,"agent":"qwen","event":"SessionStart","session_id":"` + s.id + `","ts":"2026-11-01T09:00:00Z"}` + "\n" +
+				`{"v":1,"agent":"qwen","event":"UserPromptSubmit","session_id":"` + s.id + `","ts":"2026-11-01T09:00:01Z","prompt":"first"}` + "\n" +
+				`{"v":1,"agent":"qwen","event":"Stop","session_id":"` + s.id + `","ts":"2026-11-01T09:00:09Z"}` + "\n" +
+				`{"v":1,"agent":"qwen","event":"UserPromptSubmit","session_id":"` + s.id + `","ts":"2026-11-06T10:00:01Z","prompt":"second"}` + "\n" +
+				tc.tool
+			if err := appendFile(s.agent.sidecarPath(s.id), older); err != nil {
+				t.Fatal(err)
+			}
+			s.writeNative(nativeLine("old-1", "assistant", "2026-11-01T09:00:05Z", openAIUsage(5000, 500, 0, 0)))
+			s.writeNative(toolCallLine("a-1", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
+
+			turn := 3 // the line of the second prompt, where Entire's turn starts
+			tc.hooks(s)
+			s.writeNative(nativeLine("t-1", "tool_result", "2026-11-06T10:00:02.5Z", ""))
+			s.writeNative(nativeLine("a-2", "assistant", "2026-11-06T10:00:04Z", openAIUsage(200, 20, 0, 0)))
+			s.hook(HookNameStop, "2026-11-06T10:00:04.1Z", nil)
+
+			wantUsage(t, s.tokens(turn), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
+			wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
+		})
 	}
-	s.writeNative(nativeLine("old-1", "assistant", "2026-11-01T09:00:05Z", openAIUsage(5000, 500, 0, 0)))
-	s.writeNative(nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
-
-	turn := 3 // the line of the second prompt, where Entire's turn starts
-	s.hook(HookNamePreToolUse, "2026-11-06T10:00:02.1Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1"})
-	s.writeNative(nativeLine("a-2", "assistant", "2026-11-06T10:00:04Z", openAIUsage(200, 20, 0, 0)))
-	s.hook(HookNameStop, "2026-11-06T10:00:04.1Z", nil)
-
-	wantUsage(t, s.tokens(turn), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
-	wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
 }
 
 // Records /branch copied from a parent session, and subagent records, were
