@@ -44,6 +44,14 @@ const eventAssistantUsage = "AssistantUsage"
 // call that follows a tool round, so each API call of a turn follows one.
 const eventUserPromptSubmit = "UserPromptSubmit"
 
+// Events of the sidecar records that end a turn or start or end a session.
+const (
+	eventStop         = "Stop"
+	eventStopFailure  = "StopFailure"
+	eventSessionStart = "SessionStart"
+	eventSessionEnd   = "SessionEnd"
+)
+
 // Types of chat-log records. Assistant records carry usage; user and
 // tool_result records come between them; system records (telemetry, titles,
 // compression) come and go around them.
@@ -59,6 +67,10 @@ const (
 	finalRecordWait = time.Second
 	finalRecordPoll = 25 * time.Millisecond
 )
+
+// promptHead is how much of a sidecar line too long to hold is read for its
+// event and ts, which the sidecar writes ahead of the prompt.
+const promptHead = 4 * 1024
 
 // maxNativeLine bounds one line read while syncing usage. A native record can
 // embed a whole tool result or written file, and a sidecar record a whole tool
@@ -139,10 +151,11 @@ type usageSyncState struct {
 	// is not copied: the history of a resumed session whose sidecar was
 	// cleaned out of the temp directory, or of a session whose sidecar an
 	// older adapter started, which would otherwise all land in the first turn
-	// after the upgrade. Until a sidecar an older adapter started has such a
-	// record, the floor is the last prompt typed in it (not an empty one
-	// before a tool round's next call), so an upgrade in the middle of a turn
-	// still copies that turn's calls.
+	// after the upgrade. A turn an older adapter's records leave open (a
+	// typed prompt, not the empty one before a tool round's next call, with
+	// no end of turn or session after it) moves the floor back to its prompt,
+	// so an upgrade in the middle of a turn still copies that turn's calls,
+	// whichever hook the upgraded adapter runs first.
 	floor time.Time
 	// prompt is the time of the last UserPromptSubmit record after the
 	// anchor, zero when there is none: the API call that answers it has not
@@ -193,6 +206,7 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 	defer func() { _ = f.Close() }()
 
 	reader := bufio.NewReaderSize(f, 64*1024)
+	var open time.Time // the prompt of the turn older records leave open
 	for {
 		line, _, complete, err := readLine(reader, maxNativeLine)
 		if err != nil {
@@ -210,14 +224,27 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 		if json.Unmarshal(line, &head) != nil {
 			continue
 		}
+		typed := head.Event == eventUserPromptSubmit && strings.TrimSpace(head.Prompt) != ""
 		if head.V >= sidecarVersion {
+			// A session or turn the upgraded adapter starts closes the turn
+			// older records left open.
+			if typed || head.Event == eventSessionStart {
+				open = time.Time{}
+			}
 			state.floor = parseTimestamp(head.TS)
 			break
 		}
-		at := parseTimestamp(head.TS)
-		if head.Event == eventUserPromptSubmit && strings.TrimSpace(head.Prompt) != "" && !at.IsZero() {
-			state.floor = at
+		switch head.Event {
+		case eventUserPromptSubmit:
+			if at := parseTimestamp(head.TS); typed && !at.IsZero() {
+				open = at
+			}
+		case eventStop, eventStopFailure, eventSessionStart, eventSessionEnd:
+			open = time.Time{}
 		}
+	}
+	if !open.IsZero() {
+		state.floor = open
 	}
 	state.anchor, state.prompt, err = lastUsageRecord(f, nativePath)
 	return state, err
@@ -227,9 +254,8 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 // was copied from nativePath, and the time of the last UserPromptSubmit record
 // after it, reading the sidecar backwards from its end. A trailing line
 // without its newline is still being written and is skipped. AssistantUsage
-// lines are small, so a line longer than one block is skipped without being
-// held in memory; a prompt that long goes unseen, which leaves the Stop wait
-// to the tool-call check alone.
+// lines are small, so a line longer than one block is never held in memory:
+// only its first promptHead bytes are read, in case it is a long prompt.
 func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, time.Time, error) {
 	info, err := f.Stat()
 	if err != nil {
@@ -267,12 +293,18 @@ func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, time.Time, 
 			}
 			line := data[i+1:]
 			data = data[:i]
-			if trailing || long {
+			switch {
+			case trailing:
 				trailing, long = false, false
-				continue
-			}
-			if record := visit(line); record != nil {
-				return record, prompt, nil
+			case long:
+				long = false
+				if prompt.IsZero() {
+					prompt = longPromptTime(f, pos+int64(i)+1)
+				}
+			default:
+				if record := visit(line); record != nil {
+					return record, prompt, nil
+				}
 			}
 		}
 		carry = data
@@ -280,27 +312,61 @@ func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, time.Time, 
 			carry, long = nil, true
 		}
 	}
-	if trailing || long {
+	switch {
+	case trailing:
+		return nil, prompt, nil
+	case long:
+		if prompt.IsZero() {
+			prompt = longPromptTime(f, 0)
+		}
 		return nil, prompt, nil
 	}
 	record := visit(carry)
 	return record, prompt, nil
 }
 
+// longPromptTime is promptTime for the sidecar line that starts at start and
+// is too long to hold, read from its first promptHead bytes.
+func longPromptTime(f *os.File, start int64) time.Time {
+	head := make([]byte, promptHead)
+	n, err := f.ReadAt(head, start)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return time.Time{}
+	}
+	return promptTime(head[:n])
+}
+
 // promptTime returns the time of a sidecar line that is a UserPromptSubmit
-// record, or zero.
+// record, or zero. The line may be cut off anywhere after its event and ts.
 func promptTime(line []byte) time.Time {
 	if !bytes.Contains(line, promptEventKey) {
 		return time.Time{}
 	}
-	var head struct {
-		Event string `json:"event"`
-		TS    string `json:"ts"`
-	}
-	if json.Unmarshal(line, &head) != nil || head.Event != eventUserPromptSubmit {
+	decoder := json.NewDecoder(bytes.NewReader(line))
+	if token, err := decoder.Token(); err != nil || token != json.Delim('{') {
 		return time.Time{}
 	}
-	return parseTimestamp(head.TS)
+	var event, ts string
+	for (event == "" || ts == "") && decoder.More() {
+		key, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		var value json.RawMessage
+		if decoder.Decode(&value) != nil {
+			break
+		}
+		switch key {
+		case "event":
+			_ = json.Unmarshal(value, &event)
+		case "ts":
+			_ = json.Unmarshal(value, &ts)
+		}
+	}
+	if event != eventUserPromptSubmit {
+		return time.Time{}
+	}
+	return parseTimestamp(ts)
 }
 
 // usageRecordFrom decodes a sidecar line that is an AssistantUsage record

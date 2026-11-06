@@ -195,7 +195,10 @@ func normalizeRawHook(raw *qwenHookInputRaw, hookName string) {
 		raw.SessionID = stubSessionID
 	}
 	if strings.TrimSpace(raw.Timestamp) == "" {
-		raw.Timestamp = time.Now().UTC().Format(time.RFC3339)
+		// Sub-second, like Qwen's own timestamps: the Stop wait tells a
+		// turn's answer from the previous turn's by comparing record times
+		// with the prompt's (tokens.go).
+		raw.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
 	}
 	if strings.TrimSpace(raw.Prompt) == "" {
 		raw.Prompt = raw.UserPrompt

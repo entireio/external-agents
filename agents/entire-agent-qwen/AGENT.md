@@ -60,7 +60,8 @@ The projection is derived data — `readSidecarRecords` ignores `type` and
 
 Records carry `v: 2` since the adapter started copying token usage; `v: 1`
 records come from an older adapter. The two differ only in that the token
-usage copy starts at the first `v: 2` record (see Token Usage).
+usage copy starts at the first `v: 2` record, or at the prompt of the turn it
+lands in (see Token Usage).
 
 | event | projected as | content |
 |---|---|---|
@@ -92,7 +93,7 @@ their usage to the same shape.
 | Copy | At `PreToolUse`, `Stop`, `StopFailure`, `SubagentStop` and `SessionEnd`, each native `assistant` record with `usageMetadata` not yet copied becomes an `AssistantUsage` sidecar record holding its usage, `uuid` (`native_uuid`) and the byte offset of its line (`native_offset`) |
 | Wait | At `Stop`, until the log holds the answer to the turn's last prompt, the copy polls for up to 1 s: Qwen queues the turn's final assistant record before it fires `Stop`, but the write can still be in flight. The answer is the log's last record other than `system` records, when that is an assistant record that calls no tool and is no older than the sidecar's last `UserPromptSubmit` after the last copy (Qwen also fires `UserPromptSubmit`, with an empty prompt, before the call that follows a tool round). A line still being written is waited for too. A log replaced (Qwen rewrites it by renaming a new file over it) or cut shorter during the wait is read again from the start |
 | Resume | A copy finds the last `AssistantUsage` record for the log by reading the sidecar backwards from its end, and starts after that record's line while the line still holds the same record. Otherwise it rereads the log (Qwen can rewrite it, e.g. when prompts are deleted) and copies its calls again; the count keeps one copy of each |
-| Skip | Lines still being written (no newline yet), records `/branch` copied from a parent session (`forkedFrom`), subagent records (`isSidechain`), and records older than the sidecar's first `v: 2` record: the history of a resumed session whose sidecar was removed from the temp directory, or of a session an older adapter started. Until such a sidecar has a `v: 2` record, the last prompt typed in it is the cutoff (not the empty one before a tool round's next call), so an upgrade in the middle of a turn still counts that turn |
+| Skip | Lines still being written (no newline yet), records `/branch` copied from a parent session (`forkedFrom`), subagent records (`isSidechain`), and records older than the sidecar's first `v: 2` record: the history of a resumed session whose sidecar was removed from the temp directory, or of a session an older adapter started. When the older adapter's records leave a turn open (a typed prompt, not the empty one before a tool round's next call, with no end of turn or session after it), that prompt is the cutoff instead, so an upgrade in the middle of a turn still counts that turn, whichever hook runs first after it |
 | Count | `calculate-tokens --offset <line>` sums `AssistantUsage` records from that sidecar line, counting each `native_uuid` once. Input is `promptTokenCount` minus `cachedContentTokenCount`, cache reads are `cachedContentTokenCount`, and output counts reasoning once, decided by `totalTokenCount` as in Qwen's own `outputTokenCount` |
 
 Qwen writes its log through a queue that no hook waits for, so an API call can

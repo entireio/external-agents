@@ -284,6 +284,18 @@ func TestStopWaitsUntilTheTurnsLastPromptIsAnswered(t *testing.T) {
 		return turn, nativeLine("t-1", "tool_result", "2026-11-06T10:00:02.9Z", "") +
 			nativeLine("a-2", "assistant", "2026-11-06T10:00:04Z", openAIUsage(200, 20, 0, 0))
 	}
+	// nextTurn runs a whole turn, then the next one to its prompt, and leaves
+	// that prompt's records on their way.
+	nextTurn := func(s *qwenSession, prompt string) (int, string) {
+		s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01Z", map[string]any{"prompt": "one"})
+		s.writeNative(nativeLine("u-1", "user", "2026-11-06T10:00:01.1Z", "") +
+			nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
+		s.hook(HookNameStop, "2026-11-06T10:00:02.1Z", nil)
+		turn := s.position()
+		s.hook(HookNameUserPromptSubmit, "2026-11-06T10:01:00Z", map[string]any{"prompt": prompt})
+		return turn, nativeLine("u-2", "user", "2026-11-06T10:01:00.1Z", "") +
+			nativeLine("a-2", "assistant", "2026-11-06T10:01:02Z", openAIUsage(200, 20, 0, 0))
+	}
 	for _, tc := range []struct {
 		name string
 		// before runs the turn up to its Stop and returns where the turn
@@ -302,18 +314,16 @@ func TestStopWaitsUntilTheTurnsLastPromptIsAnswered(t *testing.T) {
 			want:   protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2},
 		},
 		{
-			name: "the previous turn's answer",
-			before: func(s *qwenSession) (int, string) {
-				s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01Z", map[string]any{"prompt": "one"})
-				s.writeNative(nativeLine("u-1", "user", "2026-11-06T10:00:01.1Z", "") +
-					nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
-				s.hook(HookNameStop, "2026-11-06T10:00:02.1Z", nil)
-				turn := s.position()
-				s.hook(HookNameUserPromptSubmit, "2026-11-06T10:01:00Z", map[string]any{"prompt": "two"})
-				return turn, nativeLine("u-2", "user", "2026-11-06T10:01:00.1Z", "") +
-					nativeLine("a-2", "assistant", "2026-11-06T10:01:02Z", openAIUsage(200, 20, 0, 0))
-			},
-			want: protocol.TokenUsageResponse{InputTokens: 200, OutputTokens: 20, APICallCount: 1},
+			name:   "the previous turn's answer",
+			before: func(s *qwenSession) (int, string) { return nextTurn(s, "two") },
+			want:   protocol.TokenUsageResponse{InputTokens: 200, OutputTokens: 20, APICallCount: 1},
+		},
+		{
+			// The prompt's sidecar line is longer than the block the anchor
+			// is read backwards in.
+			name:   "the previous turn's answer, after a long prompt",
+			before: func(s *qwenSession) (int, string) { return nextTurn(s, strings.Repeat("two ", 50*1024)) },
+			want:   protocol.TokenUsageResponse{InputTokens: 200, OutputTokens: 20, APICallCount: 1},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -333,6 +343,20 @@ func TestStopWaitsUntilTheTurnsLastPromptIsAnswered(t *testing.T) {
 			wantUsage(t, s.tokens(turn), tc.want)
 			wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
 		})
+	}
+}
+
+// A hook payload without a timestamp gets the time the hook ran, as finely as
+// Qwen's own timestamps. Rounded down to the second, a prompt's time could
+// pass for earlier than the previous turn's answer in the same second, and
+// Stop would take that answer for the turn's.
+func TestHookWithoutTimestampKeepsSubsecondTime(t *testing.T) {
+	t.Parallel()
+	before := time.Now()
+	var raw qwenHookInputRaw
+	normalizeRawHook(&raw, HookNameUserPromptSubmit)
+	if at := parseTimestamp(raw.Timestamp); at.Before(before) {
+		t.Fatalf("timestamp %q is before the hook ran (%s)", raw.Timestamp, before.UTC().Format(time.RFC3339Nano))
 	}
 }
 
@@ -445,6 +469,16 @@ func TestLastUsageRecordReadsTheSidecarBackwards(t *testing.T) {
 	prompt := func(ts string) string {
 		return `{"v":2,"agent":"qwen","event":"UserPromptSubmit","ts":"` + ts + `","prompt":"go"}` + "\n"
 	}
+	longPrompt := func(ts string) string {
+		data, err := json.Marshal(sidecarRecord{
+			V: sidecarVersion, Agent: AgentName, Type: "user", Timestamp: ts, Event: eventUserPromptSubmit,
+			SessionID: "s", TS: ts, CWD: "/repo", Prompt: strings.Repeat("p", 200*1024),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data) + "\n"
+	}
 	// A tool payload that mentions the event is no prompt.
 	mention := `{"v":2,"agent":"qwen","event":"PostToolUse","ts":"2026-11-06T11:00:00Z","tool_response":{"event":"UserPromptSubmit"}}` + "\n"
 	for _, tc := range []struct {
@@ -457,6 +491,8 @@ func TestLastUsageRecordReadsTheSidecarBackwards(t *testing.T) {
 		{"last prompt after the anchor", usage("a-1", "/n.jsonl") + prompt("2026-11-06T10:00:01Z") + long + prompt("2026-11-06T10:00:02Z") + mention, "a-1", "2026-11-06T10:00:02Z"},
 		{"prompt before the anchor", prompt("2026-11-06T10:00:01Z") + usage("a-1", "/n.jsonl") + mention, "a-1", ""},
 		{"none", prompt("2026-11-06T10:00:01Z") + long + usage("b-1", "/other.jsonl"), "", "2026-11-06T10:00:01Z"},
+		{"a prompt longer than a block", usage("a-1", "/n.jsonl") + longPrompt("2026-11-06T10:00:03Z") + long, "a-1", "2026-11-06T10:00:03Z"},
+		{"a long prompt on the first line", longPrompt("2026-11-06T10:00:01Z") + usage("b-1", "/other.jsonl"), "", "2026-11-06T10:00:01Z"},
 		{"empty", "", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -569,14 +605,29 @@ func TestUpgradeInTheMiddleOfATurnKeepsThatTurn(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		// tool is what the older adapter recorded of the tool round; hooks
-		// runs what the upgraded adapter sees of it.
+		// runs what the upgraded adapter sees of it, before the tool call
+		// reaches the log when late is set.
 		tool  string
 		hooks func(s *qwenSession)
+		late  bool
 	}{
 		{
 			name: "before the tool call",
 			hooks: func(s *qwenSession) {
 				s.hook(HookNamePreToolUse, "2026-11-06T10:00:02.1Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1"})
+			},
+		},
+		{
+			name: "before the tool call reached the log",
+			hooks: func(s *qwenSession) {
+				s.hook(HookNamePreToolUse, "2026-11-06T10:00:02.1Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1"})
+			},
+			late: true,
+		},
+		{
+			name: "with a hook that copies nothing first",
+			hooks: func(s *qwenSession) {
+				s.hook(HookNameNotification, "2026-11-06T10:00:02.2Z", map[string]any{"message": "Qwen needs your permission", "notification_type": "permission_prompt"})
 			},
 		},
 		{
@@ -598,10 +649,16 @@ func TestUpgradeInTheMiddleOfATurnKeepsThatTurn(t *testing.T) {
 				t.Fatal(err)
 			}
 			s.writeNative(nativeLine("old-1", "assistant", "2026-11-01T09:00:05Z", openAIUsage(5000, 500, 0, 0)))
-			s.writeNative(toolCallLine("a-1", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
+			call := toolCallLine("a-1", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0))
+			if !tc.late {
+				s.writeNative(call)
+			}
 
 			turn := 3 // the line of the second prompt, where Entire's turn starts
 			tc.hooks(s)
+			if tc.late {
+				s.writeNative(call)
+			}
 			s.writeNative(nativeLine("t-1", "tool_result", "2026-11-06T10:00:02.5Z", ""))
 			s.writeNative(nativeLine("a-2", "assistant", "2026-11-06T10:00:04Z", openAIUsage(200, 20, 0, 0)))
 			s.hook(HookNameStop, "2026-11-06T10:00:04.1Z", nil)
@@ -610,6 +667,24 @@ func TestUpgradeInTheMiddleOfATurnKeepsThatTurn(t *testing.T) {
 			wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
 		})
 	}
+}
+
+// A turn the older adapter saw end was counted, without usage, where it
+// ended. When the upgraded adapter's first hook copies usage, that turn's calls
+// stay out, so a later checkpoint does not take them.
+func TestUpgradeAfterAFinishedTurnLeavesItOut(t *testing.T) {
+	s := newQwenSession(t)
+	older := `{"v":1,"agent":"qwen","event":"SessionStart","session_id":"` + s.id + `","ts":"2026-11-01T09:00:00Z"}` + "\n" +
+		`{"v":1,"agent":"qwen","event":"UserPromptSubmit","session_id":"` + s.id + `","ts":"2026-11-01T09:00:01Z","prompt":"first"}` + "\n" +
+		`{"v":1,"agent":"qwen","event":"Stop","session_id":"` + s.id + `","ts":"2026-11-01T09:00:09Z"}` + "\n"
+	if err := appendFile(s.agent.sidecarPath(s.id), older); err != nil {
+		t.Fatal(err)
+	}
+	s.writeNative(nativeLine("old-1", "assistant", "2026-11-01T09:00:05Z", openAIUsage(5000, 500, 0, 0)))
+
+	s.hook(HookNameSessionEnd, "2026-11-06T10:00:00Z", map[string]any{"reason": "exit"})
+
+	wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{})
 }
 
 // Records /branch copied from a parent session, and subagent records, were
