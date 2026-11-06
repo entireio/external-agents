@@ -257,6 +257,41 @@ func TestStopWaitsForTheTurnsFinalRecord(t *testing.T) {
 	wantUsage(t, s.tokens(turn), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
 }
 
+// Qwen rewrites its log by renaming a new file over it, for example when
+// messages are deleted. A log replaced while Stop waits is read again from the
+// start, so the final record is found even when it lies before the old
+// file's read position.
+func TestStopRereadsALogReplacedWhileWaiting(t *testing.T) {
+	s := newQwenSession(t)
+	s.hook(HookNameSessionStart, "2026-11-06T10:00:00Z", nil)
+	turn := s.position()
+	s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01Z", map[string]any{"prompt": "go"})
+	user := nativeLine("u-1", "user", "2026-11-06T10:00:01.1Z", "")
+	call := nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0))
+	result := nativeLine("t-1", "tool_result", "2026-11-06T10:00:02.5Z", "")
+	s.writeNative(user + call)
+	s.hook(HookNamePreToolUse, "2026-11-06T10:00:02.1Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1"})
+	s.writeNative(result)
+
+	replaced := make(chan error, 1)
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		next := filepath.Join(filepath.Dir(s.nativePath), ".replacement.jsonl.tmp")
+		content := call + result + nativeLine("a-2", "assistant", "2026-11-06T10:00:04Z", openAIUsage(200, 20, 0, 0))
+		if err := os.WriteFile(next, []byte(content), 0o600); err != nil {
+			replaced <- err
+			return
+		}
+		replaced <- os.Rename(next, s.nativePath)
+	}()
+	s.hook(HookNameStop, "2026-11-06T10:00:04.1Z", nil)
+	if err := <-replaced; err != nil {
+		t.Fatal(err)
+	}
+
+	wantUsage(t, s.tokens(turn), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
+}
+
 // A record Qwen is still writing has no newline yet. It must not be copied
 // half-read or skipped: the next sync copies it whole.
 func TestPartialNativeLineIsCopiedOnceComplete(t *testing.T) {
@@ -435,6 +470,30 @@ func TestSidecarFromAnOlderAdapterStartsAtTheUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.hook(HookNameStop, "2026-11-06T10:01:03Z", nil)
+
+	wantUsage(t, s.tokens(turn), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
+	wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
+}
+
+// An adapter upgraded in the middle of a turn finds the turn's prompt in the
+// older adapter's records, so the calls made before its first hook are still
+// copied, and the history before that prompt is not.
+func TestUpgradeInTheMiddleOfATurnKeepsThatTurn(t *testing.T) {
+	s := newQwenSession(t)
+	older := `{"v":1,"agent":"qwen","event":"SessionStart","session_id":"` + s.id + `","ts":"2026-11-01T09:00:00Z"}` + "\n" +
+		`{"v":1,"agent":"qwen","event":"UserPromptSubmit","session_id":"` + s.id + `","ts":"2026-11-01T09:00:01Z","prompt":"first"}` + "\n" +
+		`{"v":1,"agent":"qwen","event":"Stop","session_id":"` + s.id + `","ts":"2026-11-01T09:00:09Z"}` + "\n" +
+		`{"v":1,"agent":"qwen","event":"UserPromptSubmit","session_id":"` + s.id + `","ts":"2026-11-06T10:00:01Z","prompt":"second"}` + "\n"
+	if err := appendFile(s.agent.sidecarPath(s.id), older); err != nil {
+		t.Fatal(err)
+	}
+	s.writeNative(nativeLine("old-1", "assistant", "2026-11-01T09:00:05Z", openAIUsage(5000, 500, 0, 0)))
+	s.writeNative(nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)))
+
+	turn := 3 // the line of the second prompt, where Entire's turn starts
+	s.hook(HookNamePreToolUse, "2026-11-06T10:00:02.1Z", map[string]any{"tool_name": "write_file", "tool_use_id": "call-1"})
+	s.writeNative(nativeLine("a-2", "assistant", "2026-11-06T10:00:04Z", openAIUsage(200, 20, 0, 0)))
+	s.hook(HookNameStop, "2026-11-06T10:00:04.1Z", nil)
 
 	wantUsage(t, s.tokens(turn), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})
 	wantUsage(t, s.tokens(0), protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2})

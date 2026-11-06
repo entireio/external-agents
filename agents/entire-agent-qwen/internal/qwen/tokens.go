@@ -39,6 +39,9 @@ import (
 
 const eventAssistantUsage = "AssistantUsage"
 
+// eventUserPromptSubmit is the event of the sidecar record a turn starts with.
+const eventUserPromptSubmit = "UserPromptSubmit"
+
 // Types of chat-log records. Assistant records carry usage; a user or
 // tool_result record is answered by one; system records (telemetry, titles,
 // compression) come and go around them.
@@ -111,7 +114,9 @@ type usageSyncState struct {
 	// is not copied: the history of a resumed session whose sidecar was
 	// cleaned out of the temp directory, or of a session whose sidecar an
 	// older adapter started, which would otherwise all land in the first turn
-	// after the upgrade.
+	// after the upgrade. Until a sidecar an older adapter started has such a
+	// record, the floor is its last prompt, so an upgrade in the middle of a
+	// turn still copies that turn's calls.
 	floor time.Time
 }
 
@@ -167,12 +172,19 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 			break
 		}
 		var head struct {
-			V  int    `json:"v"`
-			TS string `json:"ts"`
+			V     int    `json:"v"`
+			Event string `json:"event"`
+			TS    string `json:"ts"`
 		}
-		if json.Unmarshal(line, &head) == nil && head.V >= sidecarVersion {
+		if json.Unmarshal(line, &head) != nil {
+			continue
+		}
+		if head.V >= sidecarVersion {
 			state.floor = parseTimestamp(head.TS)
 			break
+		}
+		if at := parseTimestamp(head.TS); head.Event == eventUserPromptSubmit && !at.IsZero() {
+			state.floor = at
 		}
 	}
 	state.anchor, err = lastUsageRecord(f, nativePath)
@@ -260,6 +272,8 @@ type nativeScan struct {
 	// waits is set when the caller waits for the turn's final record: every
 	// line is then decoded so that last is known.
 	waits bool
+	// info is the log as the last read found it.
+	info os.FileInfo
 	// last is the type of the last record read other than a system record.
 	last    string
 	records []sidecarRecord
@@ -285,6 +299,12 @@ func (s *nativeScan) next() (bool, error) {
 	if !info.Mode().IsRegular() {
 		return false, nil
 	}
+	// A log replaced since the last read (Qwen rewrites it by renaming a new
+	// file over it) or cut shorter is read again from the start.
+	if s.info != nil && (!os.SameFile(s.info, info) || info.Size() < s.offset) {
+		s.offset, s.last = -1, ""
+	}
+	s.info = info
 	if s.offset < 0 {
 		s.offset = resumeOffset(f, s.state.anchor)
 		if s.offset > 0 {
