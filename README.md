@@ -76,11 +76,11 @@ cp entire-agent-qwen /usr/local/bin/
 
 cd /path/to/your/repo
 entire enable --agent qwen --telemetry=false
-qwen   # first time only, unless the folder is trusted: approve the project hooks, then /quit
+qwen   # first time only: approve the project hooks, then /quit
 qwen -p "Create hello.txt with hello world" --yolo
 ```
 
-The adapter installs Qwen command hooks in `.qwen/settings.json`. Since Qwen Code 0.26.7, Qwen skips those hooks until you approve them in the dialog an interactive `qwen` session shows (0.26.8 and later) or trust the folder, so until then nothing is captured. A headless `qwen -p` run never shows the dialog: it needs an earlier approval in that repo, or a trusted folder. See the [agent README](agents/entire-agent-qwen/README.md#approve-the-hooks-in-qwen-code). The stable Entire sidecar transcript lives in a repo-scoped OS temp directory, with a small `.entire/tmp/<session>.json` marker for Entire session discovery. Qwen Code must execute actual tools for checkpoints; local model backends that only print XML-style tool tags as text will not fire Qwen `PostToolUse` hooks.
+The adapter installs Qwen command hooks in `.qwen/settings.json`. Since Qwen Code 0.26.7, Qwen skips those hooks until you allow them, so until then nothing is captured. The interactive `qwen` in the example approves them in Qwen's dialog (0.26.8 and later). Trusting the folder works instead, and is the only way on 0.26.7. A headless `qwen -p` run never shows the dialog: it needs an earlier approval in that repo, or a trusted folder. See the [agent README](agents/entire-agent-qwen/README.md#approve-the-hooks-in-qwen-code). The stable Entire sidecar transcript lives in a repo-scoped OS temp directory, with a small `.entire/tmp/<session>.json` marker for Entire session discovery. Qwen Code must execute actual tools for checkpoints; local model backends that only print XML-style tool tags as text will not fire Qwen `PostToolUse` hooks.
 
 ### Grok Build
 
