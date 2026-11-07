@@ -109,6 +109,12 @@ type qwenHookInputRaw struct {
 	} `json:"llm_request,omitempty"`
 }
 
+// sidecarVersion is the v of each sidecar record this adapter writes. Version
+// 2 marks a record written by an adapter that copies token usage into the
+// sidecar (tokens.go); version 1 records come from an older adapter and
+// differ in nothing else.
+const sidecarVersion = 2
+
 // sidecarRecord is one line of the append-only sidecar. Alongside Qwen's own
 // hook fields it carries the Entire-facing projection Type and Message, which
 // the generic compact reader needs to keep the line and read its content — see
@@ -158,4 +164,24 @@ type sidecarRecord struct {
 	LastAssistantMessage string          `json:"last_assistant_message,omitempty"`
 	CustomInstructions   string          `json:"custom_instructions,omitempty"`
 	CompactSummary       string          `json:"compact_summary,omitempty"`
+	// NativeUUID, NativeOffset and Usage are set only on AssistantUsage
+	// records, each a copy of one assistant record's usageMetadata from
+	// Qwen's own chat log (see tokens.go). NativeOffset is the byte offset at
+	// which that record's line starts in NativeTranscriptPath.
+	NativeUUID   string             `json:"native_uuid,omitempty"`
+	NativeOffset int64              `json:"native_offset,omitempty"`
+	Usage        *qwenUsageMetadata `json:"usage,omitempty"`
+}
+
+// qwenUsageMetadata is the usageMetadata Qwen Code stores on each assistant
+// record of its chat log: the provider's token counts, normalized by Qwen to
+// the Gemini field names whichever provider answered (see
+// ChatRecordingService.recordAssistantTurn in packages/core). Only the counts
+// calculate-tokens reads are kept.
+type qwenUsageMetadata struct {
+	PromptTokenCount        int `json:"promptTokenCount,omitempty"`
+	CandidatesTokenCount    int `json:"candidatesTokenCount,omitempty"`
+	CachedContentTokenCount int `json:"cachedContentTokenCount,omitempty"`
+	ThoughtsTokenCount      int `json:"thoughtsTokenCount,omitempty"`
+	TotalTokenCount         int `json:"totalTokenCount,omitempty"`
 }

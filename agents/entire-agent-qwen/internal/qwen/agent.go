@@ -47,6 +47,7 @@ func (a *Agent) Info() protocol.InfoResponse {
 		Capabilities: protocol.DeclaredCapabilities{
 			Hooks:              true,
 			TranscriptAnalyzer: true,
+			TokenCalculator:    true,
 			CompactTranscript:  true,
 			UsesTerminal:       true,
 		},
