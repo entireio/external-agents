@@ -325,6 +325,36 @@ func TestStopWaitsUntilTheTurnsLastPromptIsAnswered(t *testing.T) {
 			before: func(s *qwenSession) (int, string) { return nextTurn(s, strings.Repeat("two ", 50*1024)) },
 			want:   protocol.TokenUsageResponse{InputTokens: 200, OutputTokens: 20, APICallCount: 1},
 		},
+		{
+			// A rewrite moved the anchored line, so a sync in the middle of
+			// the turn copies the log again: the previous turn's answer is
+			// now the last copy, after the turn's prompt.
+			name: "the previous turn's answer, copied again after a rewrite",
+			before: func(s *qwenSession) (int, string) {
+				turn, late := nextTurn(s, "two")
+				rewritten := nativeLine("a-1", "assistant", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0))
+				if err := os.WriteFile(s.nativePath, []byte(rewritten), 0o600); err != nil {
+					s.t.Fatal(err)
+				}
+				s.hook(HookNameSubagentStop, "2026-11-06T10:01:00.5Z", map[string]any{"agent_id": "agent-1", "agent_type": "general-purpose"})
+				return turn, late
+			},
+			want: protocol.TokenUsageResponse{InputTokens: 200, OutputTokens: 20, APICallCount: 1},
+		},
+		{
+			// Qwen creates the log with its first record, through the same
+			// queue, so the log itself can still be missing at Stop.
+			name: "no log yet",
+			before: func(s *qwenSession) (int, string) {
+				turn := s.position()
+				s.hook(HookNameUserPromptSubmit, "2026-11-06T10:00:01Z", map[string]any{"prompt": "go"})
+				return turn, nativeLine("u-1", "user", "2026-11-06T10:00:01.1Z", "") +
+					toolCallLine("a-1", "2026-11-06T10:00:02Z", openAIUsage(100, 10, 0, 0)) +
+					nativeLine("t-1", "tool_result", "2026-11-06T10:00:02.9Z", "") +
+					nativeLine("a-2", "assistant", "2026-11-06T10:00:04Z", openAIUsage(200, 20, 0, 0))
+			},
+			want: protocol.TokenUsageResponse{InputTokens: 300, OutputTokens: 30, APICallCount: 2},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := newQwenSession(t)
@@ -489,7 +519,9 @@ func TestLastUsageRecordReadsTheSidecarBackwards(t *testing.T) {
 		{"past long lines and other logs", usage("a-1", "/n.jsonl") + long + usage("b-1", "/other.jsonl") + long, "a-1", ""},
 		{"partial trailing line", usage("a-1", "/n.jsonl") + strings.TrimSuffix(usage("a-2", "/n.jsonl"), "\n"), "a-1", ""},
 		{"last prompt after the anchor", usage("a-1", "/n.jsonl") + prompt("2026-11-06T10:00:01Z") + long + prompt("2026-11-06T10:00:02Z") + mention, "a-1", "2026-11-06T10:00:02Z"},
-		{"prompt before the anchor", prompt("2026-11-06T10:00:01Z") + usage("a-1", "/n.jsonl") + mention, "a-1", ""},
+		{"prompt before the anchor", prompt("2026-11-06T10:00:01Z") + usage("a-1", "/n.jsonl") + mention, "a-1", "2026-11-06T10:00:01Z"},
+		{"prompt before the anchor, past long lines", longPrompt("2026-11-06T10:00:01Z") + long + usage("b-1", "/other.jsonl") + usage("a-1", "/n.jsonl"), "a-1", "2026-11-06T10:00:01Z"},
+		{"no prompt", usage("a-1", "/n.jsonl") + long + mention, "a-1", ""},
 		{"none", prompt("2026-11-06T10:00:01Z") + long + usage("b-1", "/other.jsonl"), "", "2026-11-06T10:00:01Z"},
 		{"a prompt longer than a block", usage("a-1", "/n.jsonl") + longPrompt("2026-11-06T10:00:03Z") + long, "a-1", "2026-11-06T10:00:03Z"},
 		{"a long prompt on the first line", longPrompt("2026-11-06T10:00:01Z") + usage("b-1", "/other.jsonl"), "", "2026-11-06T10:00:01Z"},

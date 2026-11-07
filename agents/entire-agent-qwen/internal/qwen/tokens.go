@@ -157,9 +157,10 @@ type usageSyncState struct {
 	// so an upgrade in the middle of a turn still copies that turn's calls,
 	// whichever hook the upgraded adapter runs first.
 	floor time.Time
-	// prompt is the time of the last UserPromptSubmit record after the
-	// anchor, zero when there is none: the API call that answers it has not
-	// been copied yet.
+	// prompt is the time of the sidecar's last UserPromptSubmit record, zero
+	// when there is none. The answer to it is no older. A copy can come after
+	// the prompt and still be older, when a log rewrite moved the anchored
+	// line and a sync in the middle of the turn copied the log again.
 	prompt time.Time
 }
 
@@ -191,7 +192,7 @@ func (a *Agent) syncNativeUsage(hookName string, raw qwenHookInputRaw) error {
 }
 
 // readUsageSyncState reads the floor from the start of the sidecar, and the
-// anchor for nativePath and the last prompt after it from its end, so a hook
+// anchor for nativePath and the last prompt from its end, so a hook
 // reads what was appended since the last copy, not the whole session. An empty
 // or missing sidecar takes its floor from the hook now running.
 func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyncState, error) {
@@ -251,11 +252,12 @@ func readUsageSyncState(sidecarPath, nativePath, hookTimestamp string) (usageSyn
 }
 
 // lastUsageRecord returns the last AssistantUsage record in the sidecar that
-// was copied from nativePath, and the time of the last UserPromptSubmit record
-// after it, reading the sidecar backwards from its end. A trailing line
-// without its newline is still being written and is skipped. AssistantUsage
-// lines are small, so a line longer than one block is never held in memory:
-// only its first promptHead bytes are read, in case it is a long prompt.
+// was copied from nativePath, and the time of the last UserPromptSubmit record,
+// reading the sidecar backwards from its end until it has found both. A
+// trailing line without its newline is still being written and is skipped.
+// AssistantUsage lines are small, so a line longer than one block is never
+// held in memory: only its first promptHead bytes are read, in case it is a
+// long prompt.
 func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, time.Time, error) {
 	info, err := f.Stat()
 	if err != nil {
@@ -267,16 +269,20 @@ func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, time.Time, 
 		carry    []byte // the end of a line whose start lies before pos
 		trailing = true // the bytes after the last newline are no line yet
 		long     bool   // the line in carry is longer than a block
+		record   *sidecarRecord
 		prompt   time.Time
 	)
-	// visit returns the record when line is the anchor, and otherwise notes
-	// the last prompt seen on the way to it.
-	visit := func(line []byte) *sidecarRecord {
-		record := usageRecordFrom(line, nativePath)
-		if record == nil && prompt.IsZero() {
+	found := func() bool { return record != nil && !prompt.IsZero() }
+	// visit notes line when it is the anchor or the last prompt.
+	visit := func(line []byte) {
+		if record == nil {
+			if record = usageRecordFrom(line, nativePath); record != nil {
+				return
+			}
+		}
+		if prompt.IsZero() {
 			prompt = promptTime(line)
 		}
-		return record
 	}
 	for pos > 0 {
 		n := min(int64(block), pos)
@@ -302,9 +308,10 @@ func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, time.Time, 
 					prompt = longPromptTime(f, pos+int64(i)+1)
 				}
 			default:
-				if record := visit(line); record != nil {
-					return record, prompt, nil
-				}
+				visit(line)
+			}
+			if found() {
+				return record, prompt, nil
 			}
 		}
 		carry = data
@@ -314,14 +321,13 @@ func lastUsageRecord(f *os.File, nativePath string) (*sidecarRecord, time.Time, 
 	}
 	switch {
 	case trailing:
-		return nil, prompt, nil
 	case long:
 		if prompt.IsZero() {
 			prompt = longPromptTime(f, 0)
 		}
-		return nil, prompt, nil
+	default:
+		visit(carry)
 	}
-	record := visit(carry)
 	return record, prompt, nil
 }
 
@@ -414,7 +420,10 @@ type nativeScan struct {
 func (s *nativeScan) next() (bool, error) {
 	f, err := os.Open(s.path)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		// Qwen creates the log with the first record it writes, through the
+		// same queue, so it can still be missing when Stop fires. With chat
+		// recording off, hooks name no log and no sync runs.
+		return s.waits, nil
 	}
 	if err != nil {
 		return false, err
