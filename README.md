@@ -26,6 +26,7 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 | [Kilo](agents/entire-agent-kilo/) | `agents/entire-agent-kilo/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
 | [Goose](agents/entire-agent-goose/) | `agents/entire-agent-goose/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
 | [Hermes Agent](agents/entire-agent-hermes/) | `agents/entire-agent-hermes/` | Implemented (preview) — sanitized observer hooks + transcript analysis + compact transcripts |
+| [DeepSeek Harness](agents/entire-agent-dsh/) | `agents/entire-agent-dsh/` | Implemented (preview) — Host-plugin bridge hooks + transcript analysis + token calculation + compact transcripts |
 
 See each agent's own README for setup and usage instructions.
 
@@ -116,6 +117,30 @@ hermes --yolo --ignore-rules -z "Create hello.txt with hello world"
 
 One profile can register multiple repositories. Uninstalling the adapter from one repository leaves unrelated Hermes plugins and other repository registrations intact. See the [Hermes adapter README](agents/entire-agent-hermes/) for the disposable-profile verification flow.
 
+### DeepSeek Harness (DSH)
+
+DSH has no repository-local hook command, so capture runs through the
+[`@sredevopsorg/dsh-entire`](https://github.com/sredevopsorg/dsh-plugins/tree/main/plugins/entire)
+Host plugin. The plugin must be loaded by the DSH profile that hosts the session;
+it forwards lifecycle events to `entire hooks dsh <hook>` in any repository that
+carries `.entire/dsh-hooks.json`.
+
+```bash
+cd agents/entire-agent-dsh
+mise run build
+export PATH="$PWD:$PATH"
+
+cd /path/to/your/repo
+entire enable --agent dsh --telemetry=false
+```
+
+The binary reads the native `$DSH_HOME/sessions/<project>/<session>/session.vN.jsonl.zstd`
+log and materializes a normalized transcript under `$DSH_HOME/entire/sessions/`.
+The bridge currently emits `turn-start` only for human/user/prompt sources, so
+scheduled and webhook-driven DSH turns are not captured until the plugin widens
+its source-kind set. See the [DSH adapter README](agents/entire-agent-dsh/) and
+[AGENT.md](agents/entire-agent-dsh/AGENT.md).
+
 ## Building a New External Agent
 
 This repo includes a skill that guides you through building a new external agent with two test layers:
@@ -202,6 +227,7 @@ agents/                          # Standalone external agent projects
   entire-agent-omp/              # Oh My Pi agent (Go binary)
   entire-agent-kilo/             # Kilo agent (Go binary)
   entire-agent-hermes/           # Hermes Agent (Go binary + embedded observer plugin)
+  entire-agent-dsh/              # DeepSeek Harness agent (Go binary + DSH Host plugin bridge)
 e2e/                             # Lifecycle integration harness
 .github/workflows/               # CI, including protocol compliance via external-agents-tests
 .claude/skills/entire-external-agent/  # Skill files (research, test-writer, implementer)

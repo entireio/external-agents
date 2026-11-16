@@ -54,3 +54,10 @@
     :why: License text matches BSD-3-Clause but LicenseFinder cannot auto-detect it (no SPDX identifier in the LICENSE file). Pulled in transitively by modernc.org/sqlite, the embedded SQLite driver used by entire-agent-kiro for Kiro CLI conversation lookup.
     :versions: []
     :when: 2026-05-06 00:00:00.000000000 Z
+- - :license
+  - github.com/klauspost/compress
+  - BSD-3-Clause
+  - :who:
+    :why: Zstandard decoder used by entire-agent-dsh to read DSH session logs. Its LICENSE is BSD-3-Clause, already on the permitted list, and the dependency is pinned in the agent module.
+    :versions: []
+    :when: 2026-11-05 00:00:00.000000000 Z
