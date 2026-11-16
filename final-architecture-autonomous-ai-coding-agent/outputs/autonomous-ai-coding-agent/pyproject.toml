@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autonomous-ai-coding-agent"
+version = "0.1.0"
+description = "Hackathon reference implementation of an autonomous AI coding agent workflow with Databricks and Entire hooks."
+requires-python = ">=3.11"
+dependencies = ["streamlit>=1.37.0"]
+
+[project.optional-dependencies]
+llm = ["openai>=1.40.0"]
+databricks = ["databricks-sdk>=0.30.0"]
+dev = ["pytest>=8.0.0"]
+
+[project.scripts]
+agentic-dev = "agentic_dev_agent.cli:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
