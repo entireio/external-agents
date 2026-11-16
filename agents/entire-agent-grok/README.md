@@ -26,7 +26,7 @@ Grok Build itself must also be installed as `grok` for real sessions.
 
 ```bash
 cd /path/to/repo
-# external_agents must be enabled in .entire/settings.json
+# enables external_agents in .entire/settings.local.json
 entire enable --agent grok --telemetry=false
 ```
 

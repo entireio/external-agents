@@ -138,7 +138,7 @@ fi
 
 git -C "$repo_dir" init -q
 mkdir -p "$repo_dir/.entire"
-printf '{"external_agents":true}\n' > "$repo_dir/.entire/settings.json"
+printf '{"external_agents":true}\n' > "$repo_dir/.entire/settings.local.json"
 
 echo "== Hook wiring =="
 (

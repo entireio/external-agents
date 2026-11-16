@@ -57,13 +57,14 @@ func SetupRepo(t *testing.T, agent agents.Agent) *RepoState {
 	Git(t, dir, "config", "user.email", "e2e@test.local")
 	Git(t, dir, "commit", "--allow-empty", "-m", "initial commit")
 
-	// External agents need external_agents enabled in settings before enable.
+	// External agents need external_agents enabled before enable; the CLI honors
+	// it only from the untracked settings.local.json.
 	if ea, ok := agent.(agents.ExternalAgent); ok && ea.IsExternalAgent() {
 		entireDir := filepath.Join(dir, ".entire")
 		if err := os.MkdirAll(entireDir, 0o755); err != nil {
 			t.Fatalf("create .entire for external agent: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(entireDir, "settings.json"),
+		if err := os.WriteFile(filepath.Join(entireDir, "settings.local.json"),
 			[]byte("{\"external_agents\": true}\n"), 0o644); err != nil {
 			t.Fatalf("write external_agents setting: %v", err)
 		}

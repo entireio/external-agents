@@ -27,7 +27,7 @@ cp entire-agent-omp ~/.local/bin/
 
 ## Enable in a Repository
 
-Set `external_agents` in `.entire/settings.json`:
+Set `external_agents` in the untracked `.entire/settings.local.json` (`entire enable --agent omp` does this for you):
 
 ```json
 {

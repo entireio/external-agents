@@ -31,7 +31,7 @@ See each agent's own README for setup and usage instructions.
 
 ## Enabling External Agents
 
-External agent discovery is opt-in. Once an `entire-agent-<name>` binary is on your `PATH`, set `external_agents: true` in the repo's `.entire/settings.json` so Entire scans for it:
+External agent discovery is opt-in. Once an `entire-agent-<name>` binary is on your `PATH`, `entire enable --agent <name>` turns it on for the repo. To set it by hand, put `external_agents: true` in the repo's `.entire/settings.local.json`:
 
 ```json
 {
@@ -39,7 +39,7 @@ External agent discovery is opt-in. Once an `entire-agent-<name>` binary is on y
 }
 ```
 
-Without this flag, Entire ignores external agent binaries even when they're installed.
+Entire honors this flag only from an untracked `.entire/settings.local.json`, because it lets Entire run `entire-agent-*` binaries from your `PATH`. In the shared `.entire/settings.json` it is ignored, and `entire status` reports why. Without the flag, Entire ignores external agent binaries even when they're installed.
 
 ### LangGraph and CrewAI
 

@@ -36,7 +36,7 @@ func TestLifecycle_CrewAISmoke(t *testing.T) {
 
 	entireDir := filepath.Join(repo, ".entire")
 	require.NoError(t, os.MkdirAll(entireDir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(entireDir, "settings.json"), []byte("{\"external_agents\": true}\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(entireDir, "settings.local.json"), []byte("{\"external_agents\": true}\n"), 0o644))
 
 	entire.Enable(t, repo, "crewai")
 
