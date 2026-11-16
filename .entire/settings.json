@@ -1,5 +1,10 @@
 {
-  "external_agents": true,
   "enabled": true,
-  "telemetry": true
+  "telemetry": true,
+  "external_agents": true,
+  "checkpoints": {
+    "primary": {
+      "type": "git-refs"
+    }
+  }
 }
