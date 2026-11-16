@@ -224,5 +224,12 @@ subcommand maps to a native concept. Two caveats shape the integration:
 - Interactive mode: supported — `sarvam-code` TUI; drive via tmux
 - Expected prompt pattern: the TUI status bar line, e.g. `Flow · (Auto|Ask|Yolo)` — the composer line is `› `
 - Timeout multiplier: 2.0 (full agent turns with model latency)
-- Bootstrap steps: login already done in the environment; per-repo: directory trust + `/hooks` review (see Gaps)
+- Bootstrap steps: login already done in the environment; per-repo: the adapter grants directory trust with a headless exec run and pre-seeds `[hooks.state]` (enabled + trusted_hash) with the exact entries a completed `/hooks` review writes — the hashes are derived from the hook commands alone and are stable per sarvam-code version (stale constants fail loudly via the review banner)
 - Transient error patterns: `overloaded`, `rate limit`, `429`, `500`, `503`, `econnreset`, `etimedout`, `timeout`
+- Lifecycle status (2026-11-16, sarvam-code 0.58.0, entire 0.13.5-nightly): 6 of 8
+  scenarios pass end to end (single + multiple prompt checkpoints, detect/enable,
+  hooks-installed, session persistence, interactive session).
+  `TestLifecycle_RewindPreCommit` and `TestLifecycle_RewindAfterCommit` fail in
+  the shared harness at `entire checkpoint rewind --list` — this entire build has
+  no `checkpoint rewind` subcommand. The failure occurs before any agent-specific
+  assertion and is environment-wide, not sarvam-specific.

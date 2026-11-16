@@ -80,11 +80,13 @@ func sarvamHome() string {
 	return filepath.Join(home, ".sarvam")
 }
 
-// GetSessionDir returns the root of sarvam's session store. Sessions are
-// global, not repo-scoped: one JSONL per run under sessions/YYYY/MM/DD/.
+// GetSessionDir returns where sarvam keeps the sessions it is writing today.
+// The rollout store is date-partitioned (sessions/YYYY/MM/DD/), and callers
+// — including Entire's session discovery — read the directory
+// non-recursively, so the day directory is the useful answer, not the root.
 func (a *Agent) GetSessionDir(repoPath string) (string, error) {
 	_ = repoPath // kept for interface symmetry; the store is global
-	return filepath.Join(sarvamHome(), "sessions"), nil
+	return filepath.Join(sarvamHome(), "sessions", time.Now().Format("2006/01/02")), nil
 }
 
 // ResolveSessionFile maps a session ID to its native rollout JSONL when one
@@ -103,16 +105,28 @@ func (a *Agent) ResolveSessionFile(sessionDir, sessionID string) string {
 	return filepath.Join(sessionDir, safeFilename(sessionID)+".jsonl")
 }
 
-// findRolloutFile searches the YYYY/MM/DD tree for the rollout file whose
-// name ends with the thread ID, returning the newest match.
+// findRolloutFile searches for the rollout file whose name ends with the
+// thread ID, returning the newest match. Both layouts are covered: the day
+// directory returned by GetSessionDir (files directly inside) and the
+// sessions root handed over by older callers (date-partitioned three levels
+// deep).
 func findRolloutFile(sessionDir, sessionID string) string {
 	safe := safeFilename(sessionID)
 	if safe == "" || safe == stubSessionID {
 		return ""
 	}
-	pattern := filepath.Join(sessionDir, "*", "*", "*", "rollout-*-"+safe+".jsonl")
-	matches, err := filepath.Glob(pattern)
-	if err != nil || len(matches) == 0 {
+	patterns := []string{
+		filepath.Join(sessionDir, "rollout-*-"+safe+".jsonl"),
+		filepath.Join(sessionDir, "*", "*", "*", "rollout-*-"+safe+".jsonl"),
+	}
+	var matches []string
+	for _, pattern := range patterns {
+		found, err := filepath.Glob(pattern)
+		if err == nil {
+			matches = append(matches, found...)
+		}
+	}
+	if len(matches) == 0 {
 		return ""
 	}
 	sort.Strings(matches) // date-prefixed names sort chronologically

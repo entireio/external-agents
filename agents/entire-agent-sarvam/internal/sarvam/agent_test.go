@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/entireio/external-agents/agents/entire-agent-sarvam/internal/protocol"
 )
@@ -69,8 +70,9 @@ func TestGetSessionDir_RespectsSarvamHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dir != filepath.Join("/custom/home", "sessions") {
-		t.Fatalf("session_dir = %q, want the SARVAM_HOME sessions tree", dir)
+	want := filepath.Join("/custom/home", "sessions", time.Now().Format("2006/01/02"))
+	if dir != want {
+		t.Fatalf("session_dir = %q, want today's day directory %q", dir, want)
 	}
 }
 
@@ -92,21 +94,33 @@ func TestResolveSessionFile_FallbackContainsSessionID(t *testing.T) {
 
 func TestResolveSessionFile_FindsNativeRollout(t *testing.T) {
 	agent := New()
-	dir := t.TempDir()
 
-	sessionID := "01a1e2d3-8a2b-7dc2-b125-885a43ce43f5"
-	native := filepath.Join(dir, "2026", "11", "16", "rollout-2026-11-16T06-27-56-"+sessionID+".jsonl")
-	if err := os.MkdirAll(filepath.Dir(native), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(native, []byte("{}\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	t.Run("day directory layout", func(t *testing.T) {
+		dir := t.TempDir()
+		sessionID := "01a1e2d3-8a2b-7dc2-b125-885a43ce43f5"
+		native := filepath.Join(dir, "rollout-2026-11-16T06-27-56-"+sessionID+".jsonl")
+		if err := os.WriteFile(native, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if path := agent.ResolveSessionFile(dir, sessionID); path != native {
+			t.Fatalf("session_file = %q, want the native rollout %q", path, native)
+		}
+	})
 
-	path := agent.ResolveSessionFile(dir, sessionID)
-	if path != native {
-		t.Fatalf("session_file = %q, want the native rollout %q", path, native)
-	}
+	t.Run("sessions root layout", func(t *testing.T) {
+		dir := t.TempDir()
+		sessionID := "01a1e2d3-8a2b-7dc2-b125-885a43ce43f5"
+		native := filepath.Join(dir, "2026", "11", "16", "rollout-2026-11-16T06-27-56-"+sessionID+".jsonl")
+		if err := os.MkdirAll(filepath.Dir(native), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(native, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if path := agent.ResolveSessionFile(dir, sessionID); path != native {
+			t.Fatalf("session_file = %q, want the native rollout %q", path, native)
+		}
+	})
 }
 
 func TestSessionWriteReadRoundTrip(t *testing.T) {
