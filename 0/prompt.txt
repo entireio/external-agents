@@ -1,0 +1,1 @@
+I want to add an external agent for sarvam-code a new harness, it's installed and logged in. You can run $self-knowledge in the agent to self learn about the harness I wonder if that is enough to figure out how the hook integration would work.

@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.13.5-nightly.202611131617.95eabf579",
+  "checkpoint_id": "01M7HBGH1ATNQX27XH9QS4W715",
+  "strategy": "manual-commit",
+  "branch": "soph/add-sarvam-code",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/entire-agent-sarvam-code/AGENT.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 96,
+    "cache_creation_tokens": 128461,
+    "cache_read_tokens": 5169021,
+    "output_tokens": 31613,
+    "api_call_count": 47
+  },
+  "redaction": {
+    "replacements": 4,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 4,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
