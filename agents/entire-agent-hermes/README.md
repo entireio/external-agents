@@ -37,7 +37,7 @@ The observer retains only:
 
 It never stores system/developer prompts, memory, conversation history, platform or sender identifiers, environment dumps, secrets, tool arguments, or raw tool results. It inspects only allowlisted top-level path-bearing tool fields in memory and resolves them by strict canonical containment to the longest registered repository match. Process CWD alone never selects a repository, so pathless tools cannot attribute gateway activity to an unrelated checkout. Before a repository-scoped tool runs, it synchronously forwards the buffered SessionStart and TurnStart events; that lifecycle forwarding activates the Entire session without recursively running `entire enable`. One Hermes turn may project into multiple repositories, while each transcript retains only that repository's tool/file evidence.
 
-Transcript file APIs accept production reads and writes only beneath the explicit `$HERMES_HOME/entire/transcripts` root. The only additional read surface is the adapter-owned `testdata` directory used by shared protocol compliance.
+Transcript file APIs accept production reads and writes only beneath the explicit `$HERMES_HOME/entire/transcripts` root. The only additional read surface is the adapter-owned `testdata` directory used by shared protocol compliance. `compact-transcript` also reads a caller-provided absolute regular file (no symlinks), because the Entire CLI compacts from its own temp copy of the redacted transcript.
 
 ## Protocol compliance
 
