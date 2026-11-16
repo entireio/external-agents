@@ -46,7 +46,7 @@ func resolveRepoPath(repoPath string) string {
 }
 
 // encodeRepoCWD percent-encodes a working directory into Grok's session group
-// name.
+// name, normalizing native separators to forward slashes as Grok does.
 //
 // Grok URL-encodes every byte outside the RFC 3986 unreserved set
 // (ALPHA / DIGIT / "-" / "." / "_" / "~") using uppercase hex, so "/" becomes
@@ -58,7 +58,7 @@ func resolveRepoPath(repoPath string) string {
 // Note this is stricter than Go's url.PathEscape, which leaves the sub-delims
 // $&+,;=:@ unescaped in a path segment. Grok escapes those.
 func encodeRepoCWD(repoPath string) string {
-	return percentEncodeCWD(resolveRepoPath(repoPath))
+	return percentEncodeCWD(filepath.ToSlash(resolveRepoPath(repoPath)))
 }
 
 func percentEncodeCWD(path string) string {
@@ -97,7 +97,7 @@ func isUnreservedCWDByte(c byte) bool {
 // cannot be created: a write through it fails with ENAMETOOLONG, which
 // WriteSession reports with the offending directory named.
 func nativeSessionDir(repoPath string) string {
-	resolved := resolveRepoPath(repoPath)
+	resolved := filepath.ToSlash(resolveRepoPath(repoPath))
 	root := filepath.Join(grokHome(), "sessions")
 	encoded := percentEncodeCWD(resolved)
 	if len(encoded) <= maxEncodedCWDLen {
@@ -111,6 +111,8 @@ func nativeSessionDir(repoPath string) string {
 
 // findHashedSessionDir scans session groups for the .cwd marker naming repoPath.
 func findHashedSessionDir(root, repoPath string) string {
+	repoPath = filepath.ToSlash(repoPath)
+
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return ""
@@ -123,7 +125,7 @@ func findHashedSessionDir(root, repoPath string) string {
 		if err != nil {
 			continue
 		}
-		if strings.TrimSpace(string(marker)) == repoPath {
+		if filepath.ToSlash(strings.TrimSpace(string(marker))) == repoPath {
 			return filepath.Join(root, entry.Name())
 		}
 	}
