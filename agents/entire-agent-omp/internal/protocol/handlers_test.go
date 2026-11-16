@@ -183,3 +183,35 @@ func TestWriteJSONDoesNotEscapeHTML(t *testing.T) {
 		t.Fatalf("WriteJSON() = %q", got)
 	}
 }
+
+type testCalculator struct{ usage TokenUsageResponse }
+
+func (c testCalculator) CalculateTokens([]byte, int) (TokenUsageResponse, error) {
+	return c.usage, nil
+}
+
+func TestCalculateTokensHandler(t *testing.T) {
+	var out bytes.Buffer
+	calc := testCalculator{usage: TokenUsageResponse{
+		InputTokens: 12, OutputTokens: 7, CacheReadTokens: 30, CacheCreationTokens: 4, APICallCount: 3,
+	}}
+	if err := HandleCalculateTokens([]string{"--offset", "2"}, strings.NewReader("transcript"), &out, calc); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"input_tokens":12,"cache_creation_tokens":4,"cache_read_tokens":30,"output_tokens":7,"api_call_count":3}` + "\n"
+	if got := out.String(); got != want {
+		t.Fatalf("calculate-tokens output = %q, want %q", got, want)
+	}
+
+	out.Reset()
+	if err := HandleCalculateTokens(nil, strings.NewReader("ignored"), &out, testCalculator{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != `{"input_tokens":0,"cache_creation_tokens":0,"cache_read_tokens":0,"output_tokens":0,"api_call_count":0}`+"\n" {
+		t.Fatalf("zero usage output = %q", got)
+	}
+
+	if err := HandleCalculateTokens([]string{"--unknown"}, strings.NewReader(""), &out, testCalculator{}); err == nil {
+		t.Fatal("unknown flag accepted")
+	}
+}
