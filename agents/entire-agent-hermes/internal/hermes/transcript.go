@@ -44,6 +44,7 @@ type portableTranscriptEntry struct {
 	Type          string           `json:"type"`
 	HermesType    string           `json:"hermes_type,omitempty"`
 	Timestamp     string           `json:"timestamp,omitempty"`
+	RequestID     string           `json:"requestId,omitempty"`
 	Message       *portableMessage `json:"message,omitempty"`
 	Model         string           `json:"model,omitempty"`
 	Name          string           `json:"name,omitempty"`
@@ -52,11 +53,13 @@ type portableTranscriptEntry struct {
 }
 
 type portableMessage struct {
-	Content any `json:"content"`
+	ID      string `json:"id,omitempty"`
+	Content any    `json:"content"`
 }
 
 type portableAssistantBlock struct {
 	Type  string         `json:"type"`
+	ID    string         `json:"id,omitempty"`
 	Text  string         `json:"text,omitempty"`
 	Name  string         `json:"name,omitempty"`
 	Input map[string]any `json:"input,omitempty"`
@@ -126,7 +129,11 @@ func messageText(message *transcriptMessage) string {
 	return strings.Join(texts, "\n\n")
 }
 
-func marshalPortableEntry(entry transcriptEntry) ([]byte, error) {
+// marshalPortableEntry writes entry as a Claude-shaped line. line is the entry's
+// absolute observer line number; assistant ids derive from it so they stay
+// stable across reads and offsets (Claude-format readers drop assistant lines
+// and tool_use blocks without ids).
+func marshalPortableEntry(entry transcriptEntry, line int) ([]byte, error) {
 	version := entry.Version
 	if version == 0 {
 		version = 1
@@ -147,18 +154,25 @@ func marshalPortableEntry(entry transcriptEntry) ([]byte, error) {
 		}
 	case entryTypeAssistant:
 		if entry.Content != "" {
-			portable.Message = &portableMessage{Content: []portableAssistantBlock{{Type: "text", Text: entry.Content}}}
+			portable.Message = &portableMessage{ID: hermesMessageID(line), Content: []portableAssistantBlock{{Type: "text", Text: entry.Content}}}
+			portable.RequestID = hermesMessageID(line)
 		}
 	case entryTypeTool:
 		portable.Type = entryTypeAssistant
 		portable.HermesType = entryTypeTool
-		portable.Message = &portableMessage{Content: []portableAssistantBlock{{
+		portable.RequestID = hermesMessageID(line)
+		portable.Message = &portableMessage{ID: hermesMessageID(line), Content: []portableAssistantBlock{{
 			Type:  "tool_use",
+			ID:    fmt.Sprintf("hermes-tool-%d", line),
 			Name:  entry.Name,
 			Input: map[string]any{"modified_files": entry.ModifiedFiles},
 		}}}
 	}
 	return json.Marshal(portable)
+}
+
+func hermesMessageID(line int) string {
+	return fmt.Sprintf("hermes-msg-%d", line)
 }
 
 func transcriptFromLine(data []byte, offset int) []byte {
@@ -216,7 +230,9 @@ func parseEntries(data []byte, offset int) ([]transcriptEntry, []byte, error) {
 	scanner.Buffer(make([]byte, 64*1024), maxTranscriptLineSize)
 	entries := make([]transcriptEntry, 0)
 	var sanitized bytes.Buffer
+	lineNo := offset - 1
 	for scanner.Scan() {
+		lineNo++
 		line := bytes.TrimSpace(scanner.Bytes())
 		if len(line) == 0 {
 			continue
@@ -234,7 +250,7 @@ func parseEntries(data []byte, offset int) ([]transcriptEntry, []byte, error) {
 		entry.Content = sanitizeText(entry.Content)
 		entry.Model = sanitizeModel(entry.Model)
 		entry.ModifiedFiles = sanitizeModifiedFiles(entry.ModifiedFiles)
-		encoded, err := marshalPortableEntry(entry)
+		encoded, err := marshalPortableEntry(entry, lineNo)
 		if err != nil {
 			return nil, nil, fmt.Errorf("encode sanitized Hermes observer entry: %w", err)
 		}
