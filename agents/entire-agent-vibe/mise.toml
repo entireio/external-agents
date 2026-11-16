@@ -1,0 +1,20 @@
+[tools]
+# The agent script is stdlib-only (Python 3.8+). Pin for CI determinism.
+python = "3.13"
+
+[tasks.build]
+description = "Build the entire-agent-vibe launcher"
+run = "python3 build_launcher.py"
+
+[tasks.test]
+description = "Run unit tests and protocol smoke tests"
+run = """
+mise run build
+python3 -m unittest test_entire_agent_vibe
+./entire-agent-vibe info >/dev/null
+./entire-agent-vibe detect >/dev/null
+"""
+
+[tasks.clean]
+description = "Remove the generated launcher"
+run = "rm -f entire-agent-vibe"
