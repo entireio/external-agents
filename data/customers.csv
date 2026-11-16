@@ -1,0 +1,6 @@
+id,name,email
+1,Alice,alice@gmail.com
+2,Bob,bob@gmail.com
+3,John,invalid-email
+4,Meera,meera@gmail.com
+5,Rahul,rahul@xyz.com

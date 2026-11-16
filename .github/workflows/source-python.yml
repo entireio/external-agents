@@ -1,0 +1,26 @@
+name: Validate source Python scripts
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "source/**/*.py"
+      - ".github/workflows/source-python.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "source/**/*.py"
+      - ".github/workflows/source-python.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Check Python syntax
+        run: python3 -m compileall -q source
