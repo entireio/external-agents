@@ -123,14 +123,20 @@ func timestampNow() string {
 }
 
 // sarvamEventName resolves the native event from the payload, falling back to
-// the hook name Entire passed. Both kebab-case protocol names and PascalCase
-// native names are accepted.
+// the hook name Entire passed. Payloads may carry the PascalCase native event
+// ("SessionStart") or the kebab-case protocol name ("session-start"); both map
+// onto the installed native event.
 func sarvamEventName(fromPayload, fromFlag string) string {
+	for _, spec := range hookSpecs {
+		if fromPayload == spec.SarvamEvent || fromPayload == spec.HookName {
+			return spec.SarvamEvent
+		}
+	}
 	if name := strings.TrimSpace(fromPayload); name != "" {
 		return name
 	}
 	for _, spec := range hookSpecs {
-		if fromFlag == spec.HookName {
+		if fromFlag == spec.HookName || fromFlag == spec.SarvamEvent {
 			return spec.SarvamEvent
 		}
 	}
@@ -139,8 +145,8 @@ func sarvamEventName(fromPayload, fromFlag string) string {
 
 func hookMetadata(native sarvamHookInput) map[string]string {
 	metadata := map[string]string{
-		"agent":            AgentName,
-		"hook_event_name":  native.HookEventName,
+		"agent":           AgentName,
+		"hook_event_name": native.HookEventName,
 	}
 	if native.CWD != "" {
 		metadata["cwd"] = native.CWD
@@ -181,8 +187,8 @@ func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
 	entries := make([]configHookEntry, 0, len(hookSpecs))
 	for _, spec := range hookSpecs {
 		entries = append(entries, configHookEntry{
-			Event:  spec.SarvamEvent,
-			Name:   spec.EntryName,
+			Event:   spec.SarvamEvent,
+			Name:    spec.EntryName,
 			Command: hookCommand(spec.HookName),
 		})
 	}

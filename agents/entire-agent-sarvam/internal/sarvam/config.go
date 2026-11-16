@@ -77,10 +77,7 @@ func parseConfigBlocks(content string) []tomlBlock {
 
 func serializeConfigBlocks(blocks []tomlBlock) string {
 	var b strings.Builder
-	for i, block := range blocks {
-		if i > 0 {
-			b.WriteByte('\n')
-		}
+	for _, block := range blocks {
 		if block.header != "" {
 			b.WriteString(block.header)
 			b.WriteByte('\n')
@@ -362,13 +359,21 @@ func dropEntireEntries(blocks []tomlBlock) []tomlBlock {
 }
 
 // dropEmptyManagedGroups removes [[hooks.<Event>]] group headers for our
-// events whose body is empty after entry removal. Groups with content and any
-// other table are kept.
+// events once the event has no hook entries left at all. A group that still
+// carries content (a matcher, foreign entries) always stays.
 func dropEmptyManagedGroups(blocks []tomlBlock) []tomlBlock {
+	eventsWithEntries := map[string]bool{}
+	for _, block := range blocks {
+		event, kind := headerEvent(block.header)
+		if event != "" && kind == "hooks" {
+			eventsWithEntries[event] = true
+		}
+	}
 	out := make([]tomlBlock, 0, len(blocks))
 	for _, block := range blocks {
 		event, kind := headerEvent(block.header)
-		if event != "" && kind == "group" && isManagedEvent(event) && len(block.body) == 0 {
+		if event != "" && kind == "group" && isManagedEvent(event) &&
+			len(block.body) == 0 && !eventsWithEntries[event] {
 			continue
 		}
 		out = append(out, block)

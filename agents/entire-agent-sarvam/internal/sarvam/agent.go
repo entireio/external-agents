@@ -53,9 +53,9 @@ func (a *Agent) Detect() protocol.DetectResponse {
 	if _, err := lookPath(sarvamBinary); err == nil {
 		return protocol.DetectResponse{Present: true}
 	}
-	// The CLI itself is enough: sessions and transcripts live under
-	// SARVAM_HOME even when the binary is temporarily off PATH.
-	if stat, err := os.Stat(sarvamHome()); err == nil && stat.IsDir() {
+	// A sessions store under SARVAM_HOME means the CLI has run before, even
+	// when the binary is temporarily off PATH.
+	if stat, err := os.Stat(filepath.Join(sarvamHome(), "sessions")); err == nil && stat.IsDir() {
 		return protocol.DetectResponse{Present: true}
 	}
 	return protocol.DetectResponse{Present: false}
@@ -249,7 +249,7 @@ func (a *Agent) ChunkTranscript(content []byte, maxSize int) ([][]byte, error) {
 		return nil, fmt.Errorf("max-size must be positive, got %d", maxSize)
 	}
 	if len(content) == 0 {
-		return [][]byte{[]byte{}}, nil
+		return [][]byte{{}}, nil
 	}
 	var chunks [][]byte
 	for start := 0; start < len(content); start += maxSize {

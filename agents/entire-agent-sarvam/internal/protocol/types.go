@@ -78,12 +78,12 @@ type ExtractSummaryResponse struct {
 }
 
 type TokenUsageResponse struct {
-	InputTokens         int                `json:"input_tokens"`
-	CacheCreationTokens  int                `json:"cache_creation_tokens"`
-	CacheReadTokens      int                `json:"cache_read_tokens"`
-	OutputTokens         int                `json:"output_tokens"`
-	APICallCount         int                `json:"api_call_count"`
-	SubagentTokens       *TokenUsageResponse `json:"subagent_tokens,omitempty"`
+	InputTokens         int                 `json:"input_tokens"`
+	CacheCreationTokens int                 `json:"cache_creation_tokens"`
+	CacheReadTokens     int                 `json:"cache_read_tokens"`
+	OutputTokens        int                 `json:"output_tokens"`
+	APICallCount        int                 `json:"api_call_count"`
+	SubagentTokens      *TokenUsageResponse `json:"subagent_tokens,omitempty"`
 }
 
 type CompactTranscriptResponse struct {

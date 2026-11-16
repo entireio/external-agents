@@ -13,8 +13,8 @@ const (
 )
 
 var (
-	errNegativeOffset      = errors.New("offset must not be negative")
-	errMissingSessionRef   = errors.New("session_ref or session_id is required")
+	errNegativeOffset    = errors.New("offset must not be negative")
+	errMissingSessionRef = errors.New("session_ref or session_id is required")
 )
 
 // Protocol hook names (kebab-case) and the sarvam-native event they ride on.
@@ -69,8 +69,8 @@ type rolloutLine struct {
 }
 
 type rolloutMessage struct {
-	Type    string                `json:"type"`  // "message"
-	Role    string                `json:"role"`  // user | assistant | developer
+	Type    string                `json:"type"` // "message"
+	Role    string                `json:"role"` // user | assistant | developer
 	Content []rolloutContentBlock `json:"content"`
 }
 
@@ -93,7 +93,7 @@ type rolloutFunctionCallOutput struct {
 }
 
 type rolloutTokenCount struct {
-	Type string           `json:"type"` // "token_count"
+	Type string            `json:"type"` // "token_count"
 	Info *rolloutTokenInfo `json:"info"`
 }
 

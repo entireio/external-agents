@@ -36,8 +36,8 @@ func (a *Agent) CompactTranscript(sessionRef string) (protocol.CompactTranscript
 
 	var out strings.Builder
 	for _, line := range lines {
-		for _, projected := range projectRolloutLine(line) {
-			encoded, err := json.Marshal(projected)
+		for _, record := range projectRolloutLine(line) {
+			encoded, err := json.Marshal(wireRecord{Type: record.Kind, Message: record.Message})
 			if err != nil {
 				continue
 			}
@@ -51,7 +51,21 @@ func (a *Agent) CompactTranscript(sessionRef string) (protocol.CompactTranscript
 	}, nil
 }
 
-func projectRolloutLine(line rolloutLine) []any {
+// wireRecord is the top-level shape Entire's transcript compactor reads: a
+// top-level "type" (user/assistant) with the conversation nested under
+// "message".
+type wireRecord struct {
+	Type    string      `json:"type"`
+	Message wireMessage `json:"message"`
+}
+
+// projectedRecord pairs the wire kind with the message it carries.
+type projectedRecord struct {
+	Kind    string
+	Message wireMessage
+}
+
+func projectRolloutLine(line rolloutLine) []projectedRecord {
 	if line.Type != "response_item" {
 		return nil
 	}
@@ -76,14 +90,17 @@ func projectRolloutLine(line rolloutLine) []any {
 		if json.Unmarshal(line.Payload, &call) != nil {
 			return nil
 		}
-		return []any{wireMessage{
-			Role: "assistant",
-			Content: []any{wireToolUseBlock{
-				Type:  "tool_use",
-				ID:    call.CallID,
-				Name:  call.Name,
-				Input: decodeToolArguments(call.Arguments),
-			}},
+		return []projectedRecord{{
+			Kind: "assistant",
+			Message: wireMessage{
+				Role: "assistant",
+				Content: []any{wireToolUseBlock{
+					Type:  "tool_use",
+					ID:    call.CallID,
+					Name:  call.Name,
+					Input: decodeToolArguments(call.Arguments),
+				}},
+			},
 		}}
 
 	case "function_call_output":
@@ -91,13 +108,16 @@ func projectRolloutLine(line rolloutLine) []any {
 		if json.Unmarshal(line.Payload, &output) != nil {
 			return nil
 		}
-		return []any{wireMessage{
-			Role: "user",
-			Content: []any{wireToolResultBlock{
-				Type:      "tool_result",
-				ToolUseID: output.CallID,
-				Content:   output.Output,
-			}},
+		return []projectedRecord{{
+			Kind: "user",
+			Message: wireMessage{
+				Role: "user",
+				Content: []any{wireToolResultBlock{
+					Type:      "tool_result",
+					ToolUseID: output.CallID,
+					Content:   output.Output,
+				}},
+			},
 		}}
 
 	default:
@@ -105,25 +125,25 @@ func projectRolloutLine(line rolloutLine) []any {
 	}
 }
 
-func projectMessage(message rolloutMessage) []any {
+func projectMessage(message rolloutMessage) []projectedRecord {
 	switch message.Role {
 	case "user":
 		text := messageText(message, "input_text")
 		if text == "" || isHarnessContext(text) {
 			return nil
 		}
-		return []any{wireMessage{
-			Role:    "user",
-			Content: []any{wireTextBlock{Type: "text", Text: text}},
+		return []projectedRecord{{
+			Kind:    "user",
+			Message: wireMessage{Role: "user", Content: []any{wireTextBlock{Type: "text", Text: text}}},
 		}}
 	case "assistant":
 		text := messageText(message, "output_text")
 		if strings.TrimSpace(text) == "" {
 			return nil
 		}
-		return []any{wireMessage{
-			Role:    "assistant",
-			Content: []any{wireTextBlock{Type: "text", Text: text}},
+		return []projectedRecord{{
+			Kind:    "assistant",
+			Message: wireMessage{Role: "assistant", Content: []any{wireTextBlock{Type: "text", Text: text}}},
 		}}
 	default:
 		return nil
