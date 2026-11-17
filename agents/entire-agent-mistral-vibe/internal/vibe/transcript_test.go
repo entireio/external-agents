@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/entireio/external-agents/agents/entire-agent-mistral-vibe/internal/protocol"
 )
@@ -360,19 +361,66 @@ func TestReadAndWriteSession(t *testing.T) {
 	}
 }
 
-func TestChunkAndReassembleRoundTrip(t *testing.T) {
+func TestChunkTranscriptSplitsOnLineBoundaries(t *testing.T) {
 	agent := &Agent{}
-	content := []byte("0123456789abcdef")
-	chunks, err := agent.ChunkTranscript(content, 5)
-	if err != nil || len(chunks) != 4 {
-		t.Fatalf("chunks = %d, %v", len(chunks), err)
+	// Multi-byte text, so a split inside a line would also split a character.
+	lines := []string{
+		`{"id":"a","text":"héllo wörld"}`,
+		`{"id":"b","text":"日本語のテキスト"}`,
+		`{"id":"c","text":"short"}`,
+		`{"id":"d","text":"` + strings.Repeat("é", 40) + `"}`,
 	}
-	back, _ := agent.ReassembleTranscript(chunks)
-	if string(back) != string(content) {
-		t.Errorf("round trip = %q", back)
+	content := []byte(strings.Join(lines, "\n") + "\n")
+
+	// Every limit here fits the longest line, so no line may be cut.
+	for _, maxSize := range []int{110, 150, len(content) - 1, len(content), len(content) * 2} {
+		chunks, err := agent.ChunkTranscript(content, maxSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if maxSize < len(content) && len(chunks) < 2 {
+			t.Errorf("max %d: content of %d bytes was not split", maxSize, len(content))
+		}
+		for i, chunk := range chunks {
+			if len(chunk) > maxSize {
+				t.Errorf("max %d: chunk %d is %d bytes", maxSize, i, len(chunk))
+			}
+			if !utf8.Valid(chunk) || chunk[len(chunk)-1] != '\n' {
+				t.Errorf("max %d: chunk %d does not end on a line boundary: %q", maxSize, i, chunk)
+			}
+		}
+		back, err := agent.ReassembleTranscript(chunks)
+		if err != nil || string(back) != string(content) {
+			t.Errorf("max %d: round trip changed the transcript", maxSize)
+		}
 	}
-	if _, err := agent.ChunkTranscript(content, 0); err == nil {
+}
+
+func TestChunkTranscriptEdgeCases(t *testing.T) {
+	agent := &Agent{}
+	if _, err := agent.ChunkTranscript([]byte("x"), 0); err == nil {
 		t.Error("want an error for a non-positive max size")
+	}
+	if chunks, err := agent.ChunkTranscript(nil, 10); err != nil || len(chunks) != 0 {
+		t.Errorf("empty content: %v, %v", chunks, err)
+	}
+
+	// No trailing newline, and one line longer than the limit: nothing is lost.
+	content := []byte("short\n" + strings.Repeat("x", 25) + "\nlast")
+	chunks, err := agent.ChunkTranscript(content, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, chunk := range chunks {
+		if len(chunk) > 10 || len(chunk) == 0 {
+			t.Errorf("chunk %d is %d bytes", i, len(chunk))
+		}
+	}
+	if string(chunks[0]) != "short\n" {
+		t.Errorf("first chunk = %q, want the whole first line", chunks[0])
+	}
+	if back, _ := agent.ReassembleTranscript(chunks); string(back) != string(content) {
+		t.Errorf("round trip = %q", back)
 	}
 }
 

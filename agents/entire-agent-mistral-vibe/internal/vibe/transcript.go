@@ -216,15 +216,39 @@ func (a *Agent) ReadTranscript(sessionRef string) ([]byte, error) {
 	return os.ReadFile(sessionRef)
 }
 
+// ChunkTranscript splits a transcript into pieces of at most maxSize bytes, on
+// line boundaries, so each chunk is itself valid JSONL and no entry or UTF-8
+// character is cut in two. A single line longer than maxSize has no boundary
+// to use and is cut at maxSize. Concatenating the chunks gives back the input
+// byte for byte.
 func (a *Agent) ChunkTranscript(content []byte, maxSize int) ([][]byte, error) {
 	if maxSize <= 0 {
 		return nil, fmt.Errorf("max-size must be positive, got %d", maxSize)
 	}
-	var chunks [][]byte
-	for len(content) > 0 {
-		end := min(maxSize, len(content))
-		chunks = append(chunks, content[:end])
-		content = content[end:]
+	chunks := [][]byte{}
+	start := 0 // start of the chunk being built
+	for pos := 0; pos < len(content); {
+		lineEnd := len(content)
+		if i := bytes.IndexByte(content[pos:], '\n'); i >= 0 {
+			lineEnd = pos + i + 1
+		}
+		if lineEnd-start <= maxSize {
+			pos = lineEnd
+			continue
+		}
+		if pos > start {
+			// The line does not fit after what is already in the chunk.
+			chunks = append(chunks, content[start:pos])
+			start = pos
+			continue
+		}
+		// One line on its own is too long.
+		chunks = append(chunks, content[start:start+maxSize])
+		start += maxSize
+		pos = start
+	}
+	if start < len(content) {
+		chunks = append(chunks, content[start:])
 	}
 	return chunks, nil
 }
