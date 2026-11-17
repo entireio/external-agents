@@ -1,0 +1,1 @@
+Open README.md and verify the agents table lists Sarvam Code with its directory, then run exactly: git commit --amend --no-edit. Then reply done
