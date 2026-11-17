@@ -251,7 +251,8 @@ func TestModifiedFilesOnlyCountsCompletedChanges(t *testing.T) {
 		effect("7", "file_write", "file_system.write_file", "completed", `{"filePath":"/elsewhere/c.txt"}`, `{"filePath":"/elsewhere/c.txt"}`),
 		{ID: "8", Type: EntryEffect},
 	}
-	want := []string{"/elsewhere/c.txt", "a.txt", "sub/b.go"}
+	// Entry 7 wrote /elsewhere/c.txt, outside the repository: not reported.
+	want := []string{"a.txt", "sub/b.go"}
 	if got := modifiedFiles(entries); !reflect.DeepEqual(got, want) {
 		t.Errorf("files = %v, want %v", got, want)
 	}
@@ -299,18 +300,25 @@ func TestModelCallsCountsResponsesNotToolCalls(t *testing.T) {
 
 func TestRepoRelative(t *testing.T) {
 	tests := map[string]string{
-		"/repo/a.txt":         "a.txt",
-		"/repo/sub/b.go":      "sub/b.go",
-		"sub/b.go":            "sub/b.go",
-		"/elsewhere/c.txt":    "/elsewhere/c.txt",
-		"/repo-sibling/d.txt": "/repo-sibling/d.txt",
-		"/repo":               "/repo",
+		"/repo/a.txt":       "a.txt",
+		"/repo/sub/b.go":    "sub/b.go",
+		"sub/b.go":          "sub/b.go",
+		"sub/../inside.txt": "inside.txt",
 		// Names that merely begin with two dots are still inside the repository.
 		"/repo/..foo":            "..foo",
 		"/repo/..hidden/file.go": "..hidden/file.go",
 		"/repo/sub/..x":          "sub/..x",
-		// A real parent reference is not.
-		"/repo/../other/e.txt": "/repo/../other/e.txt",
+		"..foo":                  "..foo",
+		// Files outside the repository are not repository files: Entire would
+		// read whatever is returned as a repo-relative path.
+		"/elsewhere/c.txt":      "",
+		"/repo-sibling/d.txt":   "",
+		"/repo":                 "",
+		"/repo/../other/e.txt":  "",
+		"../outside.txt":        "",
+		"sub/../../outside.txt": "",
+		"..":                    "",
+		".":                     "",
 	}
 	for path, want := range tests {
 		if got := repoRelative("/repo", path); got != want {

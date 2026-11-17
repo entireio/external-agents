@@ -222,15 +222,21 @@ func renderBlock() string {
 }
 
 // splitBlock returns the text before and after the managed block, and whether
-// a complete block was found. A marker counts only when it is a whole line, so
-// marker text quoted inside a user's own string is not mistaken for the block.
+// a complete block was found.
+//
+// A marker counts only when it is a whole line, so marker text quoted inside a
+// user's own string is not mistaken for the block. An end marker pairs with the
+// nearest start marker before it: if a start marker has lost its end (say the
+// user deleted that line) and a complete block was later appended, the block is
+// the appended one, not everything from the stray marker onward, which would
+// take the user's own hooks with it.
 func splitBlock(content string) (before, block, after string, found bool) {
 	start, end := -1, -1
 	offset := 0
 	for line := range strings.SplitAfterSeq(content, "\n") {
 		switch strings.TrimRight(line, "\r\n \t") {
 		case blockStart:
-			if start < 0 {
+			if end < 0 {
 				start = offset
 			}
 		case blockEnd:

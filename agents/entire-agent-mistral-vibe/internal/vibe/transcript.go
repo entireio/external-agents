@@ -465,24 +465,37 @@ func pathsFromJSON(raw json.RawMessage) []string {
 	return paths
 }
 
-// repoRelative returns path relative to the repository when it is inside it,
-// and unchanged otherwise.
+// repoRelative returns path relative to the repository, or "" when it is not
+// inside it. Entire reads these as repo-relative paths, so a file the agent
+// wrote elsewhere (/tmp/x, ~/.bashrc) must not be reported at all.
 func repoRelative(root, path string) string {
-	if !filepath.IsAbs(path) || root == "" {
-		return filepath.ToSlash(filepath.Clean(path))
+	if !filepath.IsAbs(path) {
+		// Vibe's tools take paths relative to the working directory.
+		return insideRepo(filepath.Clean(path))
+	}
+	if root == "" {
+		return ""
 	}
 	for _, base := range []string{root, resolved(root)} {
 		for _, candidate := range []string{path, resolved(path)} {
-			rel, err := filepath.Rel(base, candidate)
-			// Only a ".." path element leaves the repository; a name such
-			// as "..foo" does not.
-			outside := rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
-			if err == nil && rel != "." && !outside {
-				return filepath.ToSlash(rel)
+			if rel, err := filepath.Rel(base, candidate); err == nil {
+				if inside := insideRepo(rel); inside != "" {
+					return inside
+				}
 			}
 		}
 	}
-	return path
+	return ""
+}
+
+// insideRepo returns a cleaned relative path in slash form, or "" when it is
+// the repository itself or leaves it. Only a ".." path element leaves the
+// repository; a name such as "..foo" does not.
+func insideRepo(rel string) string {
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return filepath.ToSlash(rel)
 }
 
 // resolved follows symlinks in the longest existing prefix of path, so a file

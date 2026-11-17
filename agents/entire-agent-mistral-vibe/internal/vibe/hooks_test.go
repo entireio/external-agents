@@ -507,6 +507,46 @@ func TestMarkersMustBeWholeLines(t *testing.T) {
 	}
 }
 
+// A start marker whose end marker was deleted must not swallow the user's
+// hooks once a complete block is appended after them.
+func TestUnterminatedStartMarkerDoesNotSwallowUserHooks(t *testing.T) {
+	repo := isolate(t)
+	agent := &Agent{}
+	damaged := blockStart + "\n" + userHooks
+	if err := os.MkdirAll(filepath.Join(repo, vibeDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, hooksFile), []byte(damaged), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if agent.AreHooksInstalled() {
+		t.Fatal("a lone start marker counted as installed")
+	}
+
+	if _, err := agent.InstallHooks(false, false); err != nil {
+		t.Fatal(err)
+	}
+	// A second install must find its own block, not one stretching back to
+	// the stray marker.
+	if count, err := agent.InstallHooks(false, false); err != nil || count != 0 {
+		t.Fatalf("second install: count = %d, err = %v", count, err)
+	}
+	if count, err := agent.InstallHooks(false, true); err != nil || count != len(installedHooks) {
+		t.Fatalf("forced install: count = %d, err = %v", count, err)
+	}
+	content := readHooks(t, repo)
+	if !strings.HasPrefix(content, damaged) || strings.Count(content, "[[hooks]]") != len(installedHooks)+1 {
+		t.Fatalf("user hooks were lost on reinstall:\n%s", content)
+	}
+
+	if err := agent.UninstallHooks(); err != nil {
+		t.Fatal(err)
+	}
+	if got := readHooks(t, repo); got != damaged {
+		t.Errorf("after uninstall:\n%q\nwant:\n%q", got, damaged)
+	}
+}
+
 func TestHooksRoundTripCRLFFile(t *testing.T) {
 	repo := isolate(t)
 	agent := &Agent{}
