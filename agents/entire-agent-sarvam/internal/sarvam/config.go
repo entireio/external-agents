@@ -287,6 +287,12 @@ func repairParentlessHooks(blocks []tomlBlock) []tomlBlock {
 		if event != "" && kind == "hooks" && !seenGroup[event] {
 			if isManagedEvent(event) {
 				out = append(out, tomlBlock{header: fmt.Sprintf("[[hooks.%s]]", event)})
+				// One synthetic group header is the repair: every
+				// parentless entry of the event joins it. Without this
+				// mark, a second parentless entry would get its own
+				// header and silently split the user's entries into
+				// separate matcher groups.
+				seenGroup[event] = true
 			}
 		}
 		if event != "" && kind == "group" {

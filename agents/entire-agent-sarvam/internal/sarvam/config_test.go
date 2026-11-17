@@ -61,6 +61,52 @@ func TestInstallHooks_FreshConfig(t *testing.T) {
 	}
 }
 
+func TestRepairParentlessHooks_SingleGroupForAllEntries(t *testing.T) {
+	// Several parentless hook entries for one event must be repaired with a
+	// single synthetic group header, so they stay one matcher group — a
+	// header per entry would silently split the user's entries.
+	content := `[hooks]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "/usr/local/bin/first-start-hook"
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "/usr/local/bin/second-start-hook"
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "/usr/local/bin/prompt-hook"
+`
+	repaired := serializeConfigBlocks(repairParentlessHooks(parseConfigBlocks(content)))
+
+	if strings.Count(repaired, "[[hooks.SessionStart]]\n") != 1 {
+		t.Fatalf("exactly one synthetic SessionStart group header may be inserted, got:\n%s", repaired)
+	}
+	if strings.Count(repaired, "[[hooks.UserPromptSubmit]]\n") != 1 {
+		t.Fatalf("exactly one synthetic UserPromptSubmit group header may be inserted, got:\n%s", repaired)
+	}
+	for _, want := range []string{
+		`command = "/usr/local/bin/first-start-hook"`,
+		`command = "/usr/local/bin/second-start-hook"`,
+		`command = "/usr/local/bin/prompt-hook"`,
+	} {
+		if !strings.Contains(repaired, want) {
+			t.Errorf("entries lost during repair, missing %q:\n%s", want, repaired)
+		}
+	}
+
+	// The end-to-end install must not add a second synthetic header for the
+	// user's entries on top of the repair: our own entry opens its own new
+	// group, so exactly two headers exist in total.
+	path := writeConfig(t, content)
+	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
+		t.Fatal(err)
+	}
+	installed := readConfig(t, path)
+	if got := strings.Count(installed, "[[hooks.SessionStart]]\n"); got != 2 {
+		t.Fatalf("installed config should carry the repaired group plus ours, got %d headers:\n%s", got, installed)
+	}
+}
+
 func TestInstallHooks_MultiLineArray(t *testing.T) {
 	// The last element of a multi-line array has no trailing comma, so its
 	// line — ["b"] — would match the header pattern on its own. Array-depth

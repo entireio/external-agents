@@ -182,9 +182,11 @@ func isHarnessContext(text string) bool {
 }
 
 // shellPathPatterns best-effort extract written files from shell commands:
-// redirects, tee, and touch are the reliable signals in practice.
+// redirects, tee, and touch are the reliable signals in practice. The append
+// form comes first in the alternation: Go's regexp is leftmost-first, so
+// (>|>>) would match the single ">" of ">>" and capture ">" as the path.
 var shellPathPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?:^|\s)(?:>|>>)\s*'?"?([^'"\s;&|]+)`),
+	regexp.MustCompile(`(?:^|\s)(?:>>|>)\s*'?"?([^'"\s;&|]+)`),
 	regexp.MustCompile(`(?:^|\s)tee\s+(?:-a\s+)?'?"?([^'"\s;&|]+)`),
 	regexp.MustCompile(`(?:^|\s)touch\s+'?"?([^'"\s;&|]+)`),
 }

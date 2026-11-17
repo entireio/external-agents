@@ -304,6 +304,32 @@ func TestExtractModifiedFiles_DeviceRedirects(t *testing.T) {
 	}
 }
 
+func TestExtractModifiedFiles_AppendRedirects(t *testing.T) {
+	// ">>" must match as the append form — with (>|>>) the alternation
+	// would capture ">" or ">file" and never report the appended file. The
+	// anchor still requires start-of-line or whitespace before the redirect;
+	// redirects attached directly after a word (y>>f) stay unmatched rather
+	// than risk arithmetic-comparison false positives.
+	agent := New()
+	f := &rolloutFixture{}
+	f.functionCall(t, "exec_command", "call-1", `{"command":"echo x >> append.log && echo y >>compact.log && printf z >> spaced.out"}`)
+	path := f.write(t)
+
+	files, _, err := agent.ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"append.log", "compact.log", "spaced.out"}
+	if len(files) != len(want) {
+		t.Fatalf("files = %v, want %v", files, want)
+	}
+	for i, file := range want {
+		if files[i] != file {
+			t.Errorf("files[%d] = %q, want %q", i, files[i], file)
+		}
+	}
+}
+
 func TestCompactTranscript_ProjectsEntireWireShapes(t *testing.T) {
 	agent := New()
 	path := sampleRollout(t)
