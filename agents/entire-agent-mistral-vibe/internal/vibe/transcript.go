@@ -474,7 +474,10 @@ func repoRelative(root, path string) string {
 	for _, base := range []string{root, resolved(root)} {
 		for _, candidate := range []string{path, resolved(path)} {
 			rel, err := filepath.Rel(base, candidate)
-			if err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+			// Only a ".." path element leaves the repository; a name such
+			// as "..foo" does not.
+			outside := rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+			if err == nil && rel != "." && !outside {
 				return filepath.ToSlash(rel)
 			}
 		}

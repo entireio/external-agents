@@ -297,6 +297,28 @@ func TestModelCallsCountsResponsesNotToolCalls(t *testing.T) {
 	}
 }
 
+func TestRepoRelative(t *testing.T) {
+	tests := map[string]string{
+		"/repo/a.txt":         "a.txt",
+		"/repo/sub/b.go":      "sub/b.go",
+		"sub/b.go":            "sub/b.go",
+		"/elsewhere/c.txt":    "/elsewhere/c.txt",
+		"/repo-sibling/d.txt": "/repo-sibling/d.txt",
+		"/repo":               "/repo",
+		// Names that merely begin with two dots are still inside the repository.
+		"/repo/..foo":            "..foo",
+		"/repo/..hidden/file.go": "..hidden/file.go",
+		"/repo/sub/..x":          "sub/..x",
+		// A real parent reference is not.
+		"/repo/../other/e.txt": "/repo/../other/e.txt",
+	}
+	for path, want := range tests {
+		if got := repoRelative("/repo", path); got != want {
+			t.Errorf("repoRelative(/repo, %q) = %q, want %q", path, got, want)
+		}
+	}
+}
+
 func TestReadAndWriteSession(t *testing.T) {
 	isolate(t)
 	t.Setenv("ENTIRE_REPO_ROOT", "/repo")
