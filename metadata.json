@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.13.2-nightly.202611070613.17108c455",
+  "checkpoint_id": "01M7ME3YGPN3NPHAYZXZXEAJXB",
+  "strategy": "manual-commit",
+  "branch": "alisha/mistral-vibe-external-agent",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "agents/entire-agent-mistral-vibe/AGENT.md",
+    "agents/entire-agent-mistral-vibe/README.md",
+    "agents/entire-agent-mistral-vibe/internal/vibe/appserver.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/appserver_test.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/hooks.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/hooks_test.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/testhelpers_test.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/transcript.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/transcript_test.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/turnend.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/turnend_test.go",
+    "e2e/agents/mistral_vibe.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 84,
+    "cache_creation_tokens": 89037,
+    "cache_read_tokens": 19511537,
+    "output_tokens": 48914,
+    "api_call_count": 41,
+    "subagent_tokens": {
+      "input_tokens": 10,
+      "cache_creation_tokens": 51942,
+      "cache_read_tokens": 33055,
+      "output_tokens": 8549,
+      "api_call_count": 4
+    }
+  },
+  "redaction": {
+    "replacements": 52,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 36,
+      "credentialed_uri": 0,
+      "entropy": 16,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
