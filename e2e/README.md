@@ -56,6 +56,8 @@ cd e2e && go test -tags=e2e -v -count=1 -run TestLifecycle_SinglePromptManualCom
 | `E2E_KEEP_REPOS` | Set to any value to preserve temp repos after tests. |
 | `E2E_CONCURRENT_TEST_LIMIT` | Override per-agent concurrency limit (default: 2 for kiro). |
 | `QWEN_E2E` | Set to `1` with `E2E_AGENT=qwen` to include live Qwen Code tests. |
+| `VIBE_E2E` | Set to `1` with `E2E_AGENT=mistral-vibe` to include live Mistral Vibe tests. Uses a private `VIBE_HOME`; needs `MISTRAL_API_KEY` or a key in `~/.vibe/.env`. |
+| `VIBE_E2E_MODEL` | Model for the Mistral Vibe tests (default `mistral-medium-3.5`). |
 
 ## Adding a New Agent
 
