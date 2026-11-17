@@ -1,0 +1,5 @@
+more findings
+
+---
+
+can you do a more intense test in the mistral test repo you created before. try to hit some edge cases or at least have mistral do more things
