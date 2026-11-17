@@ -123,6 +123,31 @@ func TestResolveSessionFile_FindsNativeRollout(t *testing.T) {
 	})
 }
 
+func TestResolveSessionFile_FindsSessionsFromEarlierDays(t *testing.T) {
+	t.Setenv("SARVAM_HOME", t.TempDir())
+	agent := New()
+
+	sessionID := "01a1e2d3-8a2b-7dc2-b125-885a43ce43f5"
+	native := filepath.Join(sarvamHome(), "sessions", "2026", "11", "15", "rollout-2026-11-15T06-27-56-"+sessionID+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(native), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(native, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A session still running from an earlier day lives outside today's day
+	// directory; resolving from the day directory must still find it via the
+	// sessions root instead of falling back to the synthetic path.
+	dayDir, err := agent.GetSessionDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path := agent.ResolveSessionFile(dayDir, sessionID); path != native {
+		t.Fatalf("session_file = %q, want the earlier-day rollout %q", path, native)
+	}
+}
+
 func TestSessionWriteReadRoundTrip(t *testing.T) {
 	agent := New()
 	dir := t.TempDir()

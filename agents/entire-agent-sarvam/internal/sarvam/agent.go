@@ -106,10 +106,12 @@ func (a *Agent) ResolveSessionFile(sessionDir, sessionID string) string {
 }
 
 // findRolloutFile searches for the rollout file whose name ends with the
-// thread ID, returning the newest match. Both layouts are covered: the day
-// directory returned by GetSessionDir (files directly inside) and the
-// sessions root handed over by older callers (date-partitioned three levels
-// deep).
+// thread ID, returning the newest match. The given directory is searched
+// first — both directly (the day directory GetSessionDir returns) and
+// date-partitioned three levels deep (the sessions root older callers pass) —
+// and then the whole sessions store, because a session still running from an
+// earlier day lives outside today's day directory and must not fall back to
+// the synthetic path.
 func findRolloutFile(sessionDir, sessionID string) string {
 	safe := safeFilename(sessionID)
 	if safe == "" || safe == stubSessionID {
@@ -118,6 +120,9 @@ func findRolloutFile(sessionDir, sessionID string) string {
 	patterns := []string{
 		filepath.Join(sessionDir, "rollout-*-"+safe+".jsonl"),
 		filepath.Join(sessionDir, "*", "*", "*", "rollout-*-"+safe+".jsonl"),
+	}
+	if root := filepath.Join(sarvamHome(), "sessions"); root != sessionDir {
+		patterns = append(patterns, filepath.Join(root, "*", "*", "*", "rollout-*-"+safe+".jsonl"))
 	}
 	var matches []string
 	for _, pattern := range patterns {

@@ -222,9 +222,9 @@ func TestCalculateTokens(t *testing.T) {
 		t.Errorf("api_call_count = %d, want 2 (null-info events do not count)", usage.APICallCount)
 	}
 
-	// Byte offset after the first line skips that API call.
-	offset := len(f.lines[0]) + 1
-	usage, err = agent.CalculateTokens(data, offset)
+	// A line-index offset skips the first line's API call — the unit the
+	// analyzer reports and Entire feeds back; a byte offset would recount it.
+	usage, err = agent.CalculateTokens(data, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,6 +233,74 @@ func TestCalculateTokens(t *testing.T) {
 	}
 	if usage.APICallCount != 1 {
 		t.Errorf("api_call_count from offset = %d, want 1", usage.APICallCount)
+	}
+
+	// An offset at or past the line count counts nothing.
+	usage, err = agent.CalculateTokens(data, len(f.lines))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.InputTokens != 0 || usage.APICallCount != 0 {
+		t.Errorf("tokens past the transcript = %+v, want zeros", usage)
+	}
+}
+
+func TestReadRolloutLines_TornFinalLine(t *testing.T) {
+	agent := New()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "torn.jsonl")
+
+	f := &rolloutFixture{}
+	f.user(t, "Create hello.txt")
+	promptLine := f.lines[0]
+	// A record torn mid-write: no trailing newline, truncated JSON.
+	torn := `{"timestamp":"2026-11-17T08:00:00.000Z","type":"response_item","payload":{"type":"mess`
+
+	if err := os.WriteFile(path, []byte(promptLine+"\n"+torn), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	position, err := agent.GetTranscriptPosition(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if position != 1 {
+		t.Fatalf("position = %d, want 1 (a torn final line is not consumed)", position)
+	}
+	prompts, err := agent.ExtractPrompts(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prompts) != 1 {
+		t.Fatalf("prompts = %v, want only the complete line's prompt", prompts)
+	}
+
+	// The line completes; reading on from the saved position must see it.
+	completed := torn + `age","role":"user","content":[{"type":"input_text","text":"Follow up"}]}}`
+	if err := os.WriteFile(path, []byte(promptLine+"\n"+completed+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	prompts, err = agent.ExtractPrompts(path, position)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prompts) != 1 || prompts[0] != "Follow up" {
+		t.Fatalf("prompts from the saved offset = %v, want the completed line's prompt", prompts)
+	}
+}
+
+func TestExtractModifiedFiles_DeviceRedirects(t *testing.T) {
+	agent := New()
+	f := &rolloutFixture{}
+	f.functionCall(t, "exec_command", "call-1", `{"command":"echo hi > /dev/null && echo x > out.txt 2>/dev/null && touch /dev/null"}`)
+	path := f.write(t)
+
+	files, _, err := agent.ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0] != "out.txt" {
+		t.Fatalf("files = %v, want only out.txt (/dev/* is not a workspace file)", files)
 	}
 }
 

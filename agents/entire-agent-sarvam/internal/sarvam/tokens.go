@@ -10,11 +10,17 @@ import (
 )
 
 // CalculateTokens sums per-API-call usage from token_count records at or
-// after the byte offset. Sarvam emits one token_count event per API call
-// carrying info.last_token_usage (input/cached-input/output/reasoning
+// after the given line offset. Sarvam emits one token_count event per API
+// call carrying info.last_token_usage (input/cached-input/output/reasoning
 // tokens); events with a null info (rate-limit snapshots only) count toward
 // nothing. The records are event_msg lines in the rollout JSONL, so the
 // token_count payload is nested under "payload".
+//
+// The offset is a physical line index — the same unit this agent's
+// get-transcript-position and extract-* report, and the unit Entire feeds
+// back from them. A byte offset here would re-count nearly the whole
+// transcript on every checkpoint, so lines (complete and placeholder alike)
+// are skipped by index, keeping the alignment the analyzer guarantees.
 func (a *Agent) CalculateTokens(transcript []byte, offset int) (protocol.TokenUsageResponse, error) {
 	usage := protocol.TokenUsageResponse{
 		CacheCreationTokens: 0,
@@ -23,11 +29,10 @@ func (a *Agent) CalculateTokens(transcript []byte, offset int) (protocol.TokenUs
 
 	scanner := bufio.NewScanner(bytes.NewReader(transcript))
 	scanner.Buffer(make([]byte, 64*1024), maxRolloutLine)
-	consumed := 0
+	index := 0
 	for scanner.Scan() {
-		lineStart := consumed
-		consumed += len(scanner.Bytes()) + 1 // + newline
-		if lineStart < offset {
+		index++
+		if index <= offset {
 			continue
 		}
 		line := strings.TrimSpace(scanner.Text())

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"regexp"
 	"sort"
@@ -20,8 +21,10 @@ import (
 const maxRolloutLine = 10 * 1024 * 1024
 
 // readRolloutLines parses the rollout JSONL. Unparseable lines become empty
-// placeholders so line offsets stay aligned with the physical file even when
-// a record is torn mid-write.
+// placeholders so line offsets stay aligned with the physical file. A final
+// line that is still being written (no trailing newline) is excluded: the
+// position must not cover a record whose remaining bytes arrive later, or
+// the next read at that offset would skip them.
 func readRolloutLines(path string) ([]rolloutLine, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -30,17 +33,26 @@ func readRolloutLines(path string) ([]rolloutLine, error) {
 	defer func() { _ = f.Close() }()
 
 	var lines []rolloutLine
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 64*1024), maxRolloutLine)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		var record rolloutLine
-		if json.Unmarshal([]byte(line), &record) != nil {
-			record = rolloutLine{}
+	reader := bufio.NewReaderSize(f, 64*1024)
+	for {
+		raw, readErr := reader.ReadBytes('\n')
+		if len(raw) > 0 {
+			line := strings.TrimSpace(string(raw))
+			var record rolloutLine
+			if json.Unmarshal([]byte(line), &record) != nil {
+				record = rolloutLine{}
+			}
+			if readErr == nil {
+				lines = append(lines, record)
+			}
 		}
-		lines = append(lines, record)
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				return lines, nil
+			}
+			return lines, readErr
+		}
 	}
-	return lines, scanner.Err()
 }
 
 func (a *Agent) GetTranscriptPosition(path string) (int, error) {
@@ -185,11 +197,22 @@ func pathsFromShellCommand(command string) []string {
 	for _, pattern := range shellPathPatterns {
 		for _, match := range pattern.FindAllStringSubmatch(command, -1) {
 			if len(match) > 1 {
-				paths = append(paths, strings.Trim(match[1], `"'`))
+				path := strings.Trim(match[1], `"'`)
+				if isDevicePath(path) {
+					continue
+				}
+				paths = append(paths, path)
 			}
 		}
 	}
 	return paths
+}
+
+// isDevicePath filters redirect targets that are device files rather than
+// workspace paths: /dev/null dominates real usage, and /dev/std* and
+// /dev/fd/* round out the family.
+func isDevicePath(path string) bool {
+	return path == "/dev" || strings.HasPrefix(path, "/dev/")
 }
 
 // messageText concatenates the text blocks of the given type.
