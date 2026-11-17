@@ -10,10 +10,14 @@ const (
 	AgentType     = "Sarvam Code"
 	sarvamBinary  = "sarvam-code"
 	stubSessionID = "sarvam-session-000"
+
+	// roleUser / roleAssistant are the rollout message roles; the harness
+	// context block shares roleUser and is filtered by content.
+	roleUser      = "user"
+	roleAssistant = "assistant"
 )
 
 var (
-	errNegativeOffset     = errors.New("offset must not be negative")
 	errMissingSessionRef  = errors.New("session_ref or session_id is required")
 	errEmptySessionData   = errors.New("refusing to write an empty session snapshot")
 	errNativeRolloutWrite = errors.New("refusing to write into a native sarvam rollout transcript")

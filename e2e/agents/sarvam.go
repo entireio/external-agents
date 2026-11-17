@@ -131,7 +131,10 @@ func (s *Sarvam) RunPrompt(ctx context.Context, dir string, prompt string, _ ...
 	}
 	defer func() { _ = session.Close() }()
 
-	sess := session.(*sarvamSession)
+	sess, ok := session.(*sarvamSession)
+	if !ok {
+		return Output{}, fmt.Errorf("unexpected session type %T", session)
+	}
 	display := s.Binary() + " (tmux) " + fmt.Sprintf("%q", prompt)
 	if _, err := sess.SendAndWait(prompt, s.PromptPattern(), 3*time.Minute); err != nil {
 		return Output{Command: display, Stdout: sess.Capture()}, err

@@ -22,6 +22,10 @@ import (
 
 const entireCommandMarker = "entire hooks " + AgentName
 
+// kindHooks is headerEvent's marker for a [[hooks.<Event>.hooks]] entry
+// block, as opposed to a matcher-group header.
+const kindHooks = "hooks"
+
 // configHookEntry is one hook handler we manage in the project config.
 type configHookEntry struct {
 	Event   string // PascalCase sarvam event key
@@ -59,7 +63,7 @@ func headerEvent(header string) (event string, kind string) {
 			rest = strings.TrimSuffix(rest, "]")
 			switch {
 			case strings.HasSuffix(rest, ".hooks"):
-				return strings.TrimSuffix(rest, ".hooks"), "hooks"
+				return strings.TrimSuffix(rest, ".hooks"), kindHooks
 			default:
 				return rest, "group"
 			}
@@ -269,7 +273,7 @@ func newEntryBlocks(event, command string) []tomlBlock {
 		{header: fmt.Sprintf("[[hooks.%s]]", event)},
 		{header: fmt.Sprintf("[[hooks.%s.hooks]]", event), body: []string{
 			"type = \"command\"",
-			fmt.Sprintf("command = %s", encodeTOMLString(command)),
+			"command = " + encodeTOMLString(command),
 		}},
 	}
 }
@@ -284,7 +288,7 @@ func repairParentlessHooks(blocks []tomlBlock) []tomlBlock {
 	seenGroup := map[string]bool{}
 	for _, block := range blocks {
 		event, kind := headerEvent(block.header)
-		if event != "" && kind == "hooks" && !seenGroup[event] {
+		if event != "" && kind == kindHooks && !seenGroup[event] {
 			if isManagedEvent(event) {
 				out = append(out, tomlBlock{header: fmt.Sprintf("[[hooks.%s]]", event)})
 				// One synthetic group header is the repair: every
@@ -343,11 +347,7 @@ func upsertHookEntries(path string, entries []configHookEntry, force bool) (int,
 
 	count := 0
 	for _, entry := range entries {
-		changed, err := upsertOne(&blocks, entry)
-		if err != nil {
-			return 0, err
-		}
-		if changed {
+		if upsertOne(&blocks, entry) {
 			count++
 		}
 	}
@@ -360,23 +360,23 @@ func upsertHookEntries(path string, entries []configHookEntry, force bool) (int,
 	return count, nil
 }
 
-func upsertOne(blocks *[]tomlBlock, entry configHookEntry) (bool, error) {
+func upsertOne(blocks *[]tomlBlock, entry configHookEntry) bool {
 	// Update in place when an owned entry exists.
 	for i, block := range *blocks {
 		event, kind := headerEvent(block.header)
-		if event != entry.Event || kind != "hooks" {
+		if event != entry.Event || kind != kindHooks {
 			continue
 		}
 		if !isEntireEntry(block) {
 			continue
 		}
 		if entryCommand(block) == entry.Command {
-			return false, nil
+			return false
 		}
 		for j, line := range block.body {
 			if key, _, ok := parseKeyValue(line); ok && key == "command" {
-				(*blocks)[i].body[j] = fmt.Sprintf("command = %s", encodeTOMLString(entry.Command))
-				return true, nil
+				(*blocks)[i].body[j] = "command = " + encodeTOMLString(entry.Command)
+				return true
 			}
 		}
 	}
@@ -390,7 +390,7 @@ func upsertOne(blocks *[]tomlBlock, entry configHookEntry) (bool, error) {
 		if event == "" {
 			continue
 		}
-		if kind == "hooks" && event == entry.Event {
+		if kind == kindHooks && event == entry.Event {
 			insertAt = i + 1
 		}
 		if strings.HasPrefix(block.header, "[hooks.") || strings.HasPrefix(block.header, "[[hooks.") {
@@ -409,11 +409,11 @@ func upsertOne(blocks *[]tomlBlock, entry configHookEntry) (bool, error) {
 	out = append(out, newBlocks...)
 	out = append(out, (*blocks)[at:]...)
 	*blocks = out
-	return true, nil
+	return true
 }
 
 // removeHookEntries deletes every entry this adapter owns.
-func removeHookEntries(path string, specs []hookSpec) error {
+func removeHookEntries(path string) error {
 	blocks, err := loadBlocks(path)
 	if err != nil {
 		return err
@@ -430,7 +430,7 @@ func dropEntireEntries(blocks []tomlBlock) []tomlBlock {
 	out := make([]tomlBlock, 0, len(blocks))
 	for _, block := range blocks {
 		event, kind := headerEvent(block.header)
-		if event != "" && kind == "hooks" && isEntireEntry(block) {
+		if event != "" && kind == kindHooks && isEntireEntry(block) {
 			continue
 		}
 		out = append(out, block)
@@ -445,7 +445,7 @@ func dropEmptyManagedGroups(blocks []tomlBlock) []tomlBlock {
 	eventsWithEntries := map[string]bool{}
 	for _, block := range blocks {
 		event, kind := headerEvent(block.header)
-		if event != "" && kind == "hooks" {
+		if event != "" && kind == kindHooks {
 			eventsWithEntries[event] = true
 		}
 	}
@@ -461,7 +461,7 @@ func dropEmptyManagedGroups(blocks []tomlBlock) []tomlBlock {
 	return out
 }
 
-func hookEntryInstalled(path, event, name, command string) bool {
+func hookEntryInstalled(path, event, command string) bool {
 	blocks, err := loadBlocks(path)
 	if err != nil {
 		return false
@@ -469,7 +469,7 @@ func hookEntryInstalled(path, event, name, command string) bool {
 	blocks = repairParentlessHooks(blocks)
 	for _, block := range blocks {
 		e, kind := headerEvent(block.header)
-		if e != event || kind != "hooks" {
+		if e != event || kind != kindHooks {
 			continue
 		}
 		if isEntireEntry(block) && entryCommand(block) == command {
@@ -498,7 +498,7 @@ func saveBlocks(path string, blocks []tomlBlock) error {
 	// filepath.Dir is separator-aware: on Windows the config path carries
 	// backslashes, where a hand-rolled "/" split would return "." and leave
 	// the .sarvam directory uncreated.
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return err
 	}
 	mode := os.FileMode(0o600)

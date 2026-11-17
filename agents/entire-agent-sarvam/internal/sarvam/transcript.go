@@ -163,7 +163,7 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 			continue
 		}
 		var message rolloutMessage
-		if json.Unmarshal(line.Payload, &message) != nil || message.Role != "user" {
+		if json.Unmarshal(line.Payload, &message) != nil || message.Role != roleUser {
 			continue
 		}
 		text := messageText(message, "input_text")
@@ -248,7 +248,7 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 			continue
 		}
 		var message rolloutMessage
-		if json.Unmarshal(line.Payload, &message) != nil || message.Role != "assistant" {
+		if json.Unmarshal(line.Payload, &message) != nil || message.Role != roleAssistant {
 			continue
 		}
 		if text := messageText(message, "output_text"); strings.TrimSpace(text) != "" {

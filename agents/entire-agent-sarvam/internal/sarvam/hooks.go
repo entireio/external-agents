@@ -196,13 +196,13 @@ func (a *Agent) InstallHooks(localDev bool, force bool) (int, error) {
 }
 
 func (a *Agent) UninstallHooks() error {
-	return removeHookEntries(projectConfigPath(), hookSpecs)
+	return removeHookEntries(projectConfigPath())
 }
 
 func (a *Agent) AreHooksInstalled() bool {
 	path := projectConfigPath()
 	for _, spec := range hookSpecs {
-		if !hookEntryInstalled(path, spec.SarvamEvent, spec.EntryName, hookCommand(spec.HookName)) {
+		if !hookEntryInstalled(path, spec.SarvamEvent, hookCommand(spec.HookName)) {
 			return false
 		}
 	}

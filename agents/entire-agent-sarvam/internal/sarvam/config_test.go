@@ -196,7 +196,7 @@ command = "/usr/local/bin/user-start-hook"
 	first := strings.Index(content, "[[hooks.SessionStart]]")
 	second := strings.Index(content[first+1:], "[[hooks.SessionStart]]") + first + 1
 	ours := strings.Index(content, "entire hooks sarvam session-start")
-	if !(first < second && second < ours) {
+	if first >= second || second >= ours {
 		t.Fatalf("our entry must open its own group after the user's, got:\n%s", content)
 	}
 	if strings.Count(content, "matcher") != 1 {
@@ -395,7 +395,7 @@ command = "/usr/local/bin/my-own-start-hook"
 	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
 		t.Fatal(err)
 	}
-	if err := removeHookEntries(path, hookSpecs); err != nil {
+	if err := removeHookEntries(path); err != nil {
 		t.Fatal(err)
 	}
 
@@ -420,7 +420,7 @@ func TestUninstallHooks_RemovesEmptyManagedGroups(t *testing.T) {
 	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
 		t.Fatal(err)
 	}
-	if err := removeHookEntries(path, hookSpecs); err != nil {
+	if err := removeHookEntries(path); err != nil {
 		t.Fatal(err)
 	}
 
@@ -435,13 +435,13 @@ func TestHookEntryInstalled(t *testing.T) {
 	spec := hookSpecs[0]
 	command := hookCommand(spec.HookName)
 
-	if hookEntryInstalled(path, spec.SarvamEvent, spec.EntryName, command) {
+	if hookEntryInstalled(path, spec.SarvamEvent, command) {
 		t.Fatal("hooks must not be installed before install-hooks")
 	}
 	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
 		t.Fatal(err)
 	}
-	if !hookEntryInstalled(path, spec.SarvamEvent, spec.EntryName, command) {
+	if !hookEntryInstalled(path, spec.SarvamEvent, command) {
 		t.Fatal("hooks must be installed after install-hooks")
 	}
 }

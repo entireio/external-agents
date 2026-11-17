@@ -4,22 +4,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 )
-
-func jsonStringOf(s string) string {
-	encoded, err := json.Marshal(s)
-	if err != nil {
-		return `""`
-	}
-	return string(encoded)
-}
-
-func itoa(v int) string {
-	return strconv.Itoa(v)
-}
 
 func base64Decode(s string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(s)

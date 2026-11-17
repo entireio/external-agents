@@ -91,9 +91,9 @@ func projectRolloutLine(line rolloutLine) []projectedRecord {
 			return nil
 		}
 		return []projectedRecord{{
-			Kind: "assistant",
+			Kind: roleAssistant,
 			Message: wireMessage{
-				Role: "assistant",
+				Role: roleAssistant,
 				Content: []any{wireToolUseBlock{
 					Type:  "tool_use",
 					ID:    call.CallID,
@@ -109,9 +109,9 @@ func projectRolloutLine(line rolloutLine) []projectedRecord {
 			return nil
 		}
 		return []projectedRecord{{
-			Kind: "user",
+			Kind: roleUser,
 			Message: wireMessage{
-				Role: "user",
+				Role: roleUser,
 				Content: []any{wireToolResultBlock{
 					Type:      "tool_result",
 					ToolUseID: output.CallID,
@@ -127,23 +127,23 @@ func projectRolloutLine(line rolloutLine) []projectedRecord {
 
 func projectMessage(message rolloutMessage) []projectedRecord {
 	switch message.Role {
-	case "user":
+	case roleUser:
 		text := messageText(message, "input_text")
 		if text == "" || isHarnessContext(text) {
 			return nil
 		}
 		return []projectedRecord{{
-			Kind:    "user",
-			Message: wireMessage{Role: "user", Content: []any{wireTextBlock{Type: "text", Text: text}}},
+			Kind:    roleUser,
+			Message: wireMessage{Role: roleUser, Content: []any{wireTextBlock{Type: "text", Text: text}}},
 		}}
-	case "assistant":
+	case roleAssistant:
 		text := messageText(message, "output_text")
 		if strings.TrimSpace(text) == "" {
 			return nil
 		}
 		return []projectedRecord{{
-			Kind:    "assistant",
-			Message: wireMessage{Role: "assistant", Content: []any{wireTextBlock{Type: "text", Text: text}}},
+			Kind:    roleAssistant,
+			Message: wireMessage{Role: roleAssistant, Content: []any{wireTextBlock{Type: "text", Text: text}}},
 		}}
 	default:
 		return nil
