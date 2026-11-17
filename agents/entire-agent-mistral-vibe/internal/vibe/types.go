@@ -26,6 +26,7 @@ type Entry struct {
 	CreatedAt int64          `json:"createdAt,omitempty"`
 	Type      string         `json:"type"`
 	Role      string         `json:"role,omitempty"`
+	Source    string         `json:"source,omitempty"`
 	Content   []ContentBlock `json:"content,omitempty"`
 	Text      string         `json:"text,omitempty"`
 	Title     string         `json:"title,omitempty"`
@@ -73,6 +74,16 @@ type TokenUsage struct {
 	OutputTokens      int `json:"outputTokens"`
 	TotalTokens       int `json:"totalTokens,omitempty"`
 	CachedInputTokens int `json:"cachedInputTokens,omitempty"`
+}
+
+// sourceHarness marks a message Vibe wrote itself rather than one the user
+// typed: a compaction summary, or earlier prompts replayed into a forked
+// session. They have role "user" but are context, not prompts.
+const sourceHarness = "harness"
+
+// isPrompt reports whether the entry is something the user actually typed.
+func (e Entry) isPrompt() bool {
+	return e.Type == EntryMessage && e.Role == RoleUser && e.Source != sourceHarness
 }
 
 func (e Entry) createdTime() time.Time {

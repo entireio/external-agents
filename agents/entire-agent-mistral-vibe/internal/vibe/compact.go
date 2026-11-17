@@ -78,6 +78,10 @@ func compactTranscriptBytes(data []byte) ([]byte, error) {
 		line := compactLine{V: 1, Agent: agentName, CLIVersion: cliVersion, TS: entryTimestamp(entry)}
 		switch {
 		case entry.Type == EntryMessage && entry.Role == RoleUser:
+			// Context Vibe injected is not something the user said.
+			if !entry.isPrompt() {
+				continue
+			}
 			text := entry.text()
 			if text == "" {
 				continue

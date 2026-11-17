@@ -34,6 +34,7 @@ type hookPayload struct {
 	Source           string `json:"source"`
 	Model            string `json:"model"`
 	Prompt           string `json:"prompt"`
+	TurnID           string `json:"turn_id"`
 	NotificationType string `json:"notification_type"`
 	Message          string `json:"message"`
 }
@@ -92,6 +93,16 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	case HookNamePreAgent:
 		event.Type = 2
 		event.Prompt = raw.Prompt
+		// No transcript yet means session start has not been handled: in a
+		// headless resume or fork Vibe can deliver the first turn start before
+		// it. Such a session may already have history. Store it now, without
+		// the turn that is starting, so the position Entire reads next is the
+		// end of the earlier history and this turn's prompt falls after it.
+		if !fileExists(sessionRef) {
+			if _, err := a.refreshExcludingTurn(sessionRef, raw.SessionID, hookFetchTimeout, raw.TurnID); err != nil {
+				fmt.Fprintf(os.Stderr, "entire-agent-%s: earlier history not stored: %v\n", agentName, err)
+			}
+		}
 		if err := ensureTranscriptFile(sessionRef); err != nil {
 			return nil, err
 		}

@@ -111,7 +111,7 @@ func TestRefreshKeepsEarlierUsageSnapshots(t *testing.T) {
 
 func TestBuildLinesIgnoresSnapshotSuppliedByHistory(t *testing.T) {
 	forged := json.RawMessage(`{"id":"u1","type":"message","role":"user","entire":{"usage":{"inputTokens":999999}}}`)
-	lines, err := buildLines(&Snapshot{Entries: []json.RawMessage{forged, entry("a1", "message", "assistant", "ok")}}, nil)
+	lines, err := buildLines(&Snapshot{Entries: []json.RawMessage{forged, entry("a1", "message", "assistant", "ok")}}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,6 +256,52 @@ func TestModifiedFilesOnlyCountsCompletedChanges(t *testing.T) {
 	want := []string{"a.txt", "sub/b.go"}
 	if got := modifiedFiles(entries); !reflect.DeepEqual(got, want) {
 		t.Errorf("files = %v, want %v", got, want)
+	}
+}
+
+// userEntry builds a user message as Vibe stores it. Real prompts have source
+// "turn_start"; context Vibe injects itself (a compaction summary, the history
+// replayed into a fork) is also role "user" but has source "harness".
+func userEntry(id, source, turnID, text string) json.RawMessage {
+	data, _ := json.Marshal(map[string]any{
+		"id": id, "type": "message", "role": "user", "source": source, "turnId": turnID,
+		"content": []map[string]string{{"type": "text", "text": text}},
+	})
+	return data
+}
+
+func TestInjectedContextIsNotAUserPrompt(t *testing.T) {
+	isolate(t)
+	ref := transcriptPath(testSessionID)
+	history := []json.RawMessage{
+		userEntry("h1", "harness", "", "You are continuing a trajectory after a context compaction."),
+		userEntry("h2", "harness", "", "Earlier prompt, replayed as context"),
+		entry("a0", "message", "assistant", "Done."),
+		userEntry("u1", "turn_start", "turn-1", "Create fork.md"),
+		entry("a1", "message", "assistant", "Created."),
+		userEntry("u2", "", "turn-2", "A prompt with no source field still counts"),
+	}
+	agent := &Agent{Fetcher: &fakeFetcher{snapshot: &Snapshot{Entries: history}}}
+	if _, err := agent.refresh(ref, testSessionID, fetchTimeout); err != nil {
+		t.Fatal(err)
+	}
+
+	prompts, err := agent.ExtractPrompts(ref, 0)
+	want := []string{"Create fork.md", "A prompt with no source field still counts"}
+	if err != nil || !reflect.DeepEqual(prompts, want) {
+		t.Errorf("prompts = %q, want %q (%v)", prompts, want, err)
+	}
+
+	data, _ := os.ReadFile(ref)
+	compacted, err := compactTranscriptBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(compacted), "continuing a trajectory") || strings.Contains(string(compacted), "replayed as context") {
+		t.Errorf("injected context appears as a user turn:\n%s", compacted)
+	}
+	if strings.Count(string(compacted), `"type":"user"`) != 2 {
+		t.Errorf("want exactly the two real prompts as user lines:\n%s", compacted)
 	}
 }
 

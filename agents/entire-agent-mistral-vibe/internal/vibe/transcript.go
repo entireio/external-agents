@@ -32,6 +32,13 @@ const (
 // history entry per line. Hook notices are left out. It never replaces a
 // stored transcript with an empty one.
 func (a *Agent) refresh(sessionRef, sessionID string, timeout time.Duration) (*Snapshot, error) {
+	return a.refreshExcludingTurn(sessionRef, sessionID, timeout, "")
+}
+
+// refreshExcludingTurn is refresh without the entries of one turn. It is used
+// when a turn is just starting, so that what gets stored is the history before
+// that turn.
+func (a *Agent) refreshExcludingTurn(sessionRef, sessionID string, timeout time.Duration, skipTurnID string) (*Snapshot, error) {
 	if strings.TrimSpace(sessionRef) == "" || strings.TrimSpace(sessionID) == "" {
 		return nil, errors.New("session id and session ref are required")
 	}
@@ -47,7 +54,7 @@ func (a *Agent) refresh(sessionRef, sessionID string, timeout time.Duration) (*S
 	}
 
 	existing, _ := os.ReadFile(sessionRef)
-	lines, err := buildLines(snapshot, existing)
+	lines, err := buildLines(snapshot, existing, skipTurnID)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +73,7 @@ func (a *Agent) refresh(sessionRef, sessionID string, timeout time.Duration) (*S
 // buildLines turns a snapshot into transcript lines. The last line gets the
 // current usage and model; lines that carried a snapshot in the previous
 // transcript keep it, so per-turn token deltas survive a refresh.
-func buildLines(snapshot *Snapshot, existing []byte) ([]json.RawMessage, error) {
+func buildLines(snapshot *Snapshot, existing []byte, skipTurnID string) ([]json.RawMessage, error) {
 	previous := map[string]json.RawMessage{}
 	for line := range bytes.SplitSeq(existing, []byte("\n")) {
 		var probe struct {
@@ -88,10 +95,14 @@ func buildLines(snapshot *Snapshot, existing []byte) ([]json.RawMessage, error) 
 		if json.Unmarshal(raw, &fields) != nil {
 			continue
 		}
-		var id, entryType string
+		var id, entryType, turnID string
 		_ = json.Unmarshal(fields["id"], &id)
 		_ = json.Unmarshal(fields["type"], &entryType)
+		_ = json.Unmarshal(fields["turnId"], &turnID)
 		if entryType == EntryNotice || entryType == "" {
+			continue
+		}
+		if skipTurnID != "" && turnID == skipTurnID {
 			continue
 		}
 		// Never let a history entry supply its own snapshot.
@@ -297,7 +308,7 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 	}
 	prompts := []string{}
 	for _, entry := range fromOffset(entries, offset) {
-		if entry.Type != EntryMessage || entry.Role != RoleUser {
+		if !entry.isPrompt() {
 			continue
 		}
 		if text := entry.text(); text != "" {

@@ -1,6 +1,7 @@
 package vibe
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,7 +17,8 @@ func TestParseHookMapsLifecycleEvents(t *testing.T) {
 		wantFetch bool
 	}{
 		{HookNameSessionStart, "session_start", 1, false},
-		{HookNamePreAgent, "pre_agent", 2, false},
+		// A turn start for a session with no transcript fetches its earlier history.
+		{HookNamePreAgent, "pre_agent", 2, true},
 		{HookNameNotification, "notification", 3, true},
 		{HookNameNotification, "notification_failed", 3, true},
 		{HookNameSessionEnd, "session_end", 5, true},
@@ -161,6 +163,61 @@ func TestParseHookTracksForkedSession(t *testing.T) {
 	// The fork's existing history is stored before its first turn.
 	if position, _ := agent.GetTranscriptPosition(transcriptPath("fork-1")); position == 0 {
 		t.Error("forked session started with an empty transcript")
+	}
+}
+
+// In a headless resume or fork, Vibe can deliver the first turn start before
+// session start, so the adapter may first hear of a session that already has
+// history. That history must be stored before Entire reads its position, or
+// the first checkpoint would claim all of it; the turn that is just starting
+// must not be stored yet, or its prompt would fall outside the checkpoint.
+func TestFirstTurnOfUnknownSessionStoresEarlierHistoryOnly(t *testing.T) {
+	isolate(t)
+	history := []json.RawMessage{
+		userEntry("h1", "harness", "", "replayed context"),
+		entry("a0", "message", "assistant", "Done."),
+		userEntry("u-new", "turn_start", "turn-new", "the prompt being submitted now"),
+	}
+	fetcher := &fakeFetcher{snapshot: &Snapshot{Entries: history}}
+	agent := &Agent{Fetcher: fetcher}
+
+	event, err := agent.ParseHook(HookNamePreAgent, []byte(
+		`{"session_id":"fork-2","parent_session_id":"source","turn_id":"turn-new","prompt":"the prompt being submitted now"}`))
+	if err != nil || event == nil {
+		t.Fatalf("event = %+v, err = %v", event, err)
+	}
+	position, err := agent.GetTranscriptPosition(event.SessionRef)
+	if err != nil || position != 2 {
+		t.Errorf("position = %d, want the 2 earlier entries (%v)", position, err)
+	}
+	if prompts, _ := agent.ExtractPrompts(event.SessionRef, 0); len(prompts) != 0 {
+		t.Errorf("the turn being started is already stored: %q", prompts)
+	}
+
+	// A session the adapter already has is not fetched again on turn start.
+	calls := fetcher.calls
+	if _, err := agent.ParseHook(HookNamePreAgent, []byte(`{"session_id":"fork-2","turn_id":"turn-2","prompt":"next"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if fetcher.calls != calls {
+		t.Error("turn start fetched history for a session that was already stored")
+	}
+}
+
+func TestFirstTurnOfBrandNewSessionStartsEmpty(t *testing.T) {
+	isolate(t)
+	// Vibe may already list the prompt being submitted; nothing else exists.
+	history := []json.RawMessage{userEntry("u1", "turn_start", "turn-1", "hello")}
+	agent := &Agent{Fetcher: &fakeFetcher{snapshot: &Snapshot{Entries: history}}}
+	event, err := agent.ParseHook(HookNamePreAgent, []byte(`{"session_id":"new-1","turn_id":"turn-1","prompt":"hello"}`))
+	if err != nil || event == nil {
+		t.Fatalf("event = %+v, err = %v", event, err)
+	}
+	if position, _ := agent.GetTranscriptPosition(event.SessionRef); position != 0 {
+		t.Errorf("position = %d, want 0", position)
+	}
+	if !fileExists(event.SessionRef) {
+		t.Error("no transcript file for Entire to read a position from")
 	}
 }
 
