@@ -1,0 +1,28 @@
+ok, but if a user would enable it we would put the hooks into the repo local .sarvam/config.toml, right?
+
+---
+
+ok, then also commit .sarvam folder as part of this branch since it should be there for future sarvam-code usage / tests
+
+---
+
+I restarted sarvam-code in between, so the hooks were reloaded in this session and the commit has the right trailer: 
+
+commit c4b60305ecd3627337ad752aac10806cf0cb3e5a (HEAD -> soph/add-sarvam-with-sarvam)
+Author: Stefan Haubold <stefan@entire.io>
+Date:   Mon Nov 16 07:45:52 2026 +0100
+
+    Document the Sarvam Code external agent in the README.
+
+    �<9F>�� Generated with Sarvam Code
+
+    Co-authored-by: Sarvam Code <code@sarvam.ai>
+    Entire-Checkpoint: 01M7KN8YRM0P8VYWQKYN4QTPN3
+
+---
+
+ok, can you open a trail for the integration now
+
+---
+
+can you look at the trail findings
