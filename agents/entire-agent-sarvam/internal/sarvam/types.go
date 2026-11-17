@@ -15,6 +15,7 @@ const (
 var (
 	errNegativeOffset    = errors.New("offset must not be negative")
 	errMissingSessionRef = errors.New("session_ref or session_id is required")
+	errEmptySessionData  = errors.New("refusing to write an empty session snapshot")
 )
 
 // Protocol hook names (kebab-case) and the sarvam-native event they ride on.

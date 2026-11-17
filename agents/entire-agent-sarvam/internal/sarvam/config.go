@@ -3,6 +3,7 @@ package sarvam
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -445,7 +446,10 @@ func loadBlocks(path string) ([]tomlBlock, error) {
 
 func saveBlocks(path string, blocks []tomlBlock) error {
 	content := serializeConfigBlocks(blocks)
-	if err := os.MkdirAll(mustDir(path), 0o755); err != nil {
+	// filepath.Dir is separator-aware: on Windows the config path carries
+	// backslashes, where a hand-rolled "/" split would return "." and leave
+	// the .sarvam directory uncreated.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	mode := os.FileMode(0o600)
@@ -453,12 +457,4 @@ func saveBlocks(path string, blocks []tomlBlock) error {
 		mode = existing.Mode().Perm()
 	}
 	return os.WriteFile(path, []byte(content), mode)
-}
-
-func mustDir(path string) string {
-	idx := strings.LastIndex(path, "/")
-	if idx < 0 {
-		return "."
-	}
-	return path[:idx]
 }

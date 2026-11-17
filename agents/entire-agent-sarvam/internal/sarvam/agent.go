@@ -167,7 +167,10 @@ func isSafeShellQuoteRune(r rune) bool {
 // safeFilename maps a session ID onto a filename-safe string. Session IDs are
 // UUIDs in practice, but the protocol accepts any string: common safe
 // punctuation is preserved so the ID stays greppable in resolved paths, and
-// anything hostile collapses to a hash instead of reaching the filesystem.
+// anything hostile — including Windows reserved device names, which are not
+// valid files there even with an extension — collapses to a hash instead of
+// reaching the filesystem. Colons are not safe punctuation: they are path
+// separators or ADS markers on Windows.
 func safeFilename(sessionID string) string {
 	original := strings.TrimSpace(sessionID)
 	if original == "" {
@@ -178,7 +181,7 @@ func safeFilename(sessionID string) string {
 		switch {
 		case r >= '0' && r <= '9', r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
 			b.WriteRune(r)
-		case r == '-' || r == '_' || r == '.' || r == ':':
+		case r == '-' || r == '_' || r == '.':
 			b.WriteRune(r)
 		default:
 			b.WriteByte('_')
@@ -188,11 +191,32 @@ func safeFilename(sessionID string) string {
 	if out == "" {
 		return stubSessionID
 	}
-	if out == original {
+	if out == original && !isWindowsDeviceName(out) {
 		return out
 	}
 	sum := sha256.Sum256([]byte(original))
 	return fmt.Sprintf("~%x", sum[:16])
+}
+
+// isWindowsDeviceName reports whether the (already sanitized) name collides
+// with a reserved DOS device: CON, PRN, AUX, NUL, COM1-9, LPT1-9,
+// case-insensitively. Writing "<name>.jsonl" against these is not a real
+// file on Windows, so they always take the hashed form.
+func isWindowsDeviceName(name string) bool {
+	upper := strings.ToUpper(name)
+	switch upper {
+	case "CON", "PRN", "AUX", "NUL":
+		return true
+	}
+	if len(upper) == 4 {
+		switch {
+		case strings.HasPrefix(upper, "COM") && upper[3] >= '1' && upper[3] <= '9':
+			return true
+		case strings.HasPrefix(upper, "LPT") && upper[3] >= '1' && upper[3] <= '9':
+			return true
+		}
+	}
+	return false
 }
 
 // sessionIDAndRef picks the session reference for a read: an explicit ref
@@ -238,11 +262,15 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 	}, nil
 }
 
-// WriteSession persists native session bytes at the ref Entire resolved. The
-// native rollout for the ID is never a write target: ResolveSessionFile only
-// returns it when it already exists, and Entire passes the ref it asked us to
-// resolve, which for capture flows is the deterministic store path.
+// WriteSession persists native session bytes at the ref Entire resolved.
+// The ref may be the native rollout path itself — ResolveSessionFile returns
+// it whenever it exists — so an empty snapshot must never be written: it
+// would truncate sarvam's own transcript, which redaction cannot undo. A
+// session with no native data is not a snapshot; refuse it.
 func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
+	if len(session.NativeData) == 0 {
+		return errEmptySessionData
+	}
 	ref := strings.TrimSpace(session.SessionRef)
 	if ref == "" {
 		if strings.TrimSpace(session.SessionID) == "" {

@@ -275,3 +275,70 @@ func TestReadTranscript(t *testing.T) {
 		t.Fatalf("read-transcript = %q, want raw bytes", data)
 	}
 }
+
+func TestWriteSession_RefusesEmptyData(t *testing.T) {
+	agent := New()
+	dir := t.TempDir()
+	native := filepath.Join(dir, "rollout-native.jsonl")
+	if err := os.WriteFile(native, []byte("{\"type\":\"session_meta\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// An empty snapshot must never be written, wherever the ref points —
+	// at the native rollout it would truncate sarvam's own transcript.
+	for name, data := range map[string][]byte{"nil": nil, "zero-length": {}} {
+		session := protocol.AgentSessionJSON{
+			SessionID:  "empty-session",
+			SessionRef: native,
+			NativeData: data,
+		}
+		if err := agent.WriteSession(session); err == nil {
+			t.Fatalf("%s native data must be refused", name)
+		}
+	}
+	current, err := os.ReadFile(native)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(current) != "{\"type\":\"session_meta\"}\n" {
+		t.Fatalf("native transcript was modified: %q", current)
+	}
+
+	// A real snapshot still writes.
+	session := protocol.AgentSessionJSON{
+		SessionID:  "real-session",
+		SessionRef: filepath.Join(dir, "real-session.jsonl"),
+		NativeData: []byte(`{"test": true}`),
+	}
+	if err := agent.WriteSession(session); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(session.SessionRef); err != nil {
+		t.Fatalf("real snapshot was not written: %v", err)
+	}
+}
+
+func TestSafeFilename_DeviceNamesAndColons(t *testing.T) {
+	cases := []struct {
+		id       string
+		hashForm bool
+	}{
+		{"test-session-123", false}, // ordinary IDs stay greppable
+		{"01a1e2d3-8a2b-7dc2-b125-885a43ce43f5", false},
+		{"COM1", true},
+		{"con", true},
+		{"NUL", true},
+		{"LPT9.", true}, // trailing dot trims to a bare device name
+		{"a:b", true},   // colons are not filename-safe
+		{"CON.", true},
+	}
+	for _, tc := range cases {
+		name := safeFilename(tc.id)
+		if tc.hashForm && !strings.HasPrefix(name, "~") {
+			t.Errorf("safeFilename(%q) = %q, want the hashed form", tc.id, name)
+		}
+		if !tc.hashForm && name != tc.id {
+			t.Errorf("safeFilename(%q) = %q, want passthrough", tc.id, name)
+		}
+	}
+}
