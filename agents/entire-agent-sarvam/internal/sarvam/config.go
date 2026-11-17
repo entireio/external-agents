@@ -68,11 +68,41 @@ func headerEvent(header string) (event string, kind string) {
 	return "", ""
 }
 
+// netBracketsOutsideQuotes counts '[' minus ']' outside quoted strings and
+// comments on a single line — enough to know whether the line leaves a
+// multi-line array still open.
+func netBracketsOutsideQuotes(line string) int {
+	depth := 0
+	var quote byte
+	for i := 0; i < len(line); i++ {
+		ch := line[i]
+		switch {
+		case quote != 0:
+			if ch == '\\' && quote == '"' && i+1 < len(line) {
+				i++ // skip the escaped character
+				continue
+			}
+			if ch == quote {
+				quote = 0
+			}
+		case ch == '"' || ch == '\'':
+			quote = ch
+		case ch == '#':
+			return depth // comment runs to end of line
+		case ch == '[':
+			depth++
+		case ch == ']':
+			depth--
+		}
+	}
+	return depth
+}
+
 // parseConfigBlocks splits the file into header-anchored blocks. The first
 // block (preamble) has an empty header and holds everything before the first
-// table header. Lines inside an open multi-line string (""" or ”') are
-// always body lines — a line that merely looks like a header inside such a
-// value must not split the block.
+// table header. Lines inside an open multi-line string (""" or ”') or an
+// open multi-line array are always body lines — a line that merely looks
+// like a header inside such a value must not split the block.
 func parseConfigBlocks(content string) []tomlBlock {
 	lines := strings.Split(content, "\n")
 	// A trailing newline produces one empty final element; remember it so
@@ -83,6 +113,7 @@ func parseConfigBlocks(content string) []tomlBlock {
 	}
 	blocks := []tomlBlock{{}}
 	multiLineString := "" // "" outside, otherwise the open delimiter
+	arrayDepth := 0       // open multi-line arrays: body lines until closed
 	for _, line := range lines {
 		if multiLineString != "" {
 			if strings.Count(line, multiLineString)%2 == 1 {
@@ -91,11 +122,23 @@ func parseConfigBlocks(content string) []tomlBlock {
 			blocks[len(blocks)-1].body = append(blocks[len(blocks)-1].body, line)
 			continue
 		}
+		if arrayDepth > 0 {
+			blocks[len(blocks)-1].body = append(blocks[len(blocks)-1].body, line)
+			arrayDepth += netBracketsOutsideQuotes(line)
+			if arrayDepth < 0 {
+				arrayDepth = 0
+			}
+			continue
+		}
 		if isHeaderLine(strings.TrimSpace(line)) {
 			blocks = append(blocks, tomlBlock{header: strings.TrimSpace(line)})
 			continue
 		}
 		blocks[len(blocks)-1].body = append(blocks[len(blocks)-1].body, line)
+		if depth := netBracketsOutsideQuotes(line); depth > 0 {
+			arrayDepth = depth
+			continue
+		}
 		for _, delimiter := range []string{`"""`, `'''`} {
 			if strings.Count(line, delimiter)%2 == 1 {
 				multiLineString = delimiter

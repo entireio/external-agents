@@ -318,6 +318,61 @@ func TestWriteSession_RefusesEmptyData(t *testing.T) {
 	}
 }
 
+func TestWriteSession_RefusesNativeRolloutTargets(t *testing.T) {
+	t.Setenv("SARVAM_HOME", t.TempDir())
+	agent := New()
+
+	// A live native rollout for this session ID.
+	sessionID := "01a1e2d3-8a2b-7dc2-b125-885a43ce43f5"
+	dayDir, err := agent.GetSessionDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dayDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	native := filepath.Join(dayDir, "rollout-2026-11-17T08-00-00-"+sessionID+".jsonl")
+	if err := os.WriteFile(native, []byte("{\"type\":\"session_meta\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A caller-supplied rollout-shaped ref must be refused, contents intact.
+	if err := agent.WriteSession(protocol.AgentSessionJSON{
+		SessionID:  sessionID,
+		SessionRef: native,
+		NativeData: []byte(`{"captured": "snapshot"}`),
+	}); err == nil {
+		t.Fatal("writing to a native rollout path must be refused")
+	}
+	current, err := os.ReadFile(native)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(current) != "{\"type\":\"session_meta\"}\n" {
+		t.Fatalf("native rollout was overwritten: %q", current)
+	}
+
+	// An empty ref resolves to the deterministic store path — not the
+	// native rollout ResolveSessionFile would pick — and writes there.
+	if err := agent.WriteSession(protocol.AgentSessionJSON{
+		SessionID:  sessionID,
+		NativeData: []byte(`{"captured": "snapshot"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store := filepath.Join(dayDir, safeFilename(sessionID)+".jsonl")
+	if _, err := os.Stat(store); err != nil {
+		t.Fatalf("snapshot was not written to the store path: %v", err)
+	}
+	current, err = os.ReadFile(native)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(current) != "{\"type\":\"session_meta\"}\n" {
+		t.Fatalf("native rollout was overwritten via the empty-ref path: %q", current)
+	}
+}
+
 func TestSafeFilename_DeviceNamesAndColons(t *testing.T) {
 	cases := []struct {
 		id       string

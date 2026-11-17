@@ -262,11 +262,13 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 	}, nil
 }
 
-// WriteSession persists native session bytes at the ref Entire resolved.
-// The ref may be the native rollout path itself — ResolveSessionFile returns
-// it whenever it exists — so an empty snapshot must never be written: it
-// would truncate sarvam's own transcript, which redaction cannot undo. A
-// session with no native data is not a snapshot; refuse it.
+// WriteSession persists native session bytes at the ref Entire resolved —
+// but never into sarvam's own rollout store. A native rollout is sarvam's
+// append-only transcript; replacing it with an entire-captured snapshot
+// would truncate live appends or clobber history, which redaction cannot
+// undo. Rollout-shaped refs are refused outright, an empty payload is not a
+// snapshot at all, and an empty ref resolves to the deterministic store path
+// rather than ResolveSessionFile, which prefers the native file.
 func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if len(session.NativeData) == 0 {
 		return errEmptySessionData
@@ -276,12 +278,31 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 		if strings.TrimSpace(session.SessionID) == "" {
 			return errMissingSessionRef
 		}
-		ref = a.ResolveSessionFile("", session.SessionID)
+		ref = a.storePath(session.SessionID)
+	}
+	if isNativeRolloutPath(ref) {
+		return errNativeRolloutWrite
 	}
 	if err := os.MkdirAll(filepath.Dir(ref), 0o700); err != nil {
 		return err
 	}
 	return os.WriteFile(ref, session.NativeData, 0o600)
+}
+
+// storePath is the deterministic in-store location for a session ID. It
+// deliberately bypasses ResolveSessionFile, which returns the native
+// rollout whenever one exists.
+func (a *Agent) storePath(sessionID string) string {
+	dir, _ := a.GetSessionDir("")
+	return filepath.Join(dir, safeFilename(sessionID)+".jsonl")
+}
+
+// isNativeRolloutPath reports whether the path names one of sarvam's own
+// rollout transcripts (rollout-<timestamp>-<thread>.jsonl), which write
+// targets must never touch.
+func isNativeRolloutPath(path string) bool {
+	base := filepath.Base(path)
+	return strings.HasPrefix(base, "rollout-") && strings.HasSuffix(base, ".jsonl")
 }
 
 // ReadTranscript returns the raw transcript bytes at the ref. Entire runs its

@@ -61,6 +61,75 @@ func TestInstallHooks_FreshConfig(t *testing.T) {
 	}
 }
 
+func TestInstallHooks_MultiLineArray(t *testing.T) {
+	// The last element of a multi-line array has no trailing comma, so its
+	// line — ["b"] — would match the header pattern on its own. Array-depth
+	// tracking must keep it inside the entry's body.
+	path := writeConfig(t, `[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "/usr/local/bin/user-start-hook"
+args = [
+  ["a"],
+  ["b"]
+]
+`)
+
+	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
+		t.Fatal(err)
+	}
+	content := readConfig(t, path)
+
+	for _, want := range []string{
+		"args = [",
+		`  ["a"],`,
+		`  ["b"]`,
+		"]",
+		`command = "/usr/local/bin/user-start-hook"`,
+		"entire hooks sarvam session-start",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("multi-line array corrupted, missing %q:\n%s", want, content)
+		}
+	}
+
+	// The foreign entry must still be recognized as one block: its command
+	// stays queryable after a reparse.
+	blocks, err := loadBlocks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, block := range blocks {
+		if entryCommand(block) == "/usr/local/bin/user-start-hook" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the foreign entry's command is no longer queryable after install:\n%s", content)
+	}
+}
+
+func TestNetBracketsOutsideQuotes(t *testing.T) {
+	cases := []struct {
+		line string
+		want int
+	}{
+		{"args = [", 1},
+		{`  ["a"],`, 0},
+		{`  ["b"]`, 0},
+		{"]", -1},
+		{`command = "array[0]"`, 0},
+		{"depth = 0 # [comment]", 0},
+		{"", 0},
+	}
+	for _, tc := range cases {
+		if got := netBracketsOutsideQuotes(tc.line); got != tc.want {
+			t.Errorf("netBracketsOutsideQuotes(%q) = %d, want %d", tc.line, got, tc.want)
+		}
+	}
+}
+
 func TestInstallHooks_MatcherScopedForeignGroup(t *testing.T) {
 	// A user's matcher-scoped group for one of our events must not capture
 	// our entry: the installer always opens its own matcher-less group, so
