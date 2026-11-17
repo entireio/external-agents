@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.13.2-nightly.202611070613.17108c455",
+  "checkpoint_id": "01M7MFK6P0VMR3Y057MWHZFCEZ",
+  "strategy": "manual-commit",
+  "branch": "alisha/mistral-vibe-external-agent",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "agents/entire-agent-mistral-vibe/internal/vibe/transcript.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/transcript_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 3996,
+    "cache_read_tokens": 1704884,
+    "output_tokens": 2242,
+    "api_call_count": 3
+  },
+  "redaction": {
+    "replacements": 59,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 37,
+      "credentialed_uri": 0,
+      "entropy": 22,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
