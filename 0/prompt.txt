@@ -1,0 +1,9 @@
+open a trail
+
+---
+
+remove agents/entire-agent-mistral-vibe/scripts/verify-mistral-vibe.sh and does the agents/entire-agent-mistral-vibe/AGENT.md match the pattern of the other external agents. I didn't expect it to be 300 lines
+
+---
+
+commit and also fix findings then push
