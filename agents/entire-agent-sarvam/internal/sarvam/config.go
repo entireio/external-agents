@@ -3,6 +3,7 @@ package sarvam
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -32,12 +33,25 @@ type tomlBlock struct {
 	body   []string // lines after the header until the next header
 }
 
+// headerLinePattern matches a TOML table or array-of-tables header: opening
+// brackets, a key without ] characters, matching closing brackets, and an
+// optional trailing comment. Continuation lines of multi-line arrays or
+// strings ("[\"a\", \"b\"],") do not match, so they stay in the body of the
+// block that opened them instead of becoming phantom headers.
+var headerLinePattern = regexp.MustCompile(`^\[+[^\]]*\]+\s*(?:#.*)?$`)
+
 func isHeaderLine(line string) bool {
-	return strings.HasPrefix(line, "[")
+	return headerLinePattern.MatchString(line)
 }
 
 func headerEvent(header string) (event string, kind string) {
 	trimmed := strings.TrimSpace(header)
+	// A trailing comment is not part of the key: [[hooks.Stop]] # nightly.
+	// Quoted keys containing '#' are unaffected in practice because the
+	// events we manage are bare, unquoted names.
+	if i := strings.Index(trimmed, "#"); i >= 0 {
+		trimmed = strings.TrimSpace(trimmed[:i])
+	}
 	for _, prefix := range []string{"[[hooks.", "[hooks."} {
 		if strings.HasPrefix(trimmed, prefix) {
 			rest := strings.TrimSuffix(strings.TrimPrefix(trimmed, prefix), "]")
@@ -55,7 +69,9 @@ func headerEvent(header string) (event string, kind string) {
 
 // parseConfigBlocks splits the file into header-anchored blocks. The first
 // block (preamble) has an empty header and holds everything before the first
-// table header.
+// table header. Lines inside an open multi-line string (""" or ”') are
+// always body lines — a line that merely looks like a header inside such a
+// value must not split the block.
 func parseConfigBlocks(content string) []tomlBlock {
 	lines := strings.Split(content, "\n")
 	// A trailing newline produces one empty final element; remember it so
@@ -65,12 +81,26 @@ func parseConfigBlocks(content string) []tomlBlock {
 		lines = lines[:len(lines)-1]
 	}
 	blocks := []tomlBlock{{}}
+	multiLineString := "" // "" outside, otherwise the open delimiter
 	for _, line := range lines {
+		if multiLineString != "" {
+			if strings.Count(line, multiLineString)%2 == 1 {
+				multiLineString = ""
+			}
+			blocks[len(blocks)-1].body = append(blocks[len(blocks)-1].body, line)
+			continue
+		}
 		if isHeaderLine(strings.TrimSpace(line)) {
 			blocks = append(blocks, tomlBlock{header: strings.TrimSpace(line)})
 			continue
 		}
 		blocks[len(blocks)-1].body = append(blocks[len(blocks)-1].body, line)
+		for _, delimiter := range []string{`"""`, `'''`} {
+			if strings.Count(line, delimiter)%2 == 1 {
+				multiLineString = delimiter
+				break
+			}
+		}
 	}
 	return blocks
 }

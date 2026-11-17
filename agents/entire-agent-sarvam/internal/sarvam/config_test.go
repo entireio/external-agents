@@ -61,6 +61,118 @@ func TestInstallHooks_FreshConfig(t *testing.T) {
 	}
 }
 
+func TestInstallHooks_MatcherScopedForeignGroup(t *testing.T) {
+	// A user's matcher-scoped group for one of our events must not capture
+	// our entry: the installer always opens its own matcher-less group, so
+	// the hook fires for every event, not only where the foreign matcher hits.
+	path := writeConfig(t, `[[hooks.SessionStart]]
+matcher = "SomeTool"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "/usr/local/bin/user-start-hook"
+`)
+
+	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
+		t.Fatal(err)
+	}
+	content := readConfig(t, path)
+
+	first := strings.Index(content, "[[hooks.SessionStart]]")
+	second := strings.Index(content[first+1:], "[[hooks.SessionStart]]") + first + 1
+	ours := strings.Index(content, "entire hooks sarvam session-start")
+	if !(first < second && second < ours) {
+		t.Fatalf("our entry must open its own group after the user's, got:\n%s", content)
+	}
+	if strings.Count(content, "matcher") != 1 {
+		t.Errorf("the user's matcher must stay in their group only:\n%s", content)
+	}
+	if !strings.Contains(content, `command = "/usr/local/bin/user-start-hook"`) {
+		t.Errorf("the user's entry must be preserved:\n%s", content)
+	}
+}
+
+func TestInstallHooks_HeaderTrailingComments(t *testing.T) {
+	path := writeConfig(t, `[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]] # my own startup hook
+type = "command"
+command = "/usr/local/bin/user-start-hook"
+`)
+
+	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
+		t.Fatal(err)
+	}
+	content := readConfig(t, path)
+
+	if !strings.Contains(content, `[[hooks.SessionStart.hooks]] # my own startup hook`) {
+		t.Errorf("the commented header must be preserved verbatim:\n%s", content)
+	}
+	if !strings.Contains(content, "entire hooks sarvam session-start") {
+		t.Errorf("our entry must still be installed:\n%s", content)
+	}
+	if strings.Count(content, "[[hooks.SessionStart]]\n") != 2 {
+		t.Errorf("our entry must open its own group:\n%s", content)
+	}
+
+	// A map-form event header with a trailing comment must be rejected
+	// instead of silently corrupting the file with an array alongside a table.
+	mapForm := writeConfig(t, "[hooks.Stop] # legacy\n")
+	if _, err := upsertHookEntries(mapForm, testEntries(), false); err == nil {
+		t.Fatal("map-form [hooks.Stop] with a trailing comment must be rejected")
+	}
+}
+
+func TestInstallHooks_MultiLineStringValue(t *testing.T) {
+	// Lines inside an open multi-line string are body lines however much
+	// they look like table headers.
+	path := writeConfig(t, `[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = """
+[[hooks.SessionStart]]
+not a header, just prose
+"""
+`)
+
+	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
+		t.Fatal(err)
+	}
+	content := readConfig(t, path)
+
+	for _, want := range []string{
+		"command = \"\"\"",
+		"[[hooks.SessionStart]]\nnot a header, just prose",
+		"\"\"\"",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("multi-line string corrupted, missing %q:\n%s", want, content)
+		}
+	}
+	if !strings.Contains(content, "entire hooks sarvam session-start") {
+		t.Errorf("our entry must still be installed:\n%s", content)
+	}
+}
+
+func TestParseConfigBlocks_HeaderRecognition(t *testing.T) {
+	cases := []struct {
+		line   string
+		header bool
+	}{
+		{"[[hooks.SessionStart]]", true},
+		{"[[hooks.SessionStart.hooks]] # note", true},
+		{"[hooks.Stop] # legacy", true},
+		{`[hooks.state."a#b"]`, true},
+		{`["a", "b"],`, false},
+		{"command = \"x\"", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := isHeaderLine(tc.line); got != tc.header {
+			t.Errorf("isHeaderLine(%q) = %v, want %v", tc.line, got, tc.header)
+		}
+	}
+}
+
 func TestInstallHooks_Idempotent(t *testing.T) {
 	path := writeConfig(t, "")
 
