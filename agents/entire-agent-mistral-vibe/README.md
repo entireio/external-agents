@@ -103,4 +103,4 @@ Vibe only loads project hooks from a **trusted folder**. Trust the folder when V
 - **API call count is an estimate.** Vibe's history has no request count, so calls are counted per model response inferred from the history. Tool-only responses from a model that emits no reasoning can be merged.
 - **Compaction** has no Vibe hook, so Entire receives no compaction event.
 
-See [AGENT.md](AGENT.md) for the research behind these choices and what was verified against a live Vibe.
+See [AGENT.md](AGENT.md) for the hook, transcript and protocol mapping details.
