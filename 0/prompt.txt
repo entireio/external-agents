@@ -1,0 +1,1 @@
+Stage .sarvam/config.toml with git add and commit it with the message: Add repo-local sarvam enable state for the entire hooks. Then reply done

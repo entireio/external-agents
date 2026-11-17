@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.13.5-nightly.202611131617.95eabf579",
+  "checkpoint_id": "01M7M42TB5WFJ8QKDDY8DQC712",
+  "session_id": "01a1e840-fa1c-70b1-b97e-38e489d2f822",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-17T06:46:03.759959Z",
+  "branch": "soph/add-sarvam-with-sarvam",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Sarvam Code",
+  "model": "glm-5.3",
+  "turn_id": "c5e5c6a5057e",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 93687,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 79872,
+    "output_tokens": 785,
+    "api_call_count": 3
+  },
+  "redaction": {
+    "replacements": 0,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 0,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
