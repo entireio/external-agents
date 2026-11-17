@@ -73,7 +73,7 @@ func (s *sarvamSession) WaitFor(pattern string, timeout time.Duration) (string, 
 
 func (s *Sarvam) Name() string               { return "sarvam" }
 func (s *Sarvam) Binary() string             { return "sarvam-code" }
-func (s *Sarvam) EntireAgent() string         { return "sarvam" }
+func (s *Sarvam) EntireAgent() string        { return "sarvam" }
 func (s *Sarvam) PromptPattern() string      { return sarvamPromptPattern }
 func (s *Sarvam) TimeoutMultiplier() float64 { return sarvamTimeoutMultiplier }
 func (s *Sarvam) IsExternalAgent() bool      { return true }
