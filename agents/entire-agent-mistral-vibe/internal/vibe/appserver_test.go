@@ -189,6 +189,37 @@ func TestReadSessionHandshakeAndSessionHeader(t *testing.T) {
 	}
 }
 
+// The server may send requests of its own, and its ids can coincide with ours.
+// Such a message is not the reply to our request.
+func TestCallIgnoresServerRequestWithTheSameID(t *testing.T) {
+	requestReader, requestWriter := io.Pipe()
+	responseReader, responseWriter := io.Pipe()
+	go func() {
+		defer responseWriter.Close()
+		scanner := bufio.NewScanner(requestReader)
+		for scanner.Scan() {
+			var request struct {
+				ID *int `json:"id"`
+			}
+			if json.Unmarshal(scanner.Bytes(), &request) != nil || request.ID == nil {
+				continue
+			}
+			fmt.Fprintf(responseWriter, `{"jsonrpc":"2.0","id":%d,"method":"callback/call","params":{"x":1}}`+"\n", *request.ID)
+			fmt.Fprintf(responseWriter, `{"jsonrpc":"2.0","id":%d,"result":{"answer":42}}`+"\n", *request.ID)
+		}
+	}()
+	t.Cleanup(func() { requestWriter.Close() })
+
+	client := &rpcClient{w: requestWriter, r: bufio.NewReader(responseReader)}
+	result, err := client.call("session/read", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(result) != `{"answer":42}` {
+		t.Errorf("result = %s, want the real response, not the server's own request", result)
+	}
+}
+
 func TestReadSessionReportsServerError(t *testing.T) {
 	server := &fakeAppServer{failRead: true}
 	_, err := readSession(startFakeServer(t, server), testSessionID)

@@ -550,6 +550,26 @@ func TestDecodeTranscriptSkipsBlankAndBrokenLines(t *testing.T) {
 	}
 }
 
+// One very large entry (a big file read or tool output) must not make the
+// whole transcript unreadable.
+func TestDecodeTranscriptHandlesVeryLargeEntry(t *testing.T) {
+	huge := strings.Repeat("x", 11*1024*1024)
+	data := `{"id":"u1","type":"message","role":"user","content":[{"type":"text","text":"read the big file"}]}` + "\n" +
+		`{"id":"e1","type":"effect","state":{"status":"completed","outputText":"` + huge + `"}}` + "\n" +
+		`{"id":"a1","type":"message","role":"assistant","content":[{"type":"text","text":"done"}]}` + "\n"
+
+	entries, err := decodeTranscript([]byte(data))
+	if err != nil {
+		t.Fatalf("a large entry made the transcript unreadable: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("got %d entries, want 3: positions must still count the large one", len(entries))
+	}
+	if entries[1].ID != "e1" || len(entries[1].State.OutputText) != len(huge) || entries[2].text() != "done" {
+		t.Error("entries around or including the large one were lost")
+	}
+}
+
 func TestSessionIDFromRef(t *testing.T) {
 	tests := map[string]string{
 		"/cache/x/" + testSessionID + ".jsonl": testSessionID,

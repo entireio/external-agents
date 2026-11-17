@@ -187,7 +187,9 @@ type rpcClient struct {
 }
 
 type rpcResponse struct {
-	ID     *int            `json:"id"`
+	ID *int `json:"id"`
+	// Method is set on requests and notifications, never on a response.
+	Method string          `json:"method"`
 	Result json.RawMessage `json:"result"`
 	Error  *struct {
 		Code    int    `json:"code"`
@@ -223,7 +225,9 @@ func (c *rpcClient) call(method string, params any) (json.RawMessage, error) {
 			return nil, fmt.Errorf("%s: read response: %w", method, err)
 		}
 		var resp rpcResponse
-		if json.Unmarshal(line, &resp) != nil || resp.ID == nil || *resp.ID != id {
+		// A message with a method is the server's own request or notification.
+		// Its id belongs to the server's numbering and can equal ours.
+		if json.Unmarshal(line, &resp) != nil || resp.Method != "" || resp.ID == nil || *resp.ID != id {
 			continue
 		}
 		if resp.Error != nil {
