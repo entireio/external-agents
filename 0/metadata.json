@@ -1,0 +1,135 @@
+{
+  "cli_version": "0.13.2-nightly.202611070613.17108c455",
+  "checkpoint_id": "01M7MCQZPN43EE9SM0MBHD3B4D",
+  "session_id": "287640bd-6b92-4d57-aec0-a5042e449c64",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-17T09:17:26.745554Z",
+  "branch": "alisha/mistral-vibe-external-agent",
+  "checkpoints_count": 11,
+  "save_step_count": 5,
+  "files_touched": [
+    "README.md",
+    "agents/entire-agent-mistral-vibe/.gitignore",
+    "agents/entire-agent-mistral-vibe/AGENT.md",
+    "agents/entire-agent-mistral-vibe/README.md",
+    "agents/entire-agent-mistral-vibe/cmd/entire-agent-mistral-vibe/main.go",
+    "agents/entire-agent-mistral-vibe/go.mod",
+    "agents/entire-agent-mistral-vibe/internal/protocol/protocol.go",
+    "agents/entire-agent-mistral-vibe/internal/protocol/types.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/agent.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/appserver.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/appserver_test.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/compact.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/device_names.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/device_names_test.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/hooks.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/hooks_test.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/paths.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/process_unix.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/process_windows.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/session_jsonl.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/testhelpers_test.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/transcript.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/transcript_test.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/turnend.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/turnend_test.go",
+    "agents/entire-agent-mistral-vibe/internal/vibe/types.go",
+    "agents/entire-agent-mistral-vibe/mise.toml",
+    "agents/entire-agent-mistral-vibe/scripts/verify-mistral-vibe.sh",
+    "agents/entire-agent-mistral-vibe/testdata/hooks.json",
+    "agents/entire-agent-mistral-vibe/testdata/session.json",
+    "e2e/README.md",
+    "e2e/agents/mistral_vibe.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5-2",
+  "turn_id": "f1488f27d78c",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 232,
+    "cache_creation_tokens": 426022,
+    "cache_read_tokens": 30684389,
+    "output_tokens": 158212,
+    "api_call_count": 114,
+    "subagent_tokens": {
+      "input_tokens": 10,
+      "cache_creation_tokens": 27248,
+      "cache_read_tokens": 52130,
+      "output_tokens": 8586,
+      "api_call_count": 4
+    }
+  },
+  "redaction": {
+    "replacements": 45,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 34,
+      "credentialed_uri": 0,
+      "entropy": 11,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "prompt-skill-claude-code-rubber-duck-2026-11-17T08:37:47.826062Z",
+      "event_type": "prompt_invocation",
+      "skill": {
+        "name": "rubber-duck"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "prompt_slash_command",
+        "confidence": "explicit"
+      },
+      "turn_id": "cb454343afb2",
+      "timestamp": "2026-11-17T08:37:47.826062Z",
+      "native": {
+        "command": "/rubber-duck"
+      },
+      "collapse": {
+        "target": "user_message",
+        "label": "/rubber-duck",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01DBnLFQsWRNY9gSdrJZXxe3",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "entire-external-agent"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "f1488f27d78c",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 47,
+        "end": 48,
+        "entry_ids": [
+          "a17e6775-d1c7-4b0a-9904-edd0d1f91339"
+        ],
+        "tool_use_id": "toolu_01DBnLFQsWRNY9gSdrJZXxe3"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01DBnLFQsWRNY9gSdrJZXxe3"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: entire-external-agent",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 11
+  }
+}
