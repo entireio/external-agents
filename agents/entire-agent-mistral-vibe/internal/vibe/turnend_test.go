@@ -79,13 +79,120 @@ func TestAwaitTurnEndWaitsForTheTurnEndProcess(t *testing.T) {
 	awaitTurnEnd(ref)
 	returned := time.Now()
 
-	select {
-	case at := <-exited:
-		if returned.Before(at) {
-			t.Error("session end overtook the turn end")
+	// The process is reaped a moment after it dies, so compare with a margin
+	// rather than requiring the reaper to have run first.
+	if at := <-exited; returned.Before(at.Add(-50 * time.Millisecond)) {
+		t.Errorf("session end returned %v before the turn end finished", at.Sub(returned))
+	}
+}
+
+// shortWaits makes the session-end waits quick enough to test.
+func shortWaits(t *testing.T, grace, total time.Duration) {
+	t.Helper()
+	oldGrace, oldTotal := turnOpenGrace, turnEndWait
+	turnOpenGrace, turnEndWait = grace, total
+	t.Cleanup(func() { turnOpenGrace, turnEndWait = oldGrace, oldTotal })
+}
+
+// The turn-end hook can start after the session-end hook. Session end must
+// wait for it to announce itself, then for it to finish.
+func TestAwaitTurnEndWaitsForATurnEndThatStartsLate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sleep")
+	}
+	isolate(t)
+	shortWaits(t, 2*time.Second, 5*time.Second)
+	ref := transcriptPath(testSessionID)
+	if err := ensureTranscriptFile(ref); err != nil {
+		t.Fatal(err)
+	}
+	markTurnOpen(ref)
+
+	finished := make(chan time.Time, 1)
+	go func() {
+		// The turn-end hook only gets going after session end has started waiting.
+		time.Sleep(150 * time.Millisecond)
+		turnEnd := exec.Command("sleep", "0.3")
+		if err := turnEnd.Start(); err != nil {
+			finished <- time.Time{}
+			return
 		}
-	default:
-		t.Error("returned while the turn-end process was still running")
+		_ = os.WriteFile(turnEndPath(ref), []byte(strconv.Itoa(turnEnd.Process.Pid)), 0o600)
+		_ = turnEnd.Wait()
+		finished <- time.Now()
+	}()
+
+	awaitTurnEnd(ref)
+	returned := time.Now()
+
+	at := <-finished
+	if at.IsZero() {
+		t.Fatal("could not start the stand-in process")
+	}
+	if returned.Before(at) {
+		t.Error("session end overtook a turn end that started late")
+	}
+}
+
+// An interrupted turn never gets a turn end; session end must not hang on it.
+func TestAwaitTurnEndGivesUpOnATurnThatNeverEnds(t *testing.T) {
+	isolate(t)
+	shortWaits(t, 100*time.Millisecond, time.Second)
+	ref := transcriptPath(testSessionID)
+	if err := ensureTranscriptFile(ref); err != nil {
+		t.Fatal(err)
+	}
+	markTurnOpen(ref)
+
+	start := time.Now()
+	awaitTurnEnd(ref)
+	elapsed := time.Since(start)
+	if elapsed < 100*time.Millisecond || elapsed > 700*time.Millisecond {
+		t.Errorf("waited %v, want about the 100ms grace period", elapsed)
+	}
+	if _, err := os.Stat(turnEndPath(ref)); !os.IsNotExist(err) {
+		t.Error("marker was not removed")
+	}
+}
+
+// A stale marker naming a live, unrelated process must not block for long.
+func TestAwaitTurnEndIsBounded(t *testing.T) {
+	isolate(t)
+	shortWaits(t, 50*time.Millisecond, 200*time.Millisecond)
+	ref := transcriptPath(testSessionID)
+	if err := ensureTranscriptFile(ref); err != nil {
+		t.Fatal(err)
+	}
+	// This test process is alive and is not our parent.
+	if err := os.WriteFile(turnEndPath(ref), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	awaitTurnEnd(ref)
+	if elapsed := time.Since(start); elapsed < 200*time.Millisecond || elapsed > time.Second {
+		t.Errorf("waited %v, want about the 200ms bound", elapsed)
+	}
+}
+
+func TestParseHookMarksTurnOpenThenHandled(t *testing.T) {
+	isolate(t)
+	agent := &Agent{Fetcher: &fakeFetcher{snapshot: loadSnapshot(t)}}
+	event, err := agent.ParseHook(HookNamePreAgent, hookPayloadFixture(t, "pre_agent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	marker := func() string {
+		data, _ := os.ReadFile(turnEndPath(event.SessionRef))
+		return string(data)
+	}
+	if marker() != turnOpen {
+		t.Errorf("after turn start the marker is %q, want %q", marker(), turnOpen)
+	}
+	if _, err := agent.ParseHook(HookNameNotification, hookPayloadFixture(t, "notification")); err != nil {
+		t.Fatal(err)
+	}
+	if marker() != strconv.Itoa(os.Getppid()) {
+		t.Errorf("after turn end the marker is %q, want the handling process", marker())
 	}
 }
 

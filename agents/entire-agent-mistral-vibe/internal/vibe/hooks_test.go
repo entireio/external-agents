@@ -3,6 +3,7 @@ package vibe
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -99,9 +100,12 @@ func TestParseHookIgnoresWhatIsNotALifecycleEvent(t *testing.T) {
 		hook    string
 		payload string
 	}{
-		"empty input":          {HookNamePreAgent, ""},
-		"no session id":        {HookNamePreAgent, `{"prompt":"hi"}`},
-		"subagent turn":        {HookNamePreAgent, `{"session_id":"child","parent_session_id":"parent","prompt":"hi"}`},
+		"empty input":   {HookNamePreAgent, ""},
+		"no session id": {HookNamePreAgent, `{"prompt":"hi"}`},
+		// Vibe never runs pre_agent (match = "main") or session_start for a
+		// subagent, so only these two can arrive for one.
+		"subagent turn end":    {HookNameNotification, `{"session_id":"child","parent_session_id":"parent","notification_type":"turn_completed"}`},
+		"subagent session end": {HookNameSessionEnd, `{"session_id":"child","parent_session_id":"parent","reason":"other"}`},
 		"approval requested":   {HookNameNotification, `{"session_id":"s","notification_type":"approval_requested"}`},
 		"post_agent":           {"post-agent", `{"session_id":"s"}`},
 		"unknown hook":         {"something-else", `{"session_id":"s"}`},
@@ -120,6 +124,43 @@ func TestParseHookIgnoresWhatIsNotALifecycleEvent(t *testing.T) {
 				t.Errorf("fetched %d times for an ignored hook", fetcher.calls)
 			}
 		})
+	}
+}
+
+// A fork or rewind is a main session whose parent_session_id names the session
+// it was forked from (mistralai_vibe_local_harness/vibe/_host.py). It must not
+// be mistaken for a subagent.
+func TestParseHookTracksForkedSession(t *testing.T) {
+	isolate(t)
+	fetcher := &fakeFetcher{snapshot: loadSnapshot(t)}
+	agent := &Agent{Fetcher: fetcher}
+	const fork = `"session_id":"fork-1","parent_session_id":"source-1"`
+
+	steps := []struct {
+		hook     string
+		payload  string
+		wantType int
+	}{
+		{HookNameSessionStart, `{` + fork + `,"source":"fork","model":"m"}`, 1},
+		{HookNamePreAgent, `{` + fork + `,"prompt":"continue"}`, 2},
+		{HookNameNotification, `{` + fork + `,"notification_type":"turn_completed"}`, 3},
+		{HookNameSessionEnd, `{` + fork + `,"reason":"exit"}`, 5},
+	}
+	for _, step := range steps {
+		event, err := agent.ParseHook(step.hook, []byte(step.payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if event == nil {
+			t.Fatalf("%s for a forked session was dropped", step.hook)
+		}
+		if event.Type != step.wantType || event.SessionID != "fork-1" {
+			t.Errorf("%s: event = %+v", step.hook, event)
+		}
+	}
+	// The fork's existing history is stored before its first turn.
+	if position, _ := agent.GetTranscriptPosition(transcriptPath("fork-1")); position == 0 {
+		t.Error("forked session started with an empty transcript")
 	}
 }
 
@@ -346,6 +387,150 @@ func TestInstallHooksRefusesSymlink(t *testing.T) {
 	}
 	if _, err := agent.HooksInstalledState(); err == nil {
 		t.Error("an unreadable hooks file must report an unknown state, not 'not installed'")
+	}
+}
+
+func TestHooksRefuseSymlinkedVibeDir(t *testing.T) {
+	repo := isolate(t)
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "hooks.toml")
+	if err := os.WriteFile(victim, []byte(userHooks), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A checkout can ship .vibe as a symlink to anywhere the user can write.
+	if err := os.Symlink(outside, filepath.Join(repo, vibeDir)); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	agent := &Agent{}
+
+	if _, err := agent.InstallHooks(false, true); err == nil {
+		t.Error("install wrote through a symlinked .vibe directory")
+	}
+	if err := agent.UninstallHooks(); err == nil {
+		t.Error("uninstall must not act through a symlinked .vibe directory")
+	}
+	if _, err := agent.HooksInstalledState(); err == nil {
+		t.Error("state behind a symlinked .vibe directory is unknown, not 'not installed'")
+	}
+	if data, _ := os.ReadFile(victim); string(data) != userHooks {
+		t.Errorf("file outside the repository was changed:\n%s", data)
+	}
+	entries, _ := os.ReadDir(outside)
+	if len(entries) != 1 {
+		t.Errorf("files were created outside the repository: %v", entries)
+	}
+}
+
+func TestHooksPreserveExistingFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits")
+	}
+	repo := isolate(t)
+	agent := &Agent{}
+	if err := os.MkdirAll(filepath.Join(repo, vibeDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(repo, hooksFile)
+	if err := os.WriteFile(path, []byte(userHooks), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mode := func() os.FileMode {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return info.Mode().Perm()
+	}
+
+	if _, err := agent.InstallHooks(false, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := mode(); got != 0o600 {
+		t.Errorf("install changed a private hooks file to %o", got)
+	}
+	if err := agent.UninstallHooks(); err != nil {
+		t.Fatal(err)
+	}
+	if got := mode(); got != 0o600 {
+		t.Errorf("uninstall changed a private hooks file to %o", got)
+	}
+}
+
+func TestInstallHooksRefusesQuotedInlineHooksKey(t *testing.T) {
+	for _, original := range []string{"\"hooks\" = []\n", "'hooks' = []\n", "  hooks=[ ]\n"} {
+		repo := isolate(t)
+		if err := os.MkdirAll(filepath.Join(repo, vibeDir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, hooksFile), []byte(original), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (&Agent{}).InstallHooks(false, false); err == nil {
+			t.Errorf("%q: appending [[hooks]] would make the file invalid TOML", original)
+		}
+		if readHooks(t, repo) != original {
+			t.Errorf("%q: file was modified", original)
+		}
+	}
+}
+
+// Marker text inside a user's own string is not Entire's block.
+func TestMarkersMustBeWholeLines(t *testing.T) {
+	repo := isolate(t)
+	agent := &Agent{}
+	mine := "[[hooks]]\nname = \"mine\"\ntype = \"pre_tool\"\ncommand = \"true\"\n" +
+		"description = \"see " + blockStart + " and " + blockEnd + " in the docs\"\n"
+	if err := os.MkdirAll(filepath.Join(repo, vibeDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, hooksFile), []byte(mine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if agent.AreHooksInstalled() {
+		t.Fatal("marker text inside a string counted as an installed block")
+	}
+	if _, err := agent.InstallHooks(false, false); err != nil {
+		t.Fatal(err)
+	}
+	content := readHooks(t, repo)
+	if !strings.HasPrefix(content, mine) {
+		t.Errorf("user hook was rewritten:\n%s", content)
+	}
+	if strings.Count(content, "[[hooks]]") != len(installedHooks)+1 || !agent.AreHooksInstalled() {
+		t.Errorf("hooks were not installed:\n%s", content)
+	}
+	if err := agent.UninstallHooks(); err != nil {
+		t.Fatal(err)
+	}
+	if got := readHooks(t, repo); got != mine {
+		t.Errorf("after uninstall:\n%q\nwant:\n%q", got, mine)
+	}
+}
+
+func TestHooksRoundTripCRLFFile(t *testing.T) {
+	repo := isolate(t)
+	agent := &Agent{}
+	crlf := strings.ReplaceAll(userHooks, "\n", "\r\n")
+	if err := os.MkdirAll(filepath.Join(repo, vibeDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, hooksFile), []byte(crlf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agent.InstallHooks(false, false); err != nil {
+		t.Fatal(err)
+	}
+	if !agent.AreHooksInstalled() {
+		t.Fatal("hooks not detected in a CRLF file")
+	}
+	if count, err := agent.InstallHooks(false, false); err != nil || count != 0 {
+		t.Errorf("second install into a CRLF file: count = %d, err = %v", count, err)
+	}
+	if err := agent.UninstallHooks(); err != nil {
+		t.Fatal(err)
+	}
+	if got := readHooks(t, repo); got != crlf {
+		t.Errorf("after uninstall:\n%q\nwant:\n%q", got, crlf)
 	}
 }
 

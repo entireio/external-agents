@@ -87,7 +87,7 @@ func storedTranscript(t *testing.T) string {
 	t.Helper()
 	agent := &Agent{Fetcher: &fakeFetcher{snapshot: loadSnapshot(t)}}
 	ref := transcriptPath(testSessionID)
-	if _, err := agent.refresh(ref, testSessionID); err != nil {
+	if _, err := agent.refresh(ref, testSessionID, fetchTimeout); err != nil {
 		t.Fatal(err)
 	}
 	return ref

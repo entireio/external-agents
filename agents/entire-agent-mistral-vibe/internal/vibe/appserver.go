@@ -9,7 +9,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 )
 
 const (
@@ -48,6 +51,11 @@ type AppServerFetcher struct{}
 // process environment or PATH, never from a file in the repository.
 func appServerPath() (string, error) {
 	if fromEnv := strings.TrimSpace(os.Getenv(appServerBinEnv)); fromEnv != "" {
+		// Vibe always gives an absolute path. A relative one would be resolved
+		// against the repository this process runs in, so it is refused.
+		if !filepath.IsAbs(fromEnv) {
+			return "", fmt.Errorf("%s must be an absolute path, got %q", appServerBinEnv, fromEnv)
+		}
 		if info, err := os.Stat(fromEnv); err == nil && !info.IsDir() {
 			return fromEnv, nil
 		}
@@ -70,6 +78,9 @@ func (f *AppServerFetcher) FetchSession(ctx context.Context, sessionID, workDir 
 
 	cmd := exec.CommandContext(ctx, bin)
 	cmd.Dir = workDir
+	// If a descendant keeps the pipes open after the server is killed, stop
+	// waiting for them rather than hanging.
+	cmd.WaitDelay = 2 * time.Second
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -134,9 +145,15 @@ func readSession(client *rpcClient, sessionID string) (*Snapshot, error) {
 	}
 	snapshot := &Snapshot{Usage: read.State.Session.TokenUsage, Model: read.State.Session.Model}
 
+	// History is paged from the newest entry backward. With no cursor Vibe
+	// returns the newest page whatever direction is asked for, and only a
+	// backward request then says how to reach the older ones; asking "forward"
+	// first returns the last page and no cursor, which silently drops the
+	// start of a long session.
+	var pages [][]json.RawMessage
 	cursor := ""
 	for range maxHistoryPages {
-		pageReq := map[string]any{"direction": "forward", "limit": historyPageLimit}
+		pageReq := map[string]any{"direction": "backward", "limit": historyPageLimit}
 		if cursor != "" {
 			pageReq["cursor"] = cursor
 		}
@@ -151,8 +168,11 @@ func readSession(client *rpcClient, sessionID string) (*Snapshot, error) {
 		if err := json.Unmarshal(raw, &list); err != nil {
 			return nil, fmt.Errorf("parse session/history/list: %w", err)
 		}
-		snapshot.Entries = append(snapshot.Entries, list.Items...)
+		pages = append(pages, list.Items)
 		if list.NextCursor == "" || list.NextCursor == cursor || len(list.Items) == 0 {
+			// Each page is oldest-first; the pages themselves arrived newest-first.
+			slices.Reverse(pages)
+			snapshot.Entries = slices.Concat(pages...)
 			return snapshot, nil
 		}
 		cursor = list.NextCursor

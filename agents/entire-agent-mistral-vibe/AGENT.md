@@ -47,8 +47,12 @@ histories that need paging.
   `turn_failed`, `session_end`. No tool hooks and no `post_agent`: tool calls come from
   the session history, so Entire is not in the path of every tool call.
 - **Transcript**: on turn end and session end the adapter runs `vibe-app-server`,
-  reads the session and pages its history forward, drops hook notices, and writes one
-  entry per line. The last line of each refresh carries an `entire` object with the
+  reads the session and pages its history **backward from the newest entry**, then
+  reassembles it oldest first, drops hook notices, and writes one entry per line. With
+  no cursor Vibe returns the newest page whatever direction is asked for, and only a
+  backward request says how to reach older entries (source: `history_page` in
+  `vibe/app_server/_state.py`). The multi-page path is covered by a unit test that
+  copies those semantics; live sessions so far have fitted in one page. The last line of each refresh carries an `entire` object with the
   session's cumulative token usage and model; earlier snapshots are kept, which is what
   makes per-turn token deltas possible.
 - **Session directory**: `<user cache>/entire/mistral-vibe/<repo hash>/`, not
@@ -59,8 +63,18 @@ histories that need paging.
 - **Turn-end before session-end**: when a headless run exits, Vibe starts the
   `turn_completed` and `session_end` hooks about 60ms apart and runs both in the
   background. Left alone, Entire's session-end handling finished first and the next
-  commit linked no checkpoint. (live) The turn-end hook now records the PID of the
-  `entire` process handling it, and the session-end hook waits for that process to exit.
+  commit linked no checkpoint. (live) The adapter keeps a per-session marker: turn
+  start writes "open", the turn-end hook replaces it with the PID of the `entire`
+  process handling it, and session end waits while the marker is "open" (up to 1.5s)
+  or names a live process (3s in all). This narrows the race; it does not close it.
+- **Forks and rewinds**: a forked session's `parent_session_id` is the session it came
+  from (source: `_host.py`), so that field alone does not mean "subagent".
+  `session_start` and `pre_agent` (`match = "main"`) only fire for main sessions and
+  are always tracked; a turn end or session end for a child session the adapter has no
+  transcript for is treated as a subagent's and ignored.
+- **Hooks file safety**: neither `.vibe` nor `hooks.toml` is followed if it is a
+  symlink; the block markers only count as whole lines; an inline `hooks = [...]` key,
+  bare or quoted, is refused; an existing file keeps its permissions.
 - **App server path**: from `VIBE_APP_SERVER_BIN` (set by Vibe for hooks) or `PATH`.
   It is never read from a file in the repository.
 
@@ -68,10 +82,14 @@ Test status on 2026-11-17, Vibe 3.1.2, Entire CLI 0.13.2-nightly:
 
 | Suite | Result |
 |---|---|
-| Unit tests (`mise run test`) | pass, 82.6% statement coverage of `internal/vibe` |
+| Unit tests (`mise run test`) | pass, 84.5% statement coverage of `internal/vibe` |
 | Protocol compliance (`external-agents-tests verify`) | 46 pass, 0 fail, 6 skipped (undeclared capabilities, optional fixtures) |
 | Lifecycle, live | 6 pass: single prompt, multiple prompts, session persistence, detect and enable, hooks installed, interactive TUI session |
 | Lifecycle, live | 2 fail: `RewindPreCommit`, `RewindAfterCommit` — the harness calls `entire checkpoint rewind --list`, which this Entire CLI no longer has. Not specific to this agent. |
+
+A Codex review of the first commit found three blocking defects (history beyond 500
+entries dropped, forked sessions ignored, `.vibe` symlink followed) and several smaller
+ones; all were reproduced with failing tests and fixed, and the suites above were rerun.
 
 A checkpoint from the live single-prompt run holds the prompt, the `write_file` tool
 call with its result, the assistant's reply, the model, token usage and the touched
@@ -287,8 +305,8 @@ Hook names for `info`: `session-start`, `pre-agent`, `notification`, `session-en
 - **`entire-agent-qwen`** for the hook set and Entire-owned session-file mechanics.
 - **`entire-agent-grok`** for a dedicated hooks file (`.grok/hooks/entire.json` ≈
   `.vibe/hooks.toml`).
-- Size as built: about 2.2k lines of Go, of which about 500 are the protocol package
-  copied from Kilo, plus 1.2k lines of tests.
+- Size as built: about 2.4k lines of Go, of which about 500 are the protocol package
+  copied from Kilo, plus 1.7k lines of tests.
 
 ## Captured Payloads
 

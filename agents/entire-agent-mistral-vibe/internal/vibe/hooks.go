@@ -52,12 +52,24 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	if err := json.Unmarshal(input, &raw); err != nil {
 		return nil, fmt.Errorf("parse %s payload: %w", hookName, err)
 	}
-	// Subagents are part of the parent's turn; their own events are not turns.
-	if raw.SessionID == "" || raw.ParentSessionID != "" {
+	if raw.SessionID == "" {
 		return nil, nil
 	}
-
 	sessionRef := transcriptPath(raw.SessionID)
+
+	// parent_session_id does not by itself mean "subagent": a forked or rewound
+	// main session carries the id of the session it came from. What separates
+	// them is that Vibe never fires session_start for a subagent, and pre_agent
+	// is installed with match = "main", which selects root and fork sessions
+	// only. So those two hooks always concern a main session, and they are what
+	// creates the transcript file. A turn end or session end for a child session
+	// with no transcript is a subagent's, and belongs to its parent's turn.
+	if raw.ParentSessionID != "" && (hookName == HookNameNotification || hookName == HookNameSessionEnd) {
+		if !fileExists(sessionRef) {
+			return nil, nil
+		}
+	}
+
 	event := &protocol.EventJSON{
 		SessionID:  raw.SessionID,
 		SessionRef: sessionRef,
@@ -71,7 +83,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		// A resumed or forked session already has history; store it so the
 		// first turn's checkpoint starts after it.
 		if raw.Source == "resume" || raw.Source == "fork" {
-			a.refreshBestEffort(sessionRef, raw.SessionID)
+			a.refreshBestEffort(sessionRef, raw.SessionID, hookFetchTimeout)
 		}
 		if err := ensureTranscriptFile(sessionRef); err != nil {
 			return nil, err
@@ -83,6 +95,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		if err := ensureTranscriptFile(sessionRef); err != nil {
 			return nil, err
 		}
+		markTurnOpen(sessionRef)
 
 	case HookNameNotification:
 		switch raw.NotificationType {
@@ -96,7 +109,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 		}
 		event.Type = 3
 		markTurnEnd(sessionRef)
-		if snapshot := a.refreshBestEffort(sessionRef, raw.SessionID); snapshot != nil {
+		if snapshot := a.refreshBestEffort(sessionRef, raw.SessionID, hookFetchTimeout); snapshot != nil {
 			event.Model = snapshot.Model
 		}
 		if err := ensureTranscriptFile(sessionRef); err != nil {
@@ -105,9 +118,8 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 
 	case HookNameSessionEnd:
 		event.Type = 5
-		// The refresh also gives a turn-end hook started at the same moment
-		// time to announce itself before the wait below looks for it.
-		a.refreshBestEffort(sessionRef, raw.SessionID)
+		// Vibe stops hooks five seconds after it quits, so both steps are short.
+		a.refreshBestEffort(sessionRef, raw.SessionID, sessionEndFetchTimeout)
 		awaitTurnEnd(sessionRef)
 
 	default:
@@ -118,8 +130,8 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 
 // refreshBestEffort updates the stored transcript. A hook must not fail because
 // Vibe's app server could not be reached; prepare-transcript tries again.
-func (a *Agent) refreshBestEffort(sessionRef, sessionID string) *Snapshot {
-	snapshot, err := a.refresh(sessionRef, sessionID)
+func (a *Agent) refreshBestEffort(sessionRef, sessionID string, timeout time.Duration) *Snapshot {
+	snapshot, err := a.refresh(sessionRef, sessionID, timeout)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "entire-agent-%s: transcript not refreshed: %v\n", agentName, err)
 		return nil
@@ -127,10 +139,15 @@ func (a *Agent) refreshBestEffort(sessionRef, sessionID string) *Snapshot {
 	return snapshot
 }
 
+func fileExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
 // ensureTranscriptFile creates an empty transcript when none exists, so Entire
 // can read a position before the first turn has produced any history.
 func ensureTranscriptFile(sessionRef string) error {
-	if _, err := os.Lstat(sessionRef); err == nil {
+	if fileExists(sessionRef) {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(sessionRef), 0o700); err != nil {
@@ -151,6 +168,8 @@ const (
 
 	blockStart = "# >>> entire hooks: managed by `entire enable --agent mistral-vibe`, do not edit >>>"
 	blockEnd   = "# <<< entire hooks <<<"
+
+	newHooksFileMode = 0o644
 )
 
 type hookEntry struct {
@@ -176,6 +195,10 @@ var installedHooks = []hookEntry{
 // prints: Vibe treats non-JSON stdout or a non-zero exit as a hook failure and
 // shows a warning on every event. An absolute path would break the committed
 // file on any other machine.
+//
+// The command is POSIX shell. On Windows Vibe runs hooks in Git Bash when it is
+// installed and in PowerShell otherwise; under PowerShell this command does not
+// parse, so Git Bash is required there.
 func hookCommand(hookName string) string {
 	return fmt.Sprintf("if command -v entire >/dev/null 2>&1; then entire hooks %s %s >/dev/null 2>&1 || true; fi", agentName, hookName)
 }
@@ -199,57 +222,92 @@ func renderBlock() string {
 }
 
 // splitBlock returns the text before and after the managed block, and whether
-// a complete block was found.
+// a complete block was found. A marker counts only when it is a whole line, so
+// marker text quoted inside a user's own string is not mistaken for the block.
 func splitBlock(content string) (before, block, after string, found bool) {
-	start := strings.Index(content, blockStart)
-	if start < 0 {
-		return content, "", "", false
+	start, end := -1, -1
+	offset := 0
+	for line := range strings.SplitAfterSeq(content, "\n") {
+		switch strings.TrimRight(line, "\r\n \t") {
+		case blockStart:
+			if start < 0 {
+				start = offset
+			}
+		case blockEnd:
+			if start >= 0 && end < 0 {
+				end = offset + len(line)
+			}
+		}
+		offset += len(line)
 	}
-	end := strings.Index(content[start:], blockEnd)
-	if end < 0 {
+	if start < 0 || end < 0 {
 		return content, "", "", false
-	}
-	end += start + len(blockEnd)
-	if end < len(content) && content[end] == '\n' {
-		end++
 	}
 	return content[:start], content[start:end], content[end:], true
 }
 
-// inlineHooksKey matches `hooks = [...]`, which cannot coexist with the
-// `[[hooks]]` tables Entire appends.
-var inlineHooksKey = regexp.MustCompile(`(?m)^\s*hooks\s*=`)
+// inlineHooksKey matches `hooks = [...]` with a bare or quoted key, which
+// cannot coexist with the `[[hooks]]` tables Entire appends.
+var inlineHooksKey = regexp.MustCompile(`(?m)^[ \t]*(?:hooks|"hooks"|'hooks')[ \t]*=`)
 
-func readHooksFile(path string) (string, error) {
-	info, err := os.Lstat(path)
+// hooksFileState is the hooks file as found on disk.
+type hooksFileState struct {
+	content string
+	// mode is the existing file's permissions, or newHooksFileMode.
+	mode os.FileMode
+}
+
+// readHooksFile reads .vibe/hooks.toml without following a symlink at either
+// .vibe or the file itself. A repository can ship .vibe as a link to any
+// directory the user can write, including their own ~/.vibe; following it
+// would create, rewrite or delete a hooks file outside the repository.
+func readHooksFile(root string) (hooksFileState, error) {
+	state := hooksFileState{mode: newHooksFileMode}
+	dir := filepath.Join(root, vibeDir)
+	dirInfo, err := os.Lstat(dir)
 	if os.IsNotExist(err) {
-		return "", nil
+		return state, nil
 	}
 	if err != nil {
-		return "", err
+		return state, err
+	}
+	if !dirInfo.IsDir() {
+		return state, fmt.Errorf("refusing to use %s: not a real directory", dir)
+	}
+
+	path := filepath.Join(root, hooksFile)
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return state, nil
+	}
+	if err != nil {
+		return state, err
 	}
 	if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("refusing to edit %s: not a regular file", path)
+		return state, fmt.Errorf("refusing to edit %s: not a regular file", path)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return state, err
 	}
-	return string(data), nil
+	state.content = string(data)
+	state.mode = info.Mode().Perm()
+	return state, nil
 }
 
 // InstallHooks adds Entire's hooks to .vibe/hooks.toml, leaving the user's own
-// entries untouched. Vibe only loads project hooks in a trusted folder.
+// entries and the file's permissions untouched. Vibe only loads project hooks
+// in a trusted folder.
 func (a *Agent) InstallHooks(_ bool, force bool) (int, error) {
 	root := protocol.RepoRoot()
 	path := filepath.Join(root, hooksFile)
-	content, err := readHooksFile(path)
+	state, err := readHooksFile(root)
 	if err != nil {
 		return 0, err
 	}
 
 	want := renderBlock()
-	before, block, after, found := splitBlock(content)
+	before, block, after, found := splitBlock(state.content)
 	if found && block == want && !force {
 		return 0, nil
 	}
@@ -261,7 +319,7 @@ func (a *Agent) InstallHooks(_ bool, force bool) (int, error) {
 	if found {
 		updated = before + want + after
 	} else {
-		updated = content
+		updated = state.content
 		if updated != "" && !strings.HasSuffix(updated, "\n") {
 			updated += "\n"
 		}
@@ -274,7 +332,7 @@ func (a *Agent) InstallHooks(_ bool, force bool) (int, error) {
 	if err := os.MkdirAll(filepath.Join(root, vibeDir), 0o750); err != nil {
 		return 0, fmt.Errorf("create %s: %w", vibeDir, err)
 	}
-	if err := atomicWriteFile(path, []byte(updated), 0o644); err != nil {
+	if err := atomicWriteFile(path, []byte(updated), state.mode); err != nil {
 		return 0, fmt.Errorf("write %s: %w", path, err)
 	}
 	return len(installedHooks), nil
@@ -285,23 +343,22 @@ func (a *Agent) InstallHooks(_ bool, force bool) (int, error) {
 func (a *Agent) UninstallHooks() error {
 	root := protocol.RepoRoot()
 	path := filepath.Join(root, hooksFile)
-	content, err := readHooksFile(path)
+	state, err := readHooksFile(root)
 	if err != nil {
 		return err
 	}
-	before, _, after, found := splitBlock(content)
+	before, _, after, found := splitBlock(state.content)
 	if !found {
 		return nil
 	}
-	remaining := strings.TrimRight(before, "\n")
-	if remaining != "" {
-		remaining += "\n"
-	}
-	if strings.TrimSpace(after) != "" {
-		if remaining != "" {
-			remaining += "\n"
+	// Install put one blank line between the user's content and the block;
+	// take it back out so an install/uninstall round trip changes nothing.
+	remaining := before + after
+	if strings.TrimSpace(after) == "" {
+		remaining = before
+		if strings.HasSuffix(remaining, "\n\n") {
+			remaining = remaining[:len(remaining)-1]
 		}
-		remaining += strings.TrimLeft(after, "\n")
 	}
 
 	if strings.TrimSpace(remaining) == "" {
@@ -314,20 +371,24 @@ func (a *Agent) UninstallHooks() error {
 		}
 		return nil
 	}
-	return atomicWriteFile(path, []byte(remaining), 0o644)
+	return atomicWriteFile(path, []byte(remaining), state.mode)
 }
 
 func hooksInstalled() (bool, error) {
-	content, err := readHooksFile(filepath.Join(protocol.RepoRoot(), hooksFile))
+	state, err := readHooksFile(protocol.RepoRoot())
 	if err != nil {
 		return false, err
 	}
-	_, block, _, found := splitBlock(content)
+	_, block, _, found := splitBlock(state.content)
 	if !found {
 		return false, nil
 	}
+	names := map[string]bool{}
+	for line := range strings.SplitSeq(block, "\n") {
+		names[strings.TrimRight(line, "\r \t")] = true
+	}
 	for _, hook := range installedHooks {
-		if !strings.Contains(block, fmt.Sprintf("name = %q", hook.name)) {
+		if !names[fmt.Sprintf("name = %q", hook.name)] {
 			return false, nil
 		}
 	}

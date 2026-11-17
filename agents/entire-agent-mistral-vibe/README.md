@@ -6,7 +6,7 @@ Requires Vibe 3.1.1 or later (the first release with `session_start`, `session_e
 
 ## What it does
 
-- Adds five hooks to the project's `.vibe/hooks.toml`, inside a marked block, leaving your own hooks alone.
+- Adds five hooks to the project's `.vibe/hooks.toml`, inside a marked block, leaving your own hooks and the file's permissions alone. It refuses to act if `.vibe` or `hooks.toml` is a symlink.
 - Maps them to Entire lifecycle events: session start, turn start, turn end, session end.
 - Reads the conversation from Vibe's own session API (`vibe-app-server`, `session/read` and `session/history/list`) and stores it as one history entry per line. That gives Entire the prompt, tool calls, the assistant's reply and token usage. Reading needs no API key and does not resume the session.
 - Converts that history to Entire's compact transcript format, and reports modified files and per-turn token usage.
@@ -97,7 +97,10 @@ Vibe only loads project hooks from a **trusted folder**. Trust the folder when V
 - **Interrupted or crashed turns** produce no turn-end event. They are closed by the next turn or by session end, and a crash produces neither.
 - **Custom `VIBE_HOME`.** Entire refreshes the transcript again at commit time. If Vibe ran with a `VIBE_HOME` that your shell does not export, that refresh cannot find the session and Entire uses the transcript stored at turn end.
 - **Shell-made changes.** Modified files are taken from Vibe's file tools. Files changed by a shell command are picked up by Entire from git, not from the transcript.
-- **Subagents** are recorded as part of the parent's turn; their own history is not captured separately.
+- **Subagents** are recorded as part of the parent's turn; their own history is not captured separately. Forked and rewound sessions are tracked as sessions of their own.
+- **Windows needs Git Bash.** The installed hook commands are POSIX shell. Vibe runs hooks in Git Bash when it is installed and in PowerShell otherwise, and under PowerShell the hooks do not run.
+- **Turn end and session end can still race.** When Vibe exits it starts both hooks at once. Session end waits up to 1.5 seconds for the turn-end hook to start and then for it to finish, within Vibe's five-second shutdown limit. A turn-end hook slower than that is overtaken, and that turn's checkpoint is not linked to the next commit.
+- **API call count is an estimate.** Vibe's history has no request count, so calls are counted per model response inferred from the history. Tool-only responses from a model that emits no reasoning can be merged.
 - **Compaction** has no Vibe hook, so Entire receives no compaction event.
 
 See [AGENT.md](AGENT.md) for the research behind these choices and what was verified against a live Vibe.

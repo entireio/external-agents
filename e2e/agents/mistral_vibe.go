@@ -57,8 +57,20 @@ func isolateVibeHome() error {
 			return err
 		}
 	}
-	privateHome, err := os.MkdirTemp("", "e2e-vibe-home-*")
-	if err != nil {
+	// One fixed directory, emptied at the start of each run: an init function
+	// has no teardown, and a fresh temp dir per run would pile up sessions and
+	// logs. Vibe writes some of its files read-only, hence the chmod.
+	privateHome := filepath.Join(os.TempDir(), "e2e-vibe-home")
+	_ = filepath.WalkDir(privateHome, func(path string, entry os.DirEntry, err error) error {
+		if err == nil && entry.IsDir() {
+			_ = os.Chmod(path, 0o700)
+		}
+		return nil
+	})
+	if err := os.RemoveAll(privateHome); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(privateHome, 0o700); err != nil {
 		return err
 	}
 	// The TUI has no --model flag, so the model is set in the private config.

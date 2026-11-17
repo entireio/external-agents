@@ -11,10 +11,63 @@ import (
 
 // fakeAppServer answers JSON-RPC requests over a pipe the way vibe-app-server
 // does, and records what it was asked.
+//
+// Its history paging copies Vibe 3.1.2 (vibe/app_server/_state.py,
+// history_page): with no cursor every direction returns the NEWEST page; a
+// backward cursor names the entry to stop before; a forward cursor names the
+// entry to start after. nextCursor continues in the requested direction.
 type fakeAppServer struct {
-	pages    [][]string // history entry ids, one slice per page
+	entries  int // history entries, ids "e0000".."eNNNN" oldest first
 	failRead bool
 	requests []map[string]any
+}
+
+func entryID(index int) string { return fmt.Sprintf("e%04d", index) }
+
+func (s *fakeAppServer) historyPage(page map[string]any) map[string]any {
+	limit := 200
+	if value, ok := page["limit"].(float64); ok {
+		limit = int(value)
+	}
+	cursor, _ := page["cursor"].(string)
+	backward := page["direction"] != "forward"
+	indexOf := func(id string) int {
+		for i := range s.entries {
+			if entryID(i) == id {
+				return i
+			}
+		}
+		return -1
+	}
+
+	var start, end int
+	switch {
+	case cursor != "" && !backward:
+		start = indexOf(cursor) + 1
+		if start == 0 {
+			start = s.entries
+		}
+		end = min(start+limit, s.entries)
+	case cursor != "" && backward:
+		end = max(indexOf(cursor), 0)
+		start = max(end-limit, 0)
+	default:
+		start, end = max(s.entries-limit, 0), s.entries
+	}
+
+	items := []map[string]string{}
+	for i := start; i < end; i++ {
+		items = append(items, map[string]string{"id": entryID(i), "type": "message"})
+	}
+	var next any
+	switch {
+	case len(items) == 0:
+	case backward && start > 0:
+		next = entryID(start)
+	case !backward && end < s.entries:
+		next = entryID(end - 1)
+	}
+	return map[string]any{"items": items, "nextCursor": next}
 }
 
 func (s *fakeAppServer) serve(t *testing.T, requests io.Reader, responses io.WriteCloser) {
@@ -49,21 +102,7 @@ func (s *fakeAppServer) serve(t *testing.T, requests io.Reader, responses io.Wri
 				"tokenUsage": map[string]int{"inputTokens": 10, "outputTokens": 2},
 			}}}
 		case "session/history/list":
-			index := 0
-			if cursor, _ := pageOf(request)["cursor"].(string); cursor != "" {
-				if _, err := fmt.Sscanf(cursor, "page-%d", &index); err != nil {
-					t.Errorf("unexpected cursor %q", cursor)
-				}
-			}
-			items := []map[string]string{}
-			for _, entryID := range s.pages[index] {
-				items = append(items, map[string]string{"id": entryID, "type": "message"})
-			}
-			list := map[string]any{"items": items, "nextCursor": nil}
-			if index+1 < len(s.pages) {
-				list["nextCursor"] = fmt.Sprintf("page-%d", index+1)
-			}
-			result = list
+			result = s.historyPage(pageOf(request))
 		}
 		data, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
 		fmt.Fprintln(responses, string(data))
@@ -93,41 +132,60 @@ func startFakeServer(t *testing.T, server *fakeAppServer) *rpcClient {
 	return &rpcClient{w: requestWriter, r: bufio.NewReader(responseReader)}
 }
 
-func TestReadSessionFollowsHistoryPages(t *testing.T) {
-	server := &fakeAppServer{pages: [][]string{{"a", "b"}, {"c"}, {"d", "e"}}}
-	snapshot, err := readSession(startFakeServer(t, server), testSessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
+func fetchedIDs(t *testing.T, snapshot *Snapshot) []string {
+	t.Helper()
 	var ids []string
 	for _, raw := range snapshot.Entries {
 		var probe struct {
 			ID string `json:"id"`
 		}
-		_ = json.Unmarshal(raw, &probe)
+		if err := json.Unmarshal(raw, &probe); err != nil {
+			t.Fatal(err)
+		}
 		ids = append(ids, probe.ID)
 	}
-	if got := strings.Join(ids, ""); got != "abcde" {
-		t.Errorf("entries = %q, want abcde in order", got)
+	return ids
+}
+
+func TestReadSessionReturnsWholeHistoryOldestFirst(t *testing.T) {
+	// 1 entry, exactly one page, one over, and several pages.
+	for _, total := range []int{0, 1, historyPageLimit, historyPageLimit + 1, 3*historyPageLimit + 7} {
+		t.Run(fmt.Sprintf("%d entries", total), func(t *testing.T) {
+			server := &fakeAppServer{entries: total}
+			snapshot, err := readSession(startFakeServer(t, server), testSessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ids := fetchedIDs(t, snapshot)
+			if len(ids) != total {
+				t.Fatalf("got %d entries, want %d", len(ids), total)
+			}
+			for i, id := range ids {
+				if id != entryID(i) {
+					t.Fatalf("entry %d is %s, want %s: history is out of order or incomplete", i, id, entryID(i))
+				}
+			}
+		})
+	}
+}
+
+func TestReadSessionHandshakeAndSessionHeader(t *testing.T) {
+	server := &fakeAppServer{entries: 3}
+	snapshot, err := readSession(startFakeServer(t, server), testSessionID)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if snapshot.Model != "mistral-medium-3.5" || snapshot.Usage == nil || snapshot.Usage.InputTokens != 10 {
 		t.Errorf("snapshot = %+v", snapshot)
 	}
-
 	var methods []string
 	for _, request := range server.requests {
 		method, _ := request["method"].(string)
 		methods = append(methods, method)
 	}
-	want := "initialize initialized session/read session/history/list session/history/list session/history/list"
+	want := "initialize initialized session/read session/history/list"
 	if got := strings.Join(methods, " "); got != want {
 		t.Errorf("methods = %q\nwant     %q", got, want)
-	}
-	// History is read oldest first so line order matches conversation order.
-	page := pageOf(server.requests[3])
-	if page["direction"] != "forward" {
-		t.Errorf("first page request = %v", page)
 	}
 }
 
@@ -163,6 +221,12 @@ func TestAppServerPathPrefersVibeEnvironment(t *testing.T) {
 	t.Setenv(appServerBinEnv, bin)
 	if got, err := appServerPath(); err != nil || got != bin {
 		t.Errorf("got %q, %v", got, err)
+	}
+
+	// A relative value could name a file in the repository; it is not used.
+	t.Setenv(appServerBinEnv, "vibe-app-server")
+	if _, err := appServerPath(); err == nil {
+		t.Error("a relative VIBE_APP_SERVER_BIN must not be executed")
 	}
 
 	// A stale value falls back to PATH rather than failing outright.

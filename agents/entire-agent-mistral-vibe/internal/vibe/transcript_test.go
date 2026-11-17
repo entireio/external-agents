@@ -49,7 +49,7 @@ func TestRefreshNeverReplacesTranscriptWithEmptyOne(t *testing.T) {
 	before, _ := os.ReadFile(ref)
 
 	agent := &Agent{Fetcher: &fakeFetcher{snapshot: &Snapshot{}}}
-	if _, err := agent.refresh(ref, testSessionID); err != nil {
+	if _, err := agent.refresh(ref, testSessionID, fetchTimeout); err != nil {
 		t.Fatal(err)
 	}
 	if after, _ := os.ReadFile(ref); string(after) != string(before) {
@@ -77,11 +77,11 @@ func TestRefreshKeepsEarlierUsageSnapshots(t *testing.T) {
 
 	fetcher := &fakeFetcher{snapshot: &Snapshot{Entries: turn1, Usage: &TokenUsage{InputTokens: 100, OutputTokens: 10, CachedInputTokens: 40}}}
 	agent := &Agent{Fetcher: fetcher}
-	if _, err := agent.refresh(ref, testSessionID); err != nil {
+	if _, err := agent.refresh(ref, testSessionID, fetchTimeout); err != nil {
 		t.Fatal(err)
 	}
 	fetcher.snapshot = &Snapshot{Entries: turn2, Usage: &TokenUsage{InputTokens: 350, OutputTokens: 35, CachedInputTokens: 140}}
-	if _, err := agent.refresh(ref, testSessionID); err != nil {
+	if _, err := agent.refresh(ref, testSessionID, fetchTimeout); err != nil {
 		t.Fatal(err)
 	}
 
@@ -254,6 +254,46 @@ func TestModifiedFilesOnlyCountsCompletedChanges(t *testing.T) {
 	want := []string{"/elsewhere/c.txt", "a.txt", "sub/b.go"}
 	if got := modifiedFiles(entries); !reflect.DeepEqual(got, want) {
 		t.Errorf("files = %v, want %v", got, want)
+	}
+}
+
+func TestModelCallsCountsResponsesNotToolCalls(t *testing.T) {
+	message := func(id, role string) Entry { return Entry{ID: id, Type: EntryMessage, Role: role} }
+	reasoning := func(id string) Entry { return Entry{ID: id, Type: EntryReasoning} }
+	tool := func(id string) Entry { return Entry{ID: "effect-" + id, Type: EntryEffect} }
+
+	tests := map[string]struct {
+		entries []Entry
+		want    int
+	}{
+		"nothing":     {nil, 0},
+		"prompt only": {[]Entry{message("user-1", RoleUser)}, 0},
+		"one tool step then reply": {[]Entry{
+			message("user-1", RoleUser),
+			reasoning("reasoning-aaa-0"), tool("1"),
+			reasoning("reasoning-bbb-0"), message("assistant-bbb", RoleAssistant),
+		}, 2},
+		// One response that calls three tools at once is one model call.
+		"parallel tool calls": {[]Entry{
+			message("user-1", RoleUser),
+			reasoning("reasoning-aaa-0"), tool("1"), tool("2"), tool("3"),
+			reasoning("reasoning-bbb-0"), message("assistant-bbb", RoleAssistant),
+		}, 2},
+		"several reasoning parts of one response": {[]Entry{
+			reasoning("reasoning-aaa-0"), reasoning("reasoning-aaa-1"), message("assistant-aaa", RoleAssistant),
+		}, 1},
+		"model without reasoning": {[]Entry{
+			message("user-1", RoleUser), tool("1"), tool("2"), message("assistant-bbb", RoleAssistant),
+		}, 2},
+		"two turns": {[]Entry{
+			message("user-1", RoleUser), message("assistant-aaa", RoleAssistant),
+			message("user-2", RoleUser), message("assistant-bbb", RoleAssistant),
+		}, 2},
+	}
+	for name, tt := range tests {
+		if got := modelCalls(tt.entries); got != tt.want {
+			t.Errorf("%s: modelCalls = %d, want %d", name, got, tt.want)
+		}
 	}
 }
 

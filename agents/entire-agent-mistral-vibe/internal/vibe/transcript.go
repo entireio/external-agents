@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -16,7 +17,12 @@ import (
 )
 
 const (
-	fetchTimeout = 20 * time.Second
+	// fetchTimeout is for prepare-transcript, which Entire calls outside Vibe's
+	// hook budget. The hook timeouts are shorter: Vibe stops hooks five seconds
+	// after it quits.
+	fetchTimeout           = 20 * time.Second
+	hookFetchTimeout       = 8 * time.Second
+	sessionEndFetchTimeout = 1500 * time.Millisecond
 	// freshWindow lets prepare-transcript skip a fetch when the turn-end hook
 	// stored the transcript a moment ago.
 	freshWindow = 3 * time.Second
@@ -25,7 +31,7 @@ const (
 // refresh fetches the session from Vibe and stores it at sessionRef as one
 // history entry per line. Hook notices are left out. It never replaces a
 // stored transcript with an empty one.
-func (a *Agent) refresh(sessionRef, sessionID string) (*Snapshot, error) {
+func (a *Agent) refresh(sessionRef, sessionID string, timeout time.Duration) (*Snapshot, error) {
 	if strings.TrimSpace(sessionRef) == "" || strings.TrimSpace(sessionID) == "" {
 		return nil, errors.New("session id and session ref are required")
 	}
@@ -33,7 +39,7 @@ func (a *Agent) refresh(sessionRef, sessionID string) (*Snapshot, error) {
 	if fetcher == nil {
 		fetcher = &AppServerFetcher{}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	snapshot, err := fetcher.FetchSession(ctx, sessionID, protocol.RepoRoot())
 	if err != nil {
@@ -131,7 +137,7 @@ func (a *Agent) PrepareTranscript(sessionRef string) error {
 	if sessionID == "" {
 		return nil
 	}
-	if _, err := a.refresh(sessionRef, sessionID); err != nil {
+	if _, err := a.refresh(sessionRef, sessionID, fetchTimeout); err != nil {
 		if hasContent {
 			fmt.Fprintf(os.Stderr, "entire-agent-%s: transcript not refreshed: %v\n", agentName, err)
 			return nil
@@ -307,11 +313,8 @@ func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageRes
 		offset = 0
 	}
 	var before, after *TokenUsage
-	var usage protocol.TokenUsageResponse
+	usage := protocol.TokenUsageResponse{APICallCount: modelCalls(fromOffset(entries, offset))}
 	for i, entry := range entries {
-		if i >= offset && (entry.Type == EntryEffect || (entry.Type == EntryMessage && entry.Role == RoleAssistant)) {
-			usage.APICallCount++
-		}
 		if entry.Meta == nil || entry.Meta.Usage == nil {
 			continue
 		}
@@ -333,6 +336,51 @@ func (a *Agent) CalculateTokens(data []byte, offset int) (protocol.TokenUsageRes
 	usage.InputTokens = max(input-cached, 0)
 	usage.OutputTokens = max(after.OutputTokens-before.OutputTokens, 0)
 	return usage, nil
+}
+
+// modelCalls estimates how many model responses produced these entries. Vibe's
+// history has no request count, so this groups entries by the response they
+// came from: reasoning and reply entries carry a generation id, and the tool
+// calls of one response sit together. Parallel tool calls therefore count
+// once, not once each.
+func modelCalls(entries []Entry) int {
+	calls := 0
+	generation := ""
+	afterCallStart := false // the previous entry already belongs to a counted call
+	for _, entry := range entries {
+		switch {
+		case entry.Type == EntryReasoning, entry.Type == EntryMessage && entry.Role == RoleAssistant:
+			if id := generationID(entry); id == "" || id != generation {
+				calls++
+				generation = id
+			}
+			afterCallStart = true
+		case entry.Type == EntryEffect:
+			// Tool calls with no reasoning before them are a response of their own.
+			if !afterCallStart {
+				calls++
+				generation = ""
+			}
+			afterCallStart = true
+		default:
+			afterCallStart = false
+		}
+	}
+	return calls
+}
+
+var generationSuffix = regexp.MustCompile(`-\d+$`)
+
+// generationID extracts the response id shared by "reasoning-<id>-<n>" and
+// "assistant-<id>".
+func generationID(entry Entry) string {
+	if id, ok := strings.CutPrefix(entry.ID, "reasoning-"); ok {
+		return generationSuffix.ReplaceAllString(id, "")
+	}
+	if id, ok := strings.CutPrefix(entry.ID, "assistant-"); ok {
+		return id
+	}
+	return ""
 }
 
 func fromOffset(entries []Entry, offset int) []Entry {
