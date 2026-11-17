@@ -1,0 +1,20 @@
+[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "sh -c 'if command -v entire >/dev/null 2>&1; then entire hooks sarvam session-start >/dev/null 2>&1 || true; fi'"
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "sh -c 'if command -v entire >/dev/null 2>&1; then entire hooks sarvam user-prompt-submit >/dev/null 2>&1 || true; fi'"
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "sh -c 'if command -v entire >/dev/null 2>&1; then entire hooks sarvam stop >/dev/null 2>&1 || true; fi'"
+[[hooks.PreCompact]]
+[[hooks.PreCompact.hooks]]
+type = "command"
+command = "sh -c 'if command -v entire >/dev/null 2>&1; then entire hooks sarvam pre-compact >/dev/null 2>&1 || true; fi'"
+[[hooks.PostCompact]]
+[[hooks.PostCompact.hooks]]
+type = "command"
+command = "sh -c 'if command -v entire >/dev/null 2>&1; then entire hooks sarvam post-compact >/dev/null 2>&1 || true; fi'"
