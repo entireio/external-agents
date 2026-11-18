@@ -78,20 +78,28 @@ func (s *Sarvam) PromptPattern() string      { return sarvamPromptPattern }
 func (s *Sarvam) TimeoutMultiplier() float64 { return sarvamTimeoutMultiplier }
 func (s *Sarvam) IsExternalAgent() bool      { return true }
 
+// sarvamTransientPhrases are anchored phrases sarvam's TUI actually prints
+// when a request fails transiently. The screen capture also contains
+// ordinary content — line numbers, ports, the word "timeout" in code or
+// command output — so bare numbers or single words would turn real
+// failures into retried transients; each phrase carries its surrounding
+// words instead.
+var sarvamTransientPhrases = []string{
+	"429 too many requests",
+	"rate limit",
+	"overloaded",
+	"503 service unavailable",
+	"500 internal server error",
+	"econnreset",
+	"etimedout",
+	"operation timed out",
+	"deadline exceeded",
+}
+
 func (s *Sarvam) IsTransientError(out Output, _ error) bool {
 	combined := strings.ToLower(out.Stdout + out.Stderr)
-	patterns := []string{
-		"overloaded",
-		"rate limit",
-		"429",
-		"500",
-		"503",
-		"econnreset",
-		"etimedout",
-		"timeout",
-	}
-	for _, pattern := range patterns {
-		if strings.Contains(combined, pattern) {
+	for _, phrase := range sarvamTransientPhrases {
+		if strings.Contains(combined, phrase) {
 			return true
 		}
 	}
@@ -101,6 +109,16 @@ func (s *Sarvam) IsTransientError(out Output, _ error) bool {
 func (s *Sarvam) Bootstrap() error {
 	if _, err := exec.LookPath(s.Binary()); err != nil {
 		return fmt.Errorf("%s not in PATH: %w", s.Binary(), err)
+	}
+	// The suite trusts repos and seeds [hooks.state] into the CLI's user
+	// config — both write real state — so it must run against a disposable
+	// SARVAM_HOME, never the developer's actual ~/.sarvam.
+	home := os.Getenv("SARVAM_HOME")
+	if home == "" {
+		return errors.New("E2E_AGENT=sarvam requires SARVAM_HOME to point at a disposable home (e.g. $(mktemp -d)): the suite writes directory trust and hook state into the CLI's user config")
+	}
+	if userHome, err := os.UserHomeDir(); err == nil && filepath.Clean(home) == filepath.Join(userHome, ".sarvam") {
+		return fmt.Errorf("E2E_AGENT=sarvam refuses to run with SARVAM_HOME at the real %s: point it at a disposable home (e.g. $(mktemp -d))", filepath.Join(userHome, ".sarvam"))
 	}
 	return nil
 }

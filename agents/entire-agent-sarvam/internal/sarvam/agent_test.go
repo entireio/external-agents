@@ -373,6 +373,46 @@ func TestWriteSession_RefusesNativeRolloutTargets(t *testing.T) {
 	}
 }
 
+func TestWriteSession_RestoresToMissingRolloutRef(t *testing.T) {
+	t.Setenv("SARVAM_HOME", t.TempDir())
+	agent := New()
+
+	// A rollout-shaped ref that does not exist is Entire restoring a
+	// captured snapshot onto a fresh clone, not clobbering a live
+	// transcript: the write must succeed.
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "rollout-2026-11-17T08-00-00-01a1e2d3-8a2b-7dc2-b125-885a43ce43f5.jsonl")
+	snapshot := protocol.AgentSessionJSON{
+		SessionID:  "01a1e2d3-8a2b-7dc2-b125-885a43ce43f5",
+		SessionRef: missing,
+		NativeData: []byte(`{"type":"session_meta","restored":true}`),
+	}
+	if err := agent.WriteSession(snapshot); err != nil {
+		t.Fatalf("restoring to a missing rollout-shaped ref failed: %v", err)
+	}
+	written, err := os.ReadFile(missing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(written) != `{"type":"session_meta","restored":true}` {
+		t.Fatalf("restored snapshot = %q", written)
+	}
+
+	// The restored file now exists, so a second write is the clobber case
+	// again and must be refused, contents intact.
+	snapshot.NativeData = []byte(`{"type":"session_meta","clobber":true}`)
+	if err := agent.WriteSession(snapshot); err == nil {
+		t.Fatal("a second write to the now-existing rollout must be refused")
+	}
+	written, err = os.ReadFile(missing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(written) != `{"type":"session_meta","restored":true}` {
+		t.Fatalf("the restored snapshot was overwritten: %q", written)
+	}
+}
+
 func TestSafeFilename_DeviceNamesAndColons(t *testing.T) {
 	cases := []struct {
 		id       string

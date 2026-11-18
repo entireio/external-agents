@@ -1,6 +1,7 @@
 package sarvam
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -430,6 +431,91 @@ func TestUninstallHooks_RemovesEmptyManagedGroups(t *testing.T) {
 	}
 }
 
+func TestUninstallHooks_ForeignEntryKeepsOnlyItsGroup(t *testing.T) {
+	// The user's own SessionStart entry shares our event. After uninstall
+	// their group and entry stay and our group is gone — an empty managed
+	// group must not survive just because the event still has entries.
+	path := writeConfig(t, `[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "/usr/local/bin/my-own-start-hook"
+`)
+
+	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeHookEntries(path); err != nil {
+		t.Fatal(err)
+	}
+
+	content := readConfig(t, path)
+	if got := strings.Count(content, "[[hooks.SessionStart]]"); got != 1 {
+		t.Fatalf("%d SessionStart group headers after uninstall, want the user's one:\n%s", got, content)
+	}
+	if !strings.Contains(content, `command = "/usr/local/bin/my-own-start-hook"`) {
+		t.Errorf("uninstall removed the user's hook entry:\n%s", content)
+	}
+	if strings.Contains(content, "entire hooks sarvam") {
+		t.Errorf("uninstall left our entry behind:\n%s", content)
+	}
+}
+
+func TestInstallHooks_PreservesTrailingComments(t *testing.T) {
+	// Owned entry lines carrying trailing comments must still be recognized
+	// as ours: without comment stripping, the next install duplicates the
+	// entry (type no longer reads "command") or rewrites the command line
+	// and silently drops the comment.
+	spec := hookSpecs[0]
+	content := fmt.Sprintf("[[hooks.%s]]\n[[hooks.%s.hooks]]\ntype = \"command\" # entire\ncommand = %s # managed by entire install-hooks\n",
+		spec.SarvamEvent, spec.SarvamEvent, encodeTOMLString(hookCommand(spec.HookName)))
+	path := writeConfig(t, content)
+
+	count, err := upsertHookEntries(path, testEntries(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != len(hookSpecs)-1 {
+		t.Fatalf("install: hooks_installed = %d, want %d (the commented entry counts as installed)", count, len(hookSpecs)-1)
+	}
+	if got := strings.Count(readConfig(t, path), "[[hooks."+spec.SarvamEvent+".hooks]]"); got != 1 {
+		t.Fatalf("%d %s entry headers after install, want 1 (no duplicate):\n%s", got, spec.SarvamEvent, readConfig(t, path))
+	}
+	for _, want := range []string{`type = "command" # entire`, "# managed by entire install-hooks"} {
+		if !strings.Contains(readConfig(t, path), want) {
+			t.Errorf("install rewrote the commented entry, lost %q:\n%s", want, readConfig(t, path))
+		}
+	}
+}
+
+func TestInstallHooks_ForceLeavesNoEmptyGroups(t *testing.T) {
+	// Every force install drops the owned entries and re-inserts them; the
+	// stranded group headers must be cleaned up too, or each force run
+	// strands another empty [[hooks.<Event>]] group in the config.
+	path := writeConfig(t, "")
+	if _, err := upsertHookEntries(path, testEntries(), true); err != nil {
+		t.Fatal(err)
+	}
+
+	for run := 1; run <= 2; run++ {
+		count, err := upsertHookEntries(path, testEntries(), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count != len(hookSpecs) {
+			t.Fatalf("force run %d: hooks_installed = %d, want %d", run, count, len(hookSpecs))
+		}
+		content := readConfig(t, path)
+		for _, spec := range hookSpecs {
+			if got := strings.Count(content, "[[hooks."+spec.SarvamEvent+"]]"); got != 1 {
+				t.Fatalf("force run %d: %d [[hooks.%s]] headers, want 1:\n%s", run, got, spec.SarvamEvent, content)
+			}
+			if got := strings.Count(content, "[[hooks."+spec.SarvamEvent+".hooks]]"); got != 1 {
+				t.Fatalf("force run %d: %d [[hooks.%s.hooks]] entries, want 1:\n%s", run, got, spec.SarvamEvent, content)
+			}
+		}
+	}
+}
+
 func TestHookEntryInstalled(t *testing.T) {
 	path := writeConfig(t, "")
 	spec := hookSpecs[0]
@@ -456,6 +542,9 @@ func TestParseKeyValue_QuotedStrings(t *testing.T) {
 		{`command = 'sh -c "echo hi"'`, "command", `sh -c "echo hi"`},
 		{"command = \"a\\\"b\"", "command", `a"b`},
 		{`timeout = 30`, "timeout", "30"},
+		{`type = "command" # entire`, "type", "command"},
+		{`timeout = 30 # seconds`, "timeout", "30"},
+		{`command = "echo # not a comment"`, "command", `echo # not a comment`},
 		{`# comment`, "", ""},
 	}
 	for _, tc := range cases {

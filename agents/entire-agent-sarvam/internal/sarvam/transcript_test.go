@@ -1,6 +1,7 @@
 package sarvam
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -13,6 +14,10 @@ import (
 // so the fixture can never drift into invalid JSON.
 type rolloutFixture struct {
 	lines []string
+	// tokenTotals accumulates the running total_token_usage across the
+	// tokenCount events appended so far, mirroring how sarvam records the
+	// cumulative total alongside each per-call last_token_usage.
+	tokenTotals rolloutTokenUsage
 }
 
 func (f *rolloutFixture) addRaw(t *testing.T, value any) *rolloutFixture {
@@ -57,14 +62,23 @@ func (f *rolloutFixture) callOutput(t *testing.T, callID, output string) *rollou
 	})
 }
 
+// tokenCount appends a token_count event carrying the given per-call usage.
+// Live rollouts record that usage under last_token_usage and the running sum
+// of all calls under total_token_usage, with input_tokens inclusive of
+// cached_input_tokens in both; the fixture reproduces that shape.
 func (f *rolloutFixture) tokenCount(t *testing.T, input, cached, output int) *rolloutFixture {
-	usage := rolloutTokenUsage{InputTokens: input, CachedInputTokens: cached, OutputTokens: output, TotalTokens: input + cached + output}
+	t.Helper()
+	last := rolloutTokenUsage{InputTokens: input, CachedInputTokens: cached, OutputTokens: output, TotalTokens: input + cached + output}
+	f.tokenTotals.InputTokens += last.InputTokens
+	f.tokenTotals.CachedInputTokens += last.CachedInputTokens
+	f.tokenTotals.OutputTokens += last.OutputTokens
+	f.tokenTotals.TotalTokens += last.TotalTokens
 	return f.addRaw(t, rolloutLine{
 		Timestamp: "2026-11-16T06:00:03.000Z",
 		Type:      "event_msg",
 		Payload: mustMarshal(t, rolloutTokenCount{
 			Type: "token_count",
-			Info: &rolloutTokenInfo{TotalTokenUsage: usage, LastTokenUsage: usage},
+			Info: &rolloutTokenInfo{TotalTokenUsage: f.tokenTotals, LastTokenUsage: last},
 		}),
 	})
 }
@@ -209,8 +223,10 @@ func TestCalculateTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage.InputTokens != 4000 {
-		t.Errorf("input_tokens = %d, want 4000", usage.InputTokens)
+	// input_tokens is inclusive of cached_input_tokens in the rollout; the
+	// response reports the non-cached share (4000 - 2000) as input.
+	if usage.InputTokens != 2000 {
+		t.Errorf("input_tokens = %d, want 2000 (4000 total input minus 2000 cached)", usage.InputTokens)
 	}
 	if usage.CacheReadTokens != 2000 {
 		t.Errorf("cache_read_tokens = %d, want 2000", usage.CacheReadTokens)
@@ -224,12 +240,20 @@ func TestCalculateTokens(t *testing.T) {
 
 	// A line-index offset skips the first line's API call — the unit the
 	// analyzer reports and Entire feeds back; a byte offset would recount it.
+	// The skipped line still establishes the cumulative total the window's
+	// deltas are measured against.
 	usage, err = agent.CalculateTokens(data, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if usage.InputTokens != 3000 {
-		t.Errorf("input_tokens from offset = %d, want 3000", usage.InputTokens)
+	if usage.InputTokens != 1500 {
+		t.Errorf("input_tokens from offset = %d, want 1500 (3000 minus the 1500 new cached)", usage.InputTokens)
+	}
+	if usage.CacheReadTokens != 1500 {
+		t.Errorf("cache_read_tokens from offset = %d, want 1500", usage.CacheReadTokens)
+	}
+	if usage.OutputTokens != 800 {
+		t.Errorf("output_tokens from offset = %d, want 800 (only the second call's output)", usage.OutputTokens)
 	}
 	if usage.APICallCount != 1 {
 		t.Errorf("api_call_count from offset = %d, want 1", usage.APICallCount)
@@ -242,6 +266,65 @@ func TestCalculateTokens(t *testing.T) {
 	}
 	if usage.InputTokens != 0 || usage.APICallCount != 0 {
 		t.Errorf("tokens past the transcript = %+v, want zeros", usage)
+	}
+}
+
+func TestCalculateTokens_RepeatedTotalsCountedOnce(t *testing.T) {
+	// Sarvam re-emits token_count events whose cumulative total repeats the
+	// previous event's (432 of 911 in one sampled live session). Summing
+	// per-event usage doubles the true totals, so only advancing totals
+	// count.
+	agent := New()
+	f := &rolloutFixture{}
+	f.tokenCount(t, 1000, 500, 200)
+	f.lines = append(f.lines, f.lines[len(f.lines)-1])
+	f.tokenCount(t, 3000, 1500, 800)
+	path := f.write(t)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	usage, err := agent.CalculateTokens(data, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.InputTokens != 2000 || usage.CacheReadTokens != 2000 || usage.OutputTokens != 1000 {
+		t.Errorf("usage = %+v, want the same totals as without the repeated event (2000/2000/1000)", usage)
+	}
+	if usage.APICallCount != 2 {
+		t.Errorf("api_call_count = %d, want 2 (the repeated event is not an API call)", usage.APICallCount)
+	}
+}
+
+func TestCalculateTokens_TornFinalTokenCount(t *testing.T) {
+	// A complete token_count record whose trailing newline has not landed
+	// yet is outside the transcript position; counting it now would recount
+	// it once the newline arrives.
+	agent := New()
+	f := &rolloutFixture{}
+	f.tokenCount(t, 1000, 500, 200)
+	path := f.write(t)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	torn := bytes.TrimSuffix(data, []byte("\n"))
+	usage, err := agent.CalculateTokens(torn, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.InputTokens != 0 || usage.CacheReadTokens != 0 || usage.OutputTokens != 0 || usage.APICallCount != 0 {
+		t.Errorf("usage from torn final line = %+v, want zeros (the line is not yet consumed)", usage)
+	}
+
+	usage, err = agent.CalculateTokens(data, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.InputTokens != 500 || usage.CacheReadTokens != 500 || usage.OutputTokens != 200 || usage.APICallCount != 1 {
+		t.Errorf("usage after completion = %+v, want 500/500/200 with one API call", usage)
 	}
 }
 
@@ -292,7 +375,7 @@ func TestReadRolloutLines_TornFinalLine(t *testing.T) {
 func TestExtractModifiedFiles_DeviceRedirects(t *testing.T) {
 	agent := New()
 	f := &rolloutFixture{}
-	f.functionCall(t, "exec_command", "call-1", `{"command":"echo hi > /dev/null && echo x > out.txt 2>/dev/null && touch /dev/null"}`)
+	f.functionCall(t, "exec_command", "call-1", `{"cmd":"echo hi > /dev/null && echo x > out.txt 2>/dev/null && touch /dev/null"}`)
 	path := f.write(t)
 
 	files, _, err := agent.ExtractModifiedFiles(path, 0)
@@ -312,7 +395,7 @@ func TestExtractModifiedFiles_AppendRedirects(t *testing.T) {
 	// than risk arithmetic-comparison false positives.
 	agent := New()
 	f := &rolloutFixture{}
-	f.functionCall(t, "exec_command", "call-1", `{"command":"echo x >> append.log && echo y >>compact.log && printf z >> spaced.out"}`)
+	f.functionCall(t, "exec_command", "call-1", `{"cmd":"echo x >> append.log && echo y >>compact.log && printf z >> spaced.out"}`)
 	path := f.write(t)
 
 	files, _, err := agent.ExtractModifiedFiles(path, 0)
@@ -327,6 +410,52 @@ func TestExtractModifiedFiles_AppendRedirects(t *testing.T) {
 		if files[i] != file {
 			t.Errorf("files[%d] = %q, want %q", i, files[i], file)
 		}
+	}
+}
+
+func TestExtractModifiedFiles_ExecCommandKeyShapes(t *testing.T) {
+	// Live rollouts carry the shell under "cmd"; older releases used
+	// "command". Both must resolve to the same redirect extraction.
+	agent := New()
+	f := &rolloutFixture{}
+	f.functionCall(t, "exec_command", "call-1", `{"cmd":"echo x > current.txt"}`)
+	f.functionCall(t, "exec_command", "call-2", `{"command":"echo y > legacy.txt"}`)
+	path := f.write(t)
+
+	files, _, err := agent.ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"current.txt", "legacy.txt"}
+	if len(files) != len(want) {
+		t.Fatalf("files = %v, want %v", files, want)
+	}
+	for i, file := range want {
+		if files[i] != file {
+			t.Errorf("files[%d] = %q, want %q", i, files[i], file)
+		}
+	}
+}
+
+func TestExtractModifiedFiles_ReadToolsAreNotWrites(t *testing.T) {
+	// A read is not a modification: read_file and read-only shell commands
+	// must not report their targets. The generic path-key fallback used to
+	// leak read_file's "path" into the modified-file set.
+	agent := New()
+	f := &rolloutFixture{}
+	f.user(t, "Read the notes")
+	f.functionCall(t, "read_file", "call-1", `{"path":"notes.md"}`)
+	f.callOutput(t, "call-1", `{"output":"contents"}`)
+	f.functionCall(t, "exec_command", "call-2", `{"cmd":"cat notes.md"}`)
+	f.functionCall(t, "fetch_url", "call-3", `{"urls":["https://entire.com/docs"]}`)
+	path := f.write(t)
+
+	files, _, err := agent.ExtractModifiedFiles(path, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("files = %v, want none (reads are not modifications)", files)
 	}
 }
 

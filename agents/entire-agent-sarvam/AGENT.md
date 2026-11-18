@@ -119,13 +119,20 @@ subcommand maps to a native concept. Two caveats shape the integration:
   (`call-<uuid>`), `arguments` (JSON string). Results: `function_call_output`
   keyed by `call_id`.
 - Modified files field: derived from `function_call` entries —
-  `write_file`/`edit_file` take `path`; `exec_command` takes `command` (parse
-  shell redirects with care).
+  `write_file`/`edit_file` take `path`; `exec_command` takes `cmd` (older
+  releases used `command`), parsed for shell redirects. Read-only tools are
+  deliberately excluded: a read is not a modification, and the earlier
+  generic path-key fallback reported `read_file` targets as writes.
 - Token usage field: `event_msg` with `payload.type == "token_count"` carrying
   `payload.info.last_token_usage.{input_tokens, cached_input_tokens,
   output_tokens, reasoning_output_tokens, total_tokens}` (per API call) and
   `info.total_token_usage` (cumulative). `info` is null on rate-limit-only
-  events.
+  events. Sarvam re-emits `token_count` events whose cumulative total repeats
+  the previous event's (432 of 911 events in one sampled live session), so
+  usage is computed from `total_token_usage` deltas — an advancing total is
+  one API call — and since `input_tokens` includes `cached_input_tokens`,
+  the input bucket reports the non-cached share and the cached share is
+  reported as cache reads.
 - Example entry:
 
   ```json
@@ -157,7 +164,7 @@ subcommand maps to a native concept. Two caveats shape the integration:
 | `get-session-dir` | `$SARVAM_HOME/sessions` | Honor `SARVAM_HOME` env | Required |
 | `resolve-session-file` | rollout filename suffix | Glob `**/rollout-*-<id>.jsonl` under dir; fallback `<dir>/<safe-id>.jsonl` | Required |
 | `read-session` | AgentSessionJSON | Round-trip via fallback path | Required |
-| `write-session` | AgentSessionJSON | Write to resolved path | Required |
+| `write-session` | AgentSessionJSON | Store path writes normally; a rollout-shaped ref is created once when absent (restore), never when present | Required |
 | `read-transcript` | raw rollout bytes | Passthrough | Required |
 | `chunk-transcript` | raw bytes | Base64 chunks of `--max-size` | Required |
 | `reassemble-transcript` | reverse chunk | Concatenate | Required |
@@ -166,11 +173,11 @@ subcommand maps to a native concept. Two caveats shape the integration:
 | `install-hooks` | project `.sarvam/config.toml` | Upsert `[[hooks.*]]` matcher-group entries; `matcher = ".*"` for tool events; plain-`entire` command via PATH guard | If hooks capable |
 | `uninstall-hooks` | reverse of install | Remove only entire-owned entries | If hooks capable |
 | `are-hooks-installed` | project config check | All installed events present | If hooks capable |
-| `get-transcript-position` | file size | Byte offset (transcript is append-only) | If transcript analyzer |
-| `extract-modified-files` | `function_call` entries | `write_file`/`edit_file` `path`; `exec_command` shell parsing | If transcript analyzer |
+| `get-transcript-position` | physical line count | Line index consumed so far; a torn final line is excluded so late bytes are not skipped | If transcript analyzer |
+| `extract-modified-files` | `function_call` entries | Write-tool allowlist: `write_file`/`edit_file` `path`; `exec_command` (`cmd`, older releases `command`) shell redirects; read-only tools excluded | If transcript analyzer |
 | `extract-prompts` | user messages | `input_text`, drop `<environment_context>` | If transcript analyzer |
 | `extract-summary` | — | No native summary in session files → `has_summary=false` | If transcript analyzer |
-| `calculate-tokens` | `token_count` events | Sum `last_token_usage` since offset; count non-null `info` for `api_call_count` | If token calculator |
+| `calculate-tokens` | `token_count` events | Delta of cumulative `total_token_usage` since offset (input bucket excludes the cached share); an advancing total is one API call; torn final line skipped | If token calculator |
 
 ## Selected Capabilities
 
@@ -198,6 +205,12 @@ subcommand maps to a native concept. Two caveats shape the integration:
 - **Tool hooks need a matcher.** Declarations for `PreToolUse`/`PostToolUse`
   must set `matcher` or they silently never fire (verified). The installer
   sets `matcher = ".*"`.
+- **`write-session` restores but never clobbers.** A native rollout that
+  exists is sarvam's append-only transcript and is refused. A rollout-shaped
+  ref that does not exist is the fresh-clone restore case: it is created
+  once, exclusively, so a native rollout appearing concurrently still wins,
+  and a failed write removes its partial file rather than leave a fake
+  rollout behind.
 - `extract-summary` returns `has_summary=false`: session files have no
   native summary object (compaction summaries live in trace bundles, not the
   rollout JSONL).
@@ -220,12 +233,16 @@ subcommand maps to a native concept. Two caveats shape the integration:
 
 - Entire CLI binary: `entire` from PATH (`E2E_ENTIRE_BIN` override)
 - Agent CLI binary: `sarvam-code`
+- Disposable home: the suite writes directory trust and `[hooks.state]` into
+  the CLI's user config, so `E2E_AGENT=sarvam` fails loudly unless
+  `SARVAM_HOME` is set and does not point at the real `~/.sarvam` — run it
+  as `SARVAM_HOME=$(mktemp -d) E2E_AGENT=sarvam mise run test:e2e:lifecycle`.
 - Non-interactive prompt command: `sarvam-code exec --skip-git-repo-check -C <dir> "<prompt>"` — usable for file-creation assertions only; hooks do NOT fire, so checkpoints require the interactive path
 - Interactive mode: supported — `sarvam-code` TUI; drive via tmux
 - Expected prompt pattern: the TUI status bar line, e.g. `Flow · (Auto|Ask|Yolo)` — the composer line is `› `
 - Timeout multiplier: 2.0 (full agent turns with model latency)
 - Bootstrap steps: login already done in the environment; per-repo: the adapter grants directory trust with a headless exec run and pre-seeds `[hooks.state]` (enabled + trusted_hash) with the exact entries a completed `/hooks` review writes — the hashes are derived from the hook commands alone and are stable per sarvam-code version (stale constants fail loudly via the review banner)
-- Transient error patterns: `overloaded`, `rate limit`, `429`, `500`, `503`, `econnreset`, `etimedout`, `timeout`
+- Transient error patterns (anchored phrases — bare numbers like `429` or the bare word `timeout` also appear in ordinary screen content): `429 too many requests`, `rate limit`, `overloaded`, `503 service unavailable`, `500 internal server error`, `econnreset`, `etimedout`, `operation timed out`, `deadline exceeded`
 - Lifecycle status (2026-11-16, sarvam-code 0.58.0, entire 0.13.5-nightly): 6 of 8
   scenarios pass end to end (single + multiple prompt checkpoints, detect/enable,
   hooks-installed, session persistence, interactive session).

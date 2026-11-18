@@ -199,7 +199,11 @@ func isEntireEntry(block tomlBlock) bool {
 }
 
 // parseKeyValue parses a single `key = value` TOML line, decoding basic and
-// literal strings. Booleans and numbers come back raw.
+// literal strings. Booleans and numbers come back raw. An unquoted trailing
+// comment is stripped first: an entry line like `type = "command" # entire`
+// must still be recognized as ours (otherwise the next install duplicates
+// it), and a commented command line must decode to the exact command so a
+// repeat install leaves the line — comment included — untouched.
 func parseKeyValue(line string) (key string, value string, ok bool) {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
@@ -210,7 +214,7 @@ func parseKeyValue(line string) (key string, value string, ok bool) {
 		return "", "", false
 	}
 	key = strings.TrimSpace(trimmed[:eq])
-	value = strings.TrimSpace(trimmed[eq+1:])
+	value = strings.TrimSpace(stripTrailingComment(strings.TrimSpace(trimmed[eq+1:])))
 	if len(value) >= 2 {
 		if value[0] == '"' && value[len(value)-1] == '"' {
 			return key, unescapeBasicString(value[1 : len(value)-1]), true
@@ -220,6 +224,32 @@ func parseKeyValue(line string) (key string, value string, ok bool) {
 		}
 	}
 	return key, value, true
+}
+
+// stripTrailingComment removes an unquoted TOML comment from a value: the
+// first '#' outside any quoted string ends the value. Quoted '#' characters
+// survive. A value that never closes its quote keeps the '#' — malformed
+// input is left as-is rather than guessed at.
+func stripTrailingComment(value string) string {
+	var quote byte
+	for i := 0; i < len(value); i++ {
+		ch := value[i]
+		switch {
+		case quote != 0:
+			if ch == '\\' && quote == '"' && i+1 < len(value) {
+				i++ // skip the escaped character
+				continue
+			}
+			if ch == quote {
+				quote = 0
+			}
+		case ch == '"' || ch == '\'':
+			quote = ch
+		case ch == '#':
+			return strings.TrimRight(value[:i], " \t")
+		}
+	}
+	return value
 }
 
 func unescapeBasicString(s string) string {
@@ -342,6 +372,10 @@ func upsertHookEntries(path string, entries []configHookEntry, force bool) (int,
 	}
 	if force {
 		blocks = dropEntireEntries(blocks)
+		// The dropped entries strand their [[hooks.<Event>]] group headers;
+		// without this clean-up every force install would leave another
+		// empty group behind.
+		blocks = dropEmptyManagedGroups(blocks)
 	}
 	blocks = repairParentlessHooks(blocks)
 
@@ -439,26 +473,34 @@ func dropEntireEntries(blocks []tomlBlock) []tomlBlock {
 }
 
 // dropEmptyManagedGroups removes [[hooks.<Event>]] group headers for our
-// events once the event has no hook entries left at all. A group that still
-// carries content (a matcher, foreign entries) always stays.
+// managed events that no longer parent any hook entry: an empty group is
+// kept only when a same-event [[hooks.<Event>.hooks]] entry immediately
+// follows it — the parent relationship TOML array-of-tables gives an entry.
+// A group that still carries content (a matcher) always stays, and foreign
+// events are never touched.
 func dropEmptyManagedGroups(blocks []tomlBlock) []tomlBlock {
-	eventsWithEntries := map[string]bool{}
-	for _, block := range blocks {
-		event, kind := headerEvent(block.header)
-		if event != "" && kind == kindHooks {
-			eventsWithEntries[event] = true
-		}
-	}
 	out := make([]tomlBlock, 0, len(blocks))
-	for _, block := range blocks {
+	for i, block := range blocks {
 		event, kind := headerEvent(block.header)
 		if event != "" && kind == "group" && isManagedEvent(event) &&
-			len(block.body) == 0 && !eventsWithEntries[event] {
+			len(block.body) == 0 && !followedBySameEventEntry(blocks, i) {
 			continue
 		}
 		out = append(out, block)
 	}
 	return out
+}
+
+// followedBySameEventEntry reports whether the block after blocks[i] is a
+// hook entry of the same event. parseConfigBlocks opens every header its own
+// block, so the next block is exactly where an entry's parent group ends.
+func followedBySameEventEntry(blocks []tomlBlock, groupIndex int) bool {
+	if groupIndex+1 >= len(blocks) {
+		return false
+	}
+	groupEvent, _ := headerEvent(blocks[groupIndex].header)
+	event, kind := headerEvent(blocks[groupIndex+1].header)
+	return event == groupEvent && kind == kindHooks
 }
 
 func hookEntryInstalled(path, event, command string) bool {

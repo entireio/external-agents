@@ -110,9 +110,12 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 	return files, len(lines), nil
 }
 
-// pathsFromToolCall extracts the file paths a tool call touches.
-// write_file/edit_file carry "path"; exec_command carries a shell "command"
-// whose redirects are best-effort parsed.
+// pathsFromToolCall extracts the file paths a tool call writes to.
+// write_file/edit_file carry "path"; exec_command carries the shell under
+// "cmd" (the key live rollouts use; older releases used "command"), whose
+// redirects are best-effort parsed. Read-only tools are deliberately
+// unlisted: a read is not a modification, and a generic path-key fallback
+// would report read_file targets as writes.
 func pathsFromToolCall(call rolloutFunctionCall) []string {
 	var args map[string]any
 	if json.Unmarshal([]byte(call.Arguments), &args) != nil {
@@ -127,15 +130,13 @@ func pathsFromToolCall(call rolloutFunctionCall) []string {
 		paths = append(paths, stringField(args, "file_path")...)
 		return paths
 	case "exec_command":
-		command, _ := args["command"].(string)
+		command, _ := args["cmd"].(string)
+		if command == "" {
+			command, _ = args["command"].(string)
+		}
 		return pathsFromShellCommand(command)
 	default:
-		// Unknown tools: fall back to common path keys.
-		var paths []string
-		for _, key := range []string{"path", "file_path", "filePath", "notebook_path"} {
-			paths = append(paths, stringField(args, key)...)
-		}
-		return paths
+		return nil
 	}
 }
 

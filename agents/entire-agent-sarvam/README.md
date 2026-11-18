@@ -52,6 +52,13 @@ Hooks fire in **interactive sessions only**. `sarvam-code exec` (headless)
 never invokes hooks — checkpoints and transcripts are captured from TUI
 sessions.
 
+## Session snapshots
+
+Entire captures session snapshots with `write-session`. Regular store paths
+write normally; a native rollout path is only ever created when it does not
+exist yet — Entire restoring a captured snapshot onto a fresh clone — and an
+existing rollout is never touched.
+
 ## Testing
 
 ```bash
@@ -60,12 +67,16 @@ mise run test                              # unit tests
 external-agents-tests verify ./entire-agent-sarvam   # protocol compliance
 
 cd /path/to/repo
-E2E_AGENT=sarvam mise run test:e2e:lifecycle  # lifecycle (needs sarvam-code + tmux)
+SARVAM_HOME=$(mktemp -d) E2E_AGENT=sarvam mise run test:e2e:lifecycle  # lifecycle (needs sarvam-code + tmux)
 ```
 
 The lifecycle adapter drives the interactive TUI through tmux: it trusts the
 temp repo with a headless exec run, automates the one-time `/hooks` review,
 and sends prompts like a user would. It requires a logged-in `sarvam-code`.
+
+The suite writes directory trust and hook state into sarvam's user config,
+so it must run against a disposable `SARVAM_HOME`; `Bootstrap` fails loudly
+when it is unset or points at the real `~/.sarvam`.
 
 See `AGENT.md` for the full research mapping (hook payload schemas, session
 file format, trust model) verified against sarvam-code 0.58.0.

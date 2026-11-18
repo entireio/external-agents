@@ -263,12 +263,16 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 }
 
 // WriteSession persists native session bytes at the ref Entire resolved —
-// but never into sarvam's own rollout store. A native rollout is sarvam's
-// append-only transcript; replacing it with an entire-captured snapshot
-// would truncate live appends or clobber history, which redaction cannot
-// undo. Rollout-shaped refs are refused outright, an empty payload is not a
-// snapshot at all, and an empty ref resolves to the deterministic store path
-// rather than ResolveSessionFile, which prefers the native file.
+// but never over sarvam's own rollout store. A native rollout that exists
+// is sarvam's append-only transcript; replacing it with an entire-captured
+// snapshot would truncate live appends or clobber history, which redaction
+// cannot undo, so rollout-shaped targets are refused when present. A
+// rollout-shaped ref that does not exist is the restore case — Entire
+// recreating a captured snapshot on a fresh clone — and is created once,
+// exclusively, so a native rollout appearing concurrently still wins. An
+// empty payload is not a snapshot at all, and an empty ref resolves to the
+// deterministic store path rather than ResolveSessionFile, which prefers
+// the native file.
 func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if len(session.NativeData) == 0 {
 		return errEmptySessionData
@@ -281,7 +285,28 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 		ref = a.storePath(session.SessionID)
 	}
 	if isNativeRolloutPath(ref) {
-		return errNativeRolloutWrite
+		if err := os.MkdirAll(filepath.Dir(ref), 0o700); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(ref, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			if os.IsExist(err) {
+				return errNativeRolloutWrite
+			}
+			return err
+		}
+		if _, err := f.Write(session.NativeData); err != nil {
+			_ = f.Close()
+			// A failed restore must not leave a partial file masquerading
+			// as a native rollout.
+			_ = os.Remove(ref)
+			return err
+		}
+		if err := f.Close(); err != nil {
+			_ = os.Remove(ref)
+			return err
+		}
+		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(ref), 0o700); err != nil {
 		return err
