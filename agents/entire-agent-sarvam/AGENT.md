@@ -164,7 +164,7 @@ subcommand maps to a native concept. Two caveats shape the integration:
 | `get-session-dir` | `$SARVAM_HOME/sessions` | Honor `SARVAM_HOME` env | Required |
 | `resolve-session-file` | rollout filename suffix | Glob `**/rollout-*-<id>.jsonl` under dir; fallback `<dir>/<safe-id>.jsonl` | Required |
 | `read-session` | AgentSessionJSON | Round-trip via fallback path | Required |
-| `write-session` | AgentSessionJSON | Store path writes normally; a rollout-shaped ref is created once when absent (restore), never when present | Required |
+| `write-session` | AgentSessionJSON | Rollout-shaped refs are created once when absent (restore), never when present; the deterministic fallback ref is redirected to the native-shaped path derived from the snapshot's session_meta | Required |
 | `read-transcript` | raw rollout bytes | Passthrough | Required |
 | `chunk-transcript` | raw bytes | Base64 chunks of `--max-size` | Required |
 | `reassemble-transcript` | reverse chunk | Concatenate | Required |
@@ -206,11 +206,14 @@ subcommand maps to a native concept. Two caveats shape the integration:
   must set `matcher` or they silently never fire (verified). The installer
   sets `matcher = ".*"`.
 - **`write-session` restores but never clobbers.** A native rollout that
-  exists is sarvam's append-only transcript and is refused. A rollout-shaped
-  ref that does not exist is the fresh-clone restore case: it is created
-  once, exclusively, so a native rollout appearing concurrently still wins,
-  and a failed write removes its partial file rather than leave a fake
-  rollout behind.
+  exists is sarvam's append-only transcript and is refused. The ref the
+  CLI's restore resolves on a fresh clone is the deterministic fallback
+  (`<sessions-root>/<id>.jsonl`), so it is redirected to the native-shaped
+  path derived from the snapshot's own session_meta timestamp — the same
+  convention the CLI's Codex agent uses — making the restored session
+  discoverable by `sarvam-code resume`. It is created once, exclusively, so
+  a native rollout appearing concurrently still wins, and a failed write
+  removes its partial file rather than leave a fake rollout behind.
 - `extract-summary` returns `has_summary=false`: session files have no
   native summary object (compaction summaries live in trace bundles, not the
   rollout JSONL).
@@ -237,6 +240,9 @@ subcommand maps to a native concept. Two caveats shape the integration:
   the CLI's user config, so `E2E_AGENT=sarvam` fails loudly unless
   `SARVAM_HOME` is set and does not point at the real `~/.sarvam` — run it
   as `SARVAM_HOME=$(mktemp -d) E2E_AGENT=sarvam mise run test:e2e:lifecycle`.
+  sarvam-code keeps its credentials in `$SARVAM_HOME/keyring`, so Bootstrap
+  copies the real `~/.sarvam/keyring` into the disposable home and fails
+  early unless `sarvam-code login status` reports signed in there.
 - Non-interactive prompt command: `sarvam-code exec --skip-git-repo-check -C <dir> "<prompt>"` — usable for file-creation assertions only; hooks do NOT fire, so checkpoints require the interactive path
 - Interactive mode: supported — `sarvam-code` TUI; drive via tmux
 - Expected prompt pattern: the TUI status bar line, e.g. `Flow · (Auto|Ask|Yolo)` — the composer line is `› `

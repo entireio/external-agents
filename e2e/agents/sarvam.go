@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -106,7 +107,8 @@ func (s *Sarvam) IsTransientError(out Output, _ error) bool {
 }
 
 func (s *Sarvam) Bootstrap() error {
-	if _, err := exec.LookPath(s.Binary()); err != nil {
+	bin, err := exec.LookPath(s.Binary())
+	if err != nil {
 		return fmt.Errorf("%s not in PATH: %w", s.Binary(), err)
 	}
 	// The suite trusts repos and seeds [hooks.state] into the CLI's user
@@ -116,10 +118,73 @@ func (s *Sarvam) Bootstrap() error {
 	if home == "" {
 		return errors.New("E2E_AGENT=sarvam requires SARVAM_HOME to point at a disposable home (e.g. $(mktemp -d)): the suite writes directory trust and hook state into the CLI's user config")
 	}
-	if userHome, err := os.UserHomeDir(); err == nil && filepath.Clean(home) == filepath.Join(userHome, ".sarvam") {
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolving the user home to locate the sarvam keyring: %w", err)
+	}
+	if filepath.Clean(home) == filepath.Join(userHome, ".sarvam") {
 		return fmt.Errorf("E2E_AGENT=sarvam refuses to run with SARVAM_HOME at the real %s: point it at a disposable home (e.g. $(mktemp -d))", filepath.Join(userHome, ".sarvam"))
 	}
+	// sarvam-code keeps its credentials in $SARVAM_HOME/keyring, so a
+	// disposable home starts unauthenticated and the very first exec run
+	// would fail. Copy the real keyring over, then prove the CLI reports a
+	// signed-in state before any test runs.
+	realKeyring := filepath.Join(userHome, ".sarvam", "keyring")
+	if _, statErr := os.Stat(realKeyring); os.IsNotExist(statErr) {
+		return fmt.Errorf("no sarvam keyring at %s: run sarvam-code login once in the real home so the disposable home can inherit the credentials", realKeyring)
+	}
+	if err := copyTree(realKeyring, filepath.Join(home, "keyring")); err != nil {
+		return fmt.Errorf("copying the sarvam keyring into the disposable SARVAM_HOME %s: %w", home, err)
+	}
+	cmd := exec.Command(bin, "login", "status")
+	cmd.Env = append(os.Environ(), "SARVAM_HOME="+home)
+	out, loginErr := cmd.CombinedOutput()
+	if loginErr != nil || strings.Contains(string(out), "Not logged in") {
+		return fmt.Errorf("sarvam-code is not authenticated in the disposable SARVAM_HOME %s (keyring copied from %s): %s", home, realKeyring, strings.TrimSpace(string(out)))
+	}
 	return nil
+}
+
+// copyTree copies a directory (or a single file) recursively. The keyring
+// is a handful of small credential files, so plain reads and writes
+// suffice.
+func copyTree(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return copyTreeFile(src, dst, info.Mode().Perm())
+	}
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o700)
+		}
+		entryInfo, err := d.Info()
+		if err != nil {
+			return err
+		}
+		return copyTreeFile(path, target, entryInfo.Mode().Perm())
+	})
+}
+
+func copyTreeFile(src, dst string, mode os.FileMode) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, mode)
 }
 
 // trustRepo runs a throwaway headless prompt so sarvam records directory

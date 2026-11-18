@@ -328,6 +328,84 @@ func TestCalculateTokens_TornFinalTokenCount(t *testing.T) {
 	}
 }
 
+func TestCalculateTokens_OversizeRecord(t *testing.T) {
+	// One record can embed a whole tool output. A fixed per-line cap made
+	// calculate-tokens fail on the whole checkpoint — with bufio.ErrTooLong —
+	// while every other reader handled the file, so the scanner grows the
+	// way readRolloutLines does.
+	agent := New()
+	f := &rolloutFixture{}
+	f.tokenCount(t, 1000, 500, 200)
+	f.lines[len(f.lines)-1] = strings.TrimSuffix(f.lines[len(f.lines)-1], "}") + `,"padding":"` + strings.Repeat("x", 11*1024*1024) + `"}`
+	path := f.write(t)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	usage, err := agent.CalculateTokens(data, 0)
+	if err != nil {
+		t.Fatalf("an oversize record must not fail the scan: %v", err)
+	}
+	if usage.InputTokens != 500 || usage.CacheReadTokens != 500 || usage.OutputTokens != 200 || usage.APICallCount != 1 {
+		t.Errorf("usage = %+v, want 500/500/200 with one API call", usage)
+	}
+}
+
+func TestCompactTranscript_KeepsUnterminatedFinalLine(t *testing.T) {
+	// The compactor's input is a finished snapshot of the redacted
+	// transcript; redaction does not guarantee the trailing newline
+	// survives. Dropping the final line — usually the last assistant reply —
+	// would cut the checkpoint transcript short, so an unterminated final
+	// line that parses is kept. The live-transcript readers stay strict.
+	agent := New()
+	f := &rolloutFixture{}
+	f.user(t, "Create hello.txt")
+	f.assistant(t, "done")
+	content := strings.Join(f.lines, "\n") // no trailing newline
+	path := filepath.Join(t.TempDir(), "snapshot.jsonl")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Position still excludes the unterminated line: that rule belongs to
+	// the live offsets.
+	position, err := agent.GetTranscriptPosition(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if position != 1 {
+		t.Fatalf("position = %d, want 1 (the live rule still skips the torn line)", position)
+	}
+
+	resp, err := agent.CompactTranscript(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := base64Decode(resp.Transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := splitLines(string(decoded))
+	if len(lines) != 2 {
+		t.Fatalf("projected %d lines, want both the user prompt and the final assistant reply:\n%s", len(lines), decoded)
+	}
+	var last struct {
+		Type    string `json:"type"`
+		Message struct {
+			Role    string `json:"role"`
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"message"`
+	}
+	unmarshalStrict(t, lines[1], &last)
+	if last.Type != "assistant" || last.Message.Role != "assistant" ||
+		len(last.Message.Content) != 1 || last.Message.Content[0].Text != "done" {
+		t.Errorf("final projected line = %+v, want the unterminated assistant reply", last)
+	}
+}
+
 func TestReadRolloutLines_TornFinalLine(t *testing.T) {
 	agent := New()
 	dir := t.TempDir()

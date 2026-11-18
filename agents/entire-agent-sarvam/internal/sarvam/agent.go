@@ -1,7 +1,9 @@
 package sarvam
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -80,13 +82,15 @@ func sarvamHome() string {
 	return filepath.Join(home, ".sarvam")
 }
 
-// GetSessionDir returns where sarvam keeps the sessions it is writing today.
-// The rollout store is date-partitioned (sessions/YYYY/MM/DD/), and callers
-// — including Entire's session discovery — read the directory
-// non-recursively, so the day directory is the useful answer, not the root.
+// GetSessionDir returns the root of sarvam's session store. The CLI treats
+// this directory as the store root and refuses any path resolved outside it
+// (ErrOutsideSessionStore), while the store itself is date-partitioned
+// (sessions/YYYY/MM/DD/), so the root — the answer the CLI's own Codex agent
+// gives for the same layout — is what keeps resolve-session-file's
+// whole-tree glob inside the store for sessions from earlier days.
 func (a *Agent) GetSessionDir(repoPath string) (string, error) {
 	_ = repoPath // kept for interface symmetry; the store is global
-	return filepath.Join(sarvamHome(), "sessions", time.Now().Format("2006/01/02")), nil
+	return filepath.Join(sarvamHome(), "sessions"), nil
 }
 
 // ResolveSessionFile maps a session ID to its native rollout JSONL when one
@@ -269,8 +273,13 @@ func (a *Agent) ReadSession(input *protocol.HookInputJSON) (protocol.AgentSessio
 // cannot undo, so rollout-shaped targets are refused when present. A
 // rollout-shaped ref that does not exist is the restore case — Entire
 // recreating a captured snapshot on a fresh clone — and is created once,
-// exclusively, so a native rollout appearing concurrently still wins. An
-// empty payload is not a snapshot at all, and an empty ref resolves to the
+// exclusively, so a native rollout appearing concurrently still wins. The
+// ref the CLI's restore resolves on a fresh clone is not rollout-shaped,
+// though: it is the deterministic fallback (<dir>/<id>.jsonl), and written
+// verbatim it would be a file sarvam-code resume never discovers (resume
+// scans for rollout-*-<id>.jsonl), so that exact ref is redirected to the
+// native-shaped path derived from the snapshot's own session_meta. An empty
+// payload is not a snapshot at all, and an empty ref resolves to the
 // deterministic store path rather than ResolveSessionFile, which prefers
 // the native file.
 func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
@@ -283,6 +292,11 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 			return errMissingSessionRef
 		}
 		ref = a.storePath(session.SessionID)
+	}
+	if !isNativeRolloutPath(ref) && isDeterministicFallbackRef(ref, session.SessionID) {
+		if restored := restoredRolloutRef(ref, session.SessionID, session.NativeData); restored != "" {
+			ref = restored
+		}
 	}
 	if isNativeRolloutPath(ref) {
 		if err := os.MkdirAll(filepath.Dir(ref), 0o700); err != nil {
@@ -320,6 +334,46 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 func (a *Agent) storePath(sessionID string) string {
 	dir, _ := a.GetSessionDir("")
 	return filepath.Join(dir, safeFilename(sessionID)+".jsonl")
+}
+
+// isDeterministicFallbackRef reports whether ref is the <dir>/<id>.jsonl
+// fallback resolve-session-file predicts when no rollout exists — the shape
+// the CLI's restore resolves on a fresh clone. Only that ref is redirected
+// to a discoverable path; anything else a caller names is written where it
+// says.
+func isDeterministicFallbackRef(ref, sessionID string) bool {
+	sessionID = strings.TrimSpace(sessionID)
+	return sessionID != "" && filepath.Base(ref) == safeFilename(sessionID)+".jsonl"
+}
+
+// restoredRolloutRef derives the native rollout path a restore should land
+// at: the snapshot's own session_meta timestamp picks the date directory and
+// the file name, so sarvam-code resume — which scans for
+// rollout-*-<id>.jsonl under sessions/YYYY/MM/DD/ — discovers the restored
+// session. This mirrors the CLI Codex agent's restoredRolloutPath for the
+// same store layout. Returns "" when the snapshot carries no parseable
+// session_meta; the caller then writes the ref as given.
+func restoredRolloutRef(ref, sessionID string, nativeData []byte) string {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return ""
+	}
+	first := nativeData
+	if i := bytes.IndexByte(nativeData, '\n'); i >= 0 {
+		first = first[:i]
+	}
+	var meta rolloutLine
+	if json.Unmarshal(bytes.TrimSpace(first), &meta) != nil || meta.Type != "session_meta" {
+		return ""
+	}
+	start, err := time.Parse(time.RFC3339, strings.TrimSpace(meta.Timestamp))
+	if err != nil {
+		return ""
+	}
+	start = start.UTC()
+	dayPath := filepath.Join(filepath.Dir(ref), start.Format("2006"), start.Format("01"), start.Format("02"))
+	name := fmt.Sprintf("rollout-%s-%s.jsonl", start.Format("2006-01-02T15-04-05"), safeFilename(sessionID))
+	return filepath.Join(dayPath, name)
 }
 
 // isNativeRolloutPath reports whether the path names one of sarvam's own

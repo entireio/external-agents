@@ -24,8 +24,13 @@ import (
 //
 // Developer messages (injected harness instructions), reasoning, and the
 // event stream are dropped: none of them belong in a checkpoint transcript.
+//
+// The input is a temp copy of an already-redacted snapshot, so a final line
+// without a trailing newline is finished data and is kept when it parses —
+// unlike the live-transcript readers, which must never cover a half-written
+// record.
 func (a *Agent) CompactTranscript(sessionRef string) (protocol.CompactTranscriptResponse, error) {
-	lines, err := readRolloutLines(sessionRef)
+	lines, err := readFinishedRolloutLines(sessionRef)
 	if err != nil {
 		if os.IsNotExist(err) {
 			lines = nil

@@ -16,16 +16,30 @@ import (
 // indexes: get-transcript-position returns the number of physical lines, and
 // extract --offset is the line index to resume from.
 
-// maxRolloutLine bounds a single rollout record. One record can embed a whole
-// tool output, so the 10 MB ceiling the other JSONL scanners use applies.
-const maxRolloutLine = 10 * 1024 * 1024
-
-// readRolloutLines parses the rollout JSONL. Unparseable lines become empty
-// placeholders so line offsets stay aligned with the physical file. A final
-// line that is still being written (no trailing newline) is excluded: the
-// position must not cover a record whose remaining bytes arrive later, or
-// the next read at that offset would skip them.
+// readRolloutLines parses the rollout JSONL of a live transcript:
+// unparseable lines become empty placeholders so line offsets stay aligned
+// with the physical file, and a final line that is still being written (no
+// trailing newline) is excluded: the position must not cover a record whose
+// remaining bytes arrive later, or the next read at that offset would skip
+// them.
 func readRolloutLines(path string) ([]rolloutLine, error) {
+	return scanRolloutLines(path, false)
+}
+
+// readFinishedRolloutLines parses a rollout snapshot whose writer is done.
+// Redaction does not guarantee the trailing newline survives, and a missing
+// one must not drop the final record — typically the last assistant reply —
+// from the compacted transcript, so an unterminated final line is kept when
+// it parses as valid JSON. The strict rule stays with the live-transcript
+// readers.
+func readFinishedRolloutLines(path string) ([]rolloutLine, error) {
+	return scanRolloutLines(path, true)
+}
+
+// scanRolloutLines reads records with no fixed per-line cap — one record can
+// embed a whole tool output, and a size cap would corrupt every offset after
+// it. In the lenient mode a final unterminated line counts when it parses.
+func scanRolloutLines(path string, lenientFinal bool) ([]rolloutLine, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -39,10 +53,11 @@ func readRolloutLines(path string) ([]rolloutLine, error) {
 		if len(raw) > 0 {
 			line := strings.TrimSpace(string(raw))
 			var record rolloutLine
-			if json.Unmarshal([]byte(line), &record) != nil {
+			parses := json.Unmarshal([]byte(line), &record) == nil
+			if !parses {
 				record = rolloutLine{}
 			}
-			if readErr == nil {
+			if readErr == nil || (lenientFinal && parses) {
 				lines = append(lines, record)
 			}
 		}

@@ -58,10 +58,12 @@ sessions.
 
 ## Session snapshots
 
-Entire captures session snapshots with `write-session`. Regular store paths
-write normally; a native rollout path is only ever created when it does not
-exist yet — Entire restoring a captured snapshot onto a fresh clone — and an
-existing rollout is never touched.
+Entire captures session snapshots with `write-session`. A native rollout path
+is only ever created when it does not exist yet — Entire restoring a captured
+snapshot onto a fresh clone — and an existing rollout is never touched. On a
+fresh clone the CLI resolves the plain `<id>.jsonl` fallback, so the write is
+redirected to the rollout-shaped path derived from the snapshot's own
+session_meta timestamp, which is what `sarvam-code resume` scans for.
 
 ## Testing
 
@@ -80,7 +82,10 @@ and sends prompts like a user would. It requires a logged-in `sarvam-code`.
 
 The suite writes directory trust and hook state into sarvam's user config,
 so it must run against a disposable `SARVAM_HOME`; `Bootstrap` fails loudly
-when it is unset or points at the real `~/.sarvam`.
+when it is unset or points at the real `~/.sarvam`. sarvam-code keeps its
+credentials in `$SARVAM_HOME/keyring`, so `Bootstrap` copies the real keyring
+into the disposable home and verifies `sarvam-code login status` before any
+test runs.
 
 See `AGENT.md` for the full research mapping (hook payload schemas, session
 file format, trust model) verified against sarvam-code 0.58.0.

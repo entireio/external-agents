@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/entireio/external-agents/agents/entire-agent-sarvam/internal/protocol"
 )
@@ -70,9 +69,12 @@ func TestGetSessionDir_RespectsSarvamHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join("/custom/home", "sessions", time.Now().Format("2006/01/02"))
+	// The store root, not today's day directory: the CLI treats this
+	// directory as the store root and rejects resolved paths outside it,
+	// while the store itself is date-partitioned beneath it.
+	want := filepath.Join("/custom/home", "sessions")
 	if dir != want {
-		t.Fatalf("session_dir = %q, want today's day directory %q", dir, want)
+		t.Fatalf("session_dir = %q, want the sessions root %q", dir, want)
 	}
 }
 
@@ -136,14 +138,16 @@ func TestResolveSessionFile_FindsSessionsFromEarlierDays(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A session still running from an earlier day lives outside today's day
-	// directory; resolving from the day directory must still find it via the
-	// sessions root instead of falling back to the synthetic path.
-	dayDir, err := agent.GetSessionDir("")
+	// A session still running from an earlier day lives in a date
+	// partition under the store root; resolving from the root must find it
+	// with the whole-tree glob instead of falling back to the synthetic
+	// path — and the resolved path stays inside the store the CLI checks
+	// containment against.
+	storeRoot, err := agent.GetSessionDir("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if path := agent.ResolveSessionFile(dayDir, sessionID); path != native {
+	if path := agent.ResolveSessionFile(storeRoot, sessionID); path != native {
 		t.Fatalf("session_file = %q, want the earlier-day rollout %q", path, native)
 	}
 }
@@ -322,16 +326,17 @@ func TestWriteSession_RefusesNativeRolloutTargets(t *testing.T) {
 	t.Setenv("SARVAM_HOME", t.TempDir())
 	agent := New()
 
-	// A live native rollout for this session ID.
+	// A live native rollout for this session ID, directly under the store
+	// root the CLI treats as the session directory.
 	sessionID := "01a1e2d3-8a2b-7dc2-b125-885a43ce43f5"
-	dayDir, err := agent.GetSessionDir("")
+	storeRoot, err := agent.GetSessionDir("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(dayDir, 0o755); err != nil {
+	if err := os.MkdirAll(storeRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	native := filepath.Join(dayDir, "rollout-2026-11-17T08-00-00-"+sessionID+".jsonl")
+	native := filepath.Join(storeRoot, "rollout-2026-11-17T08-00-00-"+sessionID+".jsonl")
 	if err := os.WriteFile(native, []byte("{\"type\":\"session_meta\"}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +365,7 @@ func TestWriteSession_RefusesNativeRolloutTargets(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	store := filepath.Join(dayDir, safeFilename(sessionID)+".jsonl")
+	store := filepath.Join(storeRoot, safeFilename(sessionID)+".jsonl")
 	if _, err := os.Stat(store); err != nil {
 		t.Fatalf("snapshot was not written to the store path: %v", err)
 	}
@@ -410,6 +415,53 @@ func TestWriteSession_RestoresToMissingRolloutRef(t *testing.T) {
 	}
 	if string(written) != `{"type":"session_meta","restored":true}` {
 		t.Fatalf("the restored snapshot was overwritten: %q", written)
+	}
+}
+
+func TestWriteSession_RestoreViaFallbackRefIsDiscoverable(t *testing.T) {
+	// The CLI's restore resolves the deterministic fallback ref when no
+	// rollout exists (RestoredSessionPathResolver is built-in-only). Written
+	// verbatim that ref is a file sarvam-code resume never scans for, so the
+	// write must land at the native-shaped path the snapshot's session_meta
+	// implies, and resolve-session-file must then discover it.
+	t.Setenv("SARVAM_HOME", t.TempDir())
+	agent := New()
+
+	sessionID := "01a1e2d3-8a2b-7dc2-b125-885a43ce43f5"
+	storeRoot, err := agent.GetSessionDir("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fallback := agent.ResolveSessionFile(storeRoot, sessionID)
+	if isNativeRolloutPath(fallback) {
+		t.Fatalf("fixture: %q should be the deterministic fallback", fallback)
+	}
+
+	session := protocol.AgentSessionJSON{
+		SessionID:  sessionID,
+		SessionRef: fallback,
+		NativeData: []byte(`{"timestamp":"2026-11-15T09:30:00.000Z","type":"session_meta","payload":{"id":"` + sessionID + `","cwd":"/repo","source":"cli"}}` + "\n" +
+			`{"timestamp":"2026-11-15T09:30:05.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}}`),
+	}
+	if err := agent.WriteSession(session); err != nil {
+		t.Fatalf("restore write failed: %v", err)
+	}
+
+	want := filepath.Join(storeRoot, "2026", "11", "15", "rollout-2026-11-15T09-30-00-"+sessionID+".jsonl")
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("restored snapshot not at the discoverable rollout path %s: %v", want, err)
+	}
+	if _, err := os.Stat(fallback); err == nil {
+		t.Fatalf("the fallback ref %s should not have been written verbatim", fallback)
+	}
+	if got := agent.ResolveSessionFile(storeRoot, sessionID); got != want {
+		t.Fatalf("resolve-session-file = %q, want the restored rollout %q", got, want)
+	}
+
+	// A second restore attempt now collides with the restored rollout and
+	// must be refused, not clobber it.
+	if err := agent.WriteSession(session); err == nil {
+		t.Fatal("a second write to the restored rollout must be refused")
 	}
 }
 
