@@ -10,7 +10,8 @@ import (
 
 // Sarvam's project config is hand-authored TOML that can carry anything, so
 // hook install/uninstall edits it as lines rather than round-tripping a TOML
-// parser: every line we do not own is preserved byte-for-byte. Only the
+// parser: every line we do not own is preserved byte-for-byte, headers
+// included — indentation and line endings stay as authored. Only the
 // narrow grammar of hook declarations is understood:
 //
 //	[[hooks.<Event>]]            matcher group (body: optional matcher keys)
@@ -22,9 +23,13 @@ import (
 
 const entireCommandMarker = "entire hooks " + AgentName
 
-// kindHooks is headerEvent's marker for a [[hooks.<Event>.hooks]] entry
-// block, as opposed to a matcher-group header.
-const kindHooks = "hooks"
+// kindGroup / kindHooks are headerEvent's block kinds: a matcher-group
+// header ([[hooks.<Event>]]) versus a hook-entry block
+// ([[hooks.<Event>.hooks]]).
+const (
+	kindGroup = "group"
+	kindHooks = "hooks"
+)
 
 // configHookEntry is one hook handler we manage in the project config.
 type configHookEntry struct {
@@ -65,7 +70,7 @@ func headerEvent(header string) (event string, kind string) {
 			case strings.HasSuffix(rest, ".hooks"):
 				return strings.TrimSuffix(rest, ".hooks"), kindHooks
 			default:
-				return rest, "group"
+				return rest, kindGroup
 			}
 		}
 	}
@@ -106,8 +111,11 @@ func netBracketsOutsideQuotes(line string) int {
 // block (preamble) has an empty header and holds everything before the first
 // table header. Lines inside an open multi-line string (""" or ”') or an
 // open multi-line array are always body lines — a line that merely looks
-// like a header inside such a value must not split the block.
-func parseConfigBlocks(content string) []tomlBlock {
+// like a header inside such a value must not split the block. Header lines
+// are stored verbatim — indentation and line endings are the author's —
+// and the returned flag records whether the file ended with a newline, so
+// serialization round-trips byte-for-byte.
+func parseConfigBlocks(content string) ([]tomlBlock, bool) {
 	lines := strings.Split(content, "\n")
 	// A trailing newline produces one empty final element; remember it so
 	// serialization round-trips.
@@ -135,7 +143,7 @@ func parseConfigBlocks(content string) []tomlBlock {
 			continue
 		}
 		if isHeaderLine(strings.TrimSpace(line)) {
-			blocks = append(blocks, tomlBlock{header: strings.TrimSpace(line)})
+			blocks = append(blocks, tomlBlock{header: line})
 			continue
 		}
 		blocks[len(blocks)-1].body = append(blocks[len(blocks)-1].body, line)
@@ -150,10 +158,12 @@ func parseConfigBlocks(content string) []tomlBlock {
 			}
 		}
 	}
-	return blocks
+	return blocks, trailingNewline
 }
 
-func serializeConfigBlocks(blocks []tomlBlock) string {
+// serializeConfigBlocks is the inverse of parseConfigBlocks; when the file
+// had no trailing newline, the last line keeps its missing newline.
+func serializeConfigBlocks(blocks []tomlBlock, trailingNewline bool) string {
 	var b strings.Builder
 	for _, block := range blocks {
 		if block.header != "" {
@@ -165,7 +175,11 @@ func serializeConfigBlocks(blocks []tomlBlock) string {
 			b.WriteByte('\n')
 		}
 	}
-	return b.String()
+	out := b.String()
+	if !trailingNewline && strings.HasSuffix(out, "\n") {
+		out = out[:len(out)-1]
+	}
+	return out
 }
 
 // entryCommand returns the command value of a hook-entry block, or "".
@@ -329,7 +343,7 @@ func repairParentlessHooks(blocks []tomlBlock) []tomlBlock {
 				seenGroup[event] = true
 			}
 		}
-		if event != "" && kind == "group" {
+		if event != "" && kind == kindGroup {
 			seenGroup[event] = true
 		}
 		out = append(out, block)
@@ -346,15 +360,23 @@ func isManagedEvent(event string) bool {
 	return false
 }
 
-// checkNoMapFormEvents rejects the single-bracket map form for events we
-// manage. Appending an array-of-tables next to a table definition is a TOML
-// type conflict; failing loudly beats corrupting a config the user must fix
-// by hand anyway.
+// checkNoMapFormEvents rejects the single-bracket table form for events we
+// manage — the matcher-group header [hooks.<Event>] and the entry header
+// [hooks.<Event>.hooks] alike: appending an array-of-tables next to a table
+// definition is a TOML type conflict, and the CLI would silently drop every
+// hook. Failing loudly beats corrupting a config the user must fix by hand
+// anyway.
 func checkNoMapFormEvents(blocks []tomlBlock) error {
 	for _, block := range blocks {
 		event, kind := headerEvent(block.header)
-		if event != "" && kind == "group" && isManagedEvent(event) && !strings.HasPrefix(block.header, "[[") {
-			return fmt.Errorf(".sarvam/config.toml defines [hooks.%s] as a table; the sarvam CLI requires an array of matcher groups — replace the header with [[hooks.%s]] and rerun", event, event)
+		if event == "" || !isManagedEvent(event) {
+			continue
+		}
+		if kind != kindGroup && kind != kindHooks {
+			continue
+		}
+		if !strings.HasPrefix(strings.TrimSpace(block.header), "[[") {
+			return fmt.Errorf(".sarvam/config.toml defines hooks.%s as a table (%s); the sarvam CLI requires arrays — replace the header with the [[...]] form and rerun", event, strings.TrimSpace(block.header))
 		}
 	}
 	return nil
@@ -363,13 +385,14 @@ func checkNoMapFormEvents(blocks []tomlBlock) error {
 // upsertHookEntries installs the given entries, returning how many hook
 // handlers were added or updated. Unrelated config content is untouched.
 func upsertHookEntries(path string, entries []configHookEntry, force bool) (int, error) {
-	blocks, err := loadBlocks(path)
+	blocks, trailingNewline, err := loadBlocks(path)
 	if err != nil {
 		return 0, err
 	}
 	if err := checkNoMapFormEvents(blocks); err != nil {
 		return 0, err
 	}
+	original := serializeConfigBlocks(blocks, trailingNewline)
 	if force {
 		var removedEvents map[string]bool
 		blocks, removedEvents = dropEntireEntries(blocks)
@@ -386,10 +409,14 @@ func upsertHookEntries(path string, entries []configHookEntry, force bool) (int,
 			count++
 		}
 	}
-	if count == 0 {
+	// Zero entries added or updated can still mean the blocks changed: a
+	// parentless repair must reach the file, or the CLI keeps rejecting the
+	// whole hooks table while install-hooks reports nothing happened. And
+	// with no change at all, the author's bytes stay untouched.
+	if count == 0 && serializeConfigBlocks(blocks, trailingNewline) == original {
 		return 0, nil
 	}
-	if err := saveBlocks(path, blocks); err != nil {
+	if err := saveBlocks(path, blocks, trailingNewline); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -428,7 +455,7 @@ func upsertOne(blocks *[]tomlBlock, entry configHookEntry) bool {
 		if kind == kindHooks && event == entry.Event {
 			insertAt = i + 1
 		}
-		if strings.HasPrefix(block.header, "[hooks.") || strings.HasPrefix(block.header, "[[hooks.") {
+		if trimmed := strings.TrimSpace(block.header); strings.HasPrefix(trimmed, "[hooks.") || strings.HasPrefix(trimmed, "[[hooks.") {
 			lastHooksRegion = i + 1
 		}
 	}
@@ -448,9 +475,10 @@ func upsertOne(blocks *[]tomlBlock, entry configHookEntry) bool {
 }
 
 // removeHookEntries deletes every entry this adapter owns, plus the empty
-// matcher-group headers those entries strand behind.
+// matcher-group headers those entries strand behind. A config holding none
+// of our entries is left byte-for-byte untouched.
 func removeHookEntries(path string) error {
-	blocks, err := loadBlocks(path)
+	blocks, trailingNewline, err := loadBlocks(path)
 	if err != nil {
 		return err
 	}
@@ -459,7 +487,11 @@ func removeHookEntries(path string) error {
 	}
 	kept, removedEvents := dropEntireEntries(blocks)
 	kept = dropEmptyManagedGroups(kept, removedEvents)
-	return saveBlocks(path, kept)
+	if serializeConfigBlocks(kept, trailingNewline) == serializeConfigBlocks(blocks, trailingNewline) {
+		// Nothing we own to remove: leave the author's bytes alone.
+		return nil
+	}
+	return saveBlocks(path, kept, trailingNewline)
 }
 
 // dropEntireEntries deletes every entry this adapter owns and reports which
@@ -491,7 +523,7 @@ func dropEmptyManagedGroups(blocks []tomlBlock, removedEvents map[string]bool) [
 	out := make([]tomlBlock, 0, len(blocks))
 	for i, block := range blocks {
 		event, kind := headerEvent(block.header)
-		if event != "" && kind == "group" && removedEvents[event] &&
+		if event != "" && kind == kindGroup && removedEvents[event] &&
 			len(block.body) == 0 && !followedBySameEventEntry(blocks, i) {
 			continue
 		}
@@ -513,39 +545,50 @@ func followedBySameEventEntry(blocks []tomlBlock, groupIndex int) bool {
 }
 
 func hookEntryInstalled(path, event, command string) bool {
-	blocks, err := loadBlocks(path)
+	blocks, _, err := loadBlocks(path)
 	if err != nil {
 		return false
 	}
-	blocks = repairParentlessHooks(blocks)
+	// An entry without its [[hooks.<Event>]] matcher-group header is not
+	// installed in any way the CLI can parse — the whole hooks table fails
+	// with "invalid type: map, expected a sequence" — so the group header
+	// must precede the entry for it to count. A single-bracket group is a
+	// table form the CLI rejects equally, so it does not count either.
+	seenGroup := false
 	for _, block := range blocks {
 		e, kind := headerEvent(block.header)
-		if e != event || kind != kindHooks {
+		if e == "" {
 			continue
 		}
-		if isEntireEntry(block) && entryCommand(block) == command {
+		if kind == kindGroup && e == event {
+			seenGroup = strings.HasPrefix(strings.TrimSpace(block.header), "[[")
+			continue
+		}
+		if kind == kindHooks && e == event && seenGroup &&
+			isEntireEntry(block) && entryCommand(block) == command {
 			return true
 		}
 	}
 	return false
 }
 
-func loadBlocks(path string) ([]tomlBlock, error) {
+func loadBlocks(path string) ([]tomlBlock, bool, error) {
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return []tomlBlock{{}}, nil
+		return []tomlBlock{{}}, true, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	if len(strings.TrimSpace(string(data))) == 0 {
-		return []tomlBlock{{}}, nil
+		return []tomlBlock{{}}, true, nil
 	}
-	return parseConfigBlocks(string(data)), nil
+	blocks, trailingNewline := parseConfigBlocks(string(data))
+	return blocks, trailingNewline, nil
 }
 
-func saveBlocks(path string, blocks []tomlBlock) error {
-	content := serializeConfigBlocks(blocks)
+func saveBlocks(path string, blocks []tomlBlock, trailingNewline bool) error {
+	content := serializeConfigBlocks(blocks, trailingNewline)
 	// filepath.Dir is separator-aware: on Windows the config path carries
 	// backslashes, where a hand-rolled "/" split would return "." and leave
 	// the .sarvam directory uncreated.

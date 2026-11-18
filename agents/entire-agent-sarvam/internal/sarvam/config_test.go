@@ -77,7 +77,8 @@ command = "/usr/local/bin/second-start-hook"
 type = "command"
 command = "/usr/local/bin/prompt-hook"
 `
-	repaired := serializeConfigBlocks(repairParentlessHooks(parseConfigBlocks(content)))
+	blocks, trailingNewline := parseConfigBlocks(content)
+	repaired := serializeConfigBlocks(repairParentlessHooks(blocks), trailingNewline)
 
 	if strings.Count(repaired, "[[hooks.SessionStart]]\n") != 1 {
 		t.Fatalf("exactly one synthetic SessionStart group header may be inserted, got:\n%s", repaired)
@@ -142,7 +143,7 @@ args = [
 
 	// The foreign entry must still be recognized as one block: its command
 	// stays queryable after a reparse.
-	blocks, err := loadBlocks(path)
+	blocks, _, err := loadBlocks(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,6 +382,85 @@ func TestInstallHooks_RejectsMapFormEvent(t *testing.T) {
 
 	if _, err := upsertHookEntries(path, testEntries(), false); err == nil {
 		t.Fatal("expected an error for the table-form event header")
+	}
+}
+
+func TestInstallHooks_RejectsMapFormEntry(t *testing.T) {
+	// The single-bracket ENTRY form is the same class of corruption as the
+	// single-bracket group: inserting a [[hooks.Stop.hooks]] array next to a
+	// table definition is a TOML type conflict, and the CLI would silently
+	// drop every hook.
+	path := writeConfig(t, `[hooks.Stop.hooks]
+type = "command"
+command = "/usr/local/bin/my-own-stop-hook"
+`)
+
+	if _, err := upsertHookEntries(path, testEntries(), false); err == nil {
+		t.Fatal("expected an error for the table-form entry header")
+	}
+	if strings.Contains(readConfig(t, path), "entire hooks sarvam") {
+		t.Errorf("install must not touch a config it rejects:\n%s", readConfig(t, path))
+	}
+}
+
+func TestInstallHooks_PersistsParentlessRepair(t *testing.T) {
+	// The sarvam docs' example shape: our entries are already present with
+	// exact commands but no [[hooks.<Event>]] group headers, so the CLI
+	// rejects the whole table. install-hooks must persist the repair even
+	// though no entry changed, and the entries must not count as installed
+	// while they are parentless.
+	var content strings.Builder
+	for _, spec := range hookSpecs {
+		content.WriteString("[[hooks." + spec.SarvamEvent + ".hooks]]\n")
+		content.WriteString("type = \"command\"\n")
+		content.WriteString("command = " + encodeTOMLString(hookCommand(spec.HookName)) + "\n")
+	}
+	path := writeConfig(t, content.String())
+
+	spec := hookSpecs[0]
+	command := hookCommand(spec.HookName)
+	if hookEntryInstalled(path, spec.SarvamEvent, command) {
+		t.Fatal("parentless entries must not count as installed: the CLI cannot parse the config")
+	}
+
+	count, err := upsertHookEntries(path, testEntries(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("hooks_installed = %d, want 0 (no entry changed, only the repair)", count)
+	}
+	repaired := readConfig(t, path)
+	for _, spec := range hookSpecs {
+		if !strings.Contains(repaired, "[[hooks."+spec.SarvamEvent+"]]\n[[hooks."+spec.SarvamEvent+".hooks]]") {
+			t.Fatalf("repair not persisted for %s:\n%s", spec.SarvamEvent, repaired)
+		}
+	}
+	if !hookEntryInstalled(path, spec.SarvamEvent, command) {
+		t.Fatal("the repaired config must count as installed")
+	}
+}
+
+func TestUninstallHooks_NoOpLeavesFileUntouched(t *testing.T) {
+	// A config holding none of our entries — indented header, CRLF
+	// endings, no trailing newline — must survive uninstall byte-for-byte.
+	// When an install does change the file, the untouched header keeps its
+	// raw indentation and line ending.
+	content := "\t[model.lite]\r\ncontext_window = 128000"
+	path := writeConfig(t, content)
+
+	if err := removeHookEntries(path); err != nil {
+		t.Fatal(err)
+	}
+	if got := readConfig(t, path); got != content {
+		t.Fatalf("uninstall rewrote a config with no entire entries:\n%q", got)
+	}
+
+	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
+		t.Fatal(err)
+	}
+	if got := readConfig(t, path); !strings.Contains(got, "\t[model.lite]\r\ncontext_window = 128000") {
+		t.Fatalf("the indented CRLF header was rewritten:\n%q", got)
 	}
 }
 
