@@ -174,14 +174,19 @@ func writeSessionPayload(sessionRef string, sessionRaw, messagesRaw json.RawMess
 		return err
 	}
 
-	// A bare messages array carries no session envelope, so a transcript
-	// written from one cannot be imported back into Kilo until the next
-	// prepare-transcript refresh stores the full export.
+	// The messages field wins over messages inside session, but the envelope
+	// still comes from session when it carries one. A bare messages array
+	// alone carries no envelope, so a transcript written from one cannot be
+	// imported back into Kilo until the next prepare-transcript refresh
+	// stores the full export.
 	var export kiloExport
 	switch {
 	case len(messagesRaw) > 0:
 		if err := json.Unmarshal(messagesRaw, &export.Messages); err != nil {
 			return fmt.Errorf("parse messages payload: %w", err)
+		}
+		if parsed, err := parseKiloExport(sessionRaw); err == nil {
+			export.Info = parsed.Info
 		}
 	case len(sessionRaw) > 0:
 		parsed, err := parseKiloExport(sessionRaw)

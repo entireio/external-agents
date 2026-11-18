@@ -178,6 +178,29 @@ func TestWriteSessionPayloadKeepsTranscriptOnEmpty(t *testing.T) {
 	}
 }
 
+// A payload that bundles the export and a messages array keeps the export's
+// envelope, so the transcript it writes can still be imported on restore.
+func TestWriteSessionPayloadKeepsEnvelopeWithMessages(t *testing.T) {
+	t.Parallel()
+	ref := filepath.Join(t.TempDir(), "s.json")
+	session := json.RawMessage(`{"info":{"id":"ses_1","slug":"s"},"messages":[]}`)
+	messages := json.RawMessage(`[{"info":{"id":"m1","role":"user","agent":"code"},"parts":[{"id":"p1","type":"text","text":"hi"}]}]`)
+	if err := writeSessionPayload(ref, session, messages); err != nil {
+		t.Fatalf("writeSessionPayload: %v", err)
+	}
+	data, err := os.ReadFile(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	export, ok, err := exportFromTranscript(data)
+	if err != nil || !ok {
+		t.Fatalf("transcript not importable: ok=%v err=%v (%s)", ok, err, data)
+	}
+	if string(export.Info) != `{"id":"ses_1","slug":"s"}` || len(export.Messages) != 1 {
+		t.Fatalf("export = info %s, %d messages", export.Info, len(export.Messages))
+	}
+}
+
 func TestReadSessionRecoversIDFromMessages(t *testing.T) {
 	repo := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repo)

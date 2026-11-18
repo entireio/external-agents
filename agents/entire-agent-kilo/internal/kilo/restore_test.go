@@ -165,6 +165,29 @@ func TestExportFromTranscriptRebuildsKiloExport(t *testing.T) {
 	assertSameJSON(t, "export", blob, []byte(restoreExport))
 }
 
+// Full native messages can be large (summary diffs, tool output); a line past
+// the old 10 MiB scanner limit must still read and restore.
+func TestTranscriptReadsLineOverTenMiB(t *testing.T) {
+	t.Parallel()
+	big := strings.Repeat("x", 11<<20)
+	export := kiloExport{
+		Info:     json.RawMessage(`{"id":"` + restoreSessionID + `"}`),
+		Messages: []json.RawMessage{json.RawMessage(`{"info":{"id":"m1","role":"user"},"parts":[{"id":"p1","type":"text","text":"` + big + `"}]}`)},
+	}
+	data, err := encodeExportJSONL(export)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := decodeTranscript(data)
+	if err != nil || len(msgs) != 1 {
+		t.Fatalf("decodeTranscript = %d messages, err %v", len(msgs), err)
+	}
+	got, ok, err := exportFromTranscript(data)
+	if err != nil || !ok || len(got.Messages) != 1 || len(got.Messages[0]) < len(big) {
+		t.Fatalf("exportFromTranscript ok=%v err=%v", ok, err)
+	}
+}
+
 func TestExportFromTranscriptNeedsEnvelope(t *testing.T) {
 	t.Parallel()
 	legacy, err := encodeMessagesJSONL([]SessionMessage{makeTextMessage("m1", MessageRoleUser, "hi")})
@@ -248,6 +271,15 @@ func restoredSession(t *testing.T, nativeData []byte) protocol.AgentSessionJSON 
 		RepoPath:   repo,
 		SessionRef: filepath.Join(repo, ".entire", "tmp", "kilo", restoreSessionID+".json"),
 		NativeData: nativeData,
+	}
+}
+
+// A failed import must leave no transcript behind: Entire keeps an existing
+// one without calling write-session again, so a plain retry would not import.
+func assertTranscriptNotWritten(t *testing.T, session protocol.AgentSessionJSON) {
+	t.Helper()
+	if _, err := os.Stat(session.SessionRef); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("transcript written despite the failure (stat err %v)", err)
 	}
 }
 
@@ -336,6 +368,15 @@ func TestWriteSessionReportsFailedImport(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), restoreSessionID) || !strings.Contains(err.Error(), "slug") {
 		t.Fatalf("WriteSession error = %v, want the failed import named", err)
 	}
+	assertTranscriptNotWritten(t, session)
+	// The retry Entire makes once nothing is on disk imports again.
+	runner.importErr = nil
+	if err := (&Agent{CommandRunner: runner}).WriteSession(session); err != nil {
+		t.Fatalf("retry WriteSession: %v", err)
+	}
+	if len(runner.imported) != 2 {
+		t.Fatalf("ImportSession calls = %d, want 2", len(runner.imported))
+	}
 	assertTranscriptWritten(t, session)
 }
 
@@ -365,7 +406,7 @@ func TestWriteSessionReportsFailedSessionCheck(t *testing.T) {
 	if len(runner.imported) != 0 {
 		t.Fatal("imported without knowing whether Kilo holds the session")
 	}
-	assertTranscriptWritten(t, session)
+	assertTranscriptNotWritten(t, session)
 }
 
 // Kilo runs in RepoPath, so a SessionRef relative to this process's directory

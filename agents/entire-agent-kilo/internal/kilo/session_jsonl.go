@@ -1,7 +1,6 @@
 package kilo
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -9,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 )
-
-const maxTranscriptLine = 10 * 1024 * 1024
 
 // The on-disk transcript is stored as JSONL: exactly one Kilo message per
 // line, in order, with no header line. Entire scopes external-agent
@@ -97,12 +94,12 @@ func decodeTranscript(data []byte) ([]SessionMessage, error) {
 // and unparseable lines are skipped, and so are lines with no id, role or
 // parts. decodeTranscript and exportFromTranscript both read through it, so
 // the transcript Entire reads and the one restore imports hold the same
-// messages. fn must copy line to keep it past the call.
+// messages. Lines have no length limit: a message keeps every field Kilo
+// exported, such as summary diffs, and data is already in memory. line
+// aliases data; fn must copy it to keep it independent.
 func eachTranscriptMessage(data []byte, fn func(line []byte, msg SessionMessage) error) error {
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	scanner.Buffer(make([]byte, 64*1024), maxTranscriptLine)
-	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
+	for rawLine := range bytes.SplitSeq(data, []byte{'\n'}) {
+		line := bytes.TrimSpace(rawLine)
 		if len(line) == 0 {
 			continue
 		}
@@ -116,9 +113,6 @@ func eachTranscriptMessage(data []byte, fn func(line []byte, msg SessionMessage)
 		if err := fn(line, msg); err != nil {
 			return err
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("scan kilo transcript: %w", err)
 	}
 	return nil
 }
