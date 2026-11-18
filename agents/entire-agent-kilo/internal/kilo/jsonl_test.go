@@ -32,6 +32,21 @@ func sliceFromLine(content []byte, startLine int) []byte {
 	return content[offset:]
 }
 
+// encodeMessagesJSONL stores typed messages through the production encoder, as
+// an export with no session envelope. Test-only: production keeps Kilo's own
+// message objects (encodeExportJSONL), which carry fields SessionMessage drops.
+func encodeMessagesJSONL(messages []SessionMessage) ([]byte, error) {
+	raws := make([]json.RawMessage, 0, len(messages))
+	for i := range messages {
+		raw, err := json.Marshal(&messages[i])
+		if err != nil {
+			return nil, err
+		}
+		raws = append(raws, raw)
+	}
+	return encodeExportJSONL(kiloExport{Messages: raws})
+}
+
 func fourMessageTranscript(t *testing.T) []byte {
 	t.Helper()
 	msgs := []SessionMessage{

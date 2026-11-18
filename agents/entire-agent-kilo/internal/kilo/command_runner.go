@@ -9,11 +9,16 @@ import (
 	"strings"
 )
 
-// CommandRunner runs `kilo` CLI commands for transcript refresh. The default
-// implementation shells out to the binary. Tests substitute their own runner.
+// CommandRunner runs `kilo` CLI commands for transcript refresh and session
+// restore. The default implementation shells out to the binary. Tests
+// substitute their own runner.
 type CommandRunner interface {
 	// ExportSession returns the Kilo session JSON for sessionID.
 	ExportSession(ctx context.Context, sessionID string) ([]byte, error)
+	// HasSession reports whether Kilo's store already holds sessionID.
+	HasSession(ctx context.Context, dir, sessionID string) (bool, error)
+	// ImportSession loads a session export file into Kilo's store.
+	ImportSession(ctx context.Context, dir, exportPath string) error
 }
 
 type DefaultCommandRunner struct{}

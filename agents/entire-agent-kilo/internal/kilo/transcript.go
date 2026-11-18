@@ -120,7 +120,10 @@ func (a *Agent) WriteSession(session protocol.AgentSessionJSON) error {
 	if err := os.MkdirAll(filepath.Dir(session.SessionRef), 0o700); err != nil {
 		return err
 	}
-	return atomicWriteFile(session.SessionRef, session.NativeData, 0o600)
+	if err := atomicWriteFile(session.SessionRef, session.NativeData, 0o600); err != nil {
+		return err
+	}
+	return a.importRestoredSession(session)
 }
 
 func (a *Agent) ReadTranscript(sessionRef string) ([]byte, error) {

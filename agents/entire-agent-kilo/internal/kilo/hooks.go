@@ -174,10 +174,13 @@ func writeSessionPayload(sessionRef string, sessionRaw, messagesRaw json.RawMess
 		return err
 	}
 
-	var messages []SessionMessage
+	// A bare messages array carries no session envelope, so a transcript
+	// written from one cannot be imported back into Kilo until the next
+	// prepare-transcript refresh stores the full export.
+	var export kiloExport
 	switch {
 	case len(messagesRaw) > 0:
-		if err := json.Unmarshal(messagesRaw, &messages); err != nil {
+		if err := json.Unmarshal(messagesRaw, &export.Messages); err != nil {
 			return fmt.Errorf("parse messages payload: %w", err)
 		}
 	case len(sessionRaw) > 0:
@@ -185,20 +188,19 @@ func writeSessionPayload(sessionRef string, sessionRaw, messagesRaw json.RawMess
 		if err != nil {
 			return err
 		}
-		messages = parsed
+		export = parsed
 	}
 
+	encoded, err := encodeExportJSONL(export)
+	if err != nil {
+		return fmt.Errorf("encode session: %w", err)
+	}
 	// Never overwrite an existing transcript with an empty one. A failed
 	// snapshot on the plugin side sends messages:[]; clobbering here would
 	// destroy the last good transcript. Leave the existing file for
 	// prepare-transcript / the next turn to refresh.
-	if len(messages) == 0 {
+	if len(encoded) == 0 {
 		return nil
-	}
-
-	encoded, err := encodeMessagesJSONL(messages)
-	if err != nil {
-		return fmt.Errorf("encode session: %w", err)
 	}
 	return atomicWriteFile(sessionRef, encoded, 0o600)
 }
@@ -347,16 +349,17 @@ func (a *Agent) fetchSession(sessionID, sessionRef string) error {
 	defer cancel()
 
 	// Export Kilo's native session blob and store it as one-message-per-line
-	// JSONL so downstream scoping works (session_jsonl.go).
+	// JSONL so downstream scoping works and `kilo import` can restore it
+	// (session_jsonl.go).
 	raw, err := runner.ExportSession(ctx, sessionID)
 	if err != nil {
 		return err
 	}
-	messages, err := parseKiloExport(raw)
+	export, err := parseKiloExport(raw)
 	if err != nil {
 		return err
 	}
-	encoded, err := encodeMessagesJSONL(messages)
+	encoded, err := encodeExportJSONL(export)
 	if err != nil {
 		return err
 	}
