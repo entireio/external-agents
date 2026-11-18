@@ -473,6 +473,20 @@ func stubCalls(t *testing.T, logPath string) []string {
 	return strings.Split(strings.TrimSpace(string(data)), "\n")
 }
 
+// assertErrorNaming fails unless err is nil when want is empty, or names want.
+func assertErrorNaming(t *testing.T, call string, err error, want string) {
+	t.Helper()
+	if want == "" {
+		if err != nil {
+			t.Fatalf("%s: %v", call, err)
+		}
+		return
+	}
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("%s error = %v, want one naming %q", call, err, want)
+	}
+}
+
 func TestDefaultRunnerHasSession(t *testing.T) {
 	cases := map[string]struct {
 		body    string
@@ -497,13 +511,7 @@ func TestDefaultRunnerHasSession(t *testing.T) {
 				t.Fatal(err)
 			}
 			got, err := (&DefaultCommandRunner{}).HasSession(context.Background(), repo, restoreSessionID)
-			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-					t.Fatalf("HasSession error = %v, want one naming %q", err, tc.wantErr)
-				}
-			} else if err != nil {
-				t.Fatalf("HasSession: %v", err)
-			}
+			assertErrorNaming(t, "HasSession", err, tc.wantErr)
 			if got != tc.want {
 				t.Fatalf("HasSession = %v, want %v", got, tc.want)
 			}
