@@ -112,7 +112,7 @@ func mustMarshal(t *testing.T, v any) json.RawMessage {
 func sampleRollout(t *testing.T) string {
 	t.Helper()
 	f := &rolloutFixture{}
-	f.addRaw(t, rolloutLine{Timestamp: "2026-11-16T05:59:59.000Z", Type: "session_meta", Payload: json.RawMessage(`{"id":"s-1","cwd":"/repo","source":"cli"}`)})
+	f.addRaw(t, rolloutLine{Timestamp: "2026-11-16T05:59:59.000Z", Type: "session_meta", Payload: json.RawMessage(`{"id":"s-1","cwd":"/repo","source":"cli","cli_version":"0.58.0"}`)})
 	f.user(t, "<environment_context>\n  <cwd>/repo</cwd>\n</environment_context>")
 	f.user(t, "Create hello.txt with the word hello")
 	f.assistant(t, "I'll create the file now.")
@@ -392,16 +392,14 @@ func TestCompactTranscript_KeepsUnterminatedFinalLine(t *testing.T) {
 	}
 	var last struct {
 		Type    string `json:"type"`
-		Message struct {
-			Role    string `json:"role"`
-			Content []struct {
-				Text string `json:"text"`
-			} `json:"content"`
-		} `json:"message"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
 	}
 	unmarshalStrict(t, lines[1], &last)
-	if last.Type != "assistant" || last.Message.Role != "assistant" ||
-		len(last.Message.Content) != 1 || last.Message.Content[0].Text != "done" {
+	if last.Type != "assistant" || len(last.Content) != 1 ||
+		last.Content[0].Type != "text" || last.Content[0].Text != "done" {
 		t.Errorf("final projected line = %+v, want the unterminated assistant reply", last)
 	}
 }
@@ -537,7 +535,11 @@ func TestExtractModifiedFiles_ReadToolsAreNotWrites(t *testing.T) {
 	}
 }
 
-func TestCompactTranscript_ProjectsEntireWireShapes(t *testing.T) {
+func TestCompactTranscript_ProjectsUnifiedRecords(t *testing.T) {
+	// The server's unified gate (isUnifiedTranscript) admits the file only
+	// when the first line carries a top-level user/assistant type and a
+	// top-level content array — the check that rejected our earlier
+	// {"type","message":{…}} projection and left the session page empty.
 	agent := New()
 	path := sampleRollout(t)
 
@@ -551,80 +553,158 @@ func TestCompactTranscript_ProjectsEntireWireShapes(t *testing.T) {
 	}
 
 	lines := splitLines(string(decoded))
-	if len(lines) != 6 {
-		t.Fatalf("projected %d lines, want 6 (user, assistant, tool_use, tool_result, tool_use, assistant):\n%s", len(lines), decoded)
+	if len(lines) != 5 {
+		t.Fatalf("projected %d lines, want 5 (user prompt, assistant preamble, two tool_use records, final assistant reply):\n%s", len(lines), decoded)
 	}
 
 	var first struct {
+		V       int    `json:"v"`
+		Agent   string `json:"agent"`
+		Version string `json:"cli_version"`
 		Type    string `json:"type"`
-		Message struct {
-			Role    string `json:"role"`
-			Content []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"content"`
-		} `json:"message"`
+		TS      string `json:"ts"`
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
 	}
 	unmarshalStrict(t, lines[0], &first)
-	if first.Type != "user" || first.Message.Role != "user" {
-		t.Errorf("first projected line = %+v, want the human user message", first)
+	if first.V != 1 || first.Agent != AgentName || first.Type != "user" || first.TS == "" {
+		t.Errorf("first record = %+v, want a v:1 sarvam user line with a timestamp", first)
 	}
-	if len(first.Message.Content) != 1 || first.Message.Content[0].Text != "Create hello.txt with the word hello" {
-		t.Errorf("first projected content = %+v", first.Message.Content)
+	if first.Version != "0.58.0" {
+		t.Errorf("cli_version = %q, want the session_meta version", first.Version)
 	}
-
-	var toolUse struct {
-		Type    string `json:"type"`
-		Message struct {
-			Role    string `json:"role"`
-			Content []struct {
-				Type  string         `json:"type"`
-				ID    string         `json:"id"`
-				Name  string         `json:"name"`
-				Input map[string]any `json:"input"`
-			} `json:"content"`
-		} `json:"message"`
-	}
-	unmarshalStrict(t, lines[2], &toolUse)
-	if toolUse.Type != "assistant" || toolUse.Message.Role != "assistant" {
-		t.Errorf("tool_use line kind = %s/%s", toolUse.Type, toolUse.Message.Role)
-	}
-	if len(toolUse.Message.Content) != 1 || toolUse.Message.Content[0].Type != "tool_use" {
-		t.Fatalf("tool_use content = %+v", toolUse.Message.Content)
-	}
-	block := toolUse.Message.Content[0]
-	if block.Name != "write_file" || block.ID != "call-1" {
-		t.Errorf("tool_use block = %+v", block)
-	}
-	if block.Input["path"] != "hello.txt" {
-		t.Errorf("tool_use input = %+v, want parsed arguments", block.Input)
+	if len(first.Content) != 1 || first.Content[0].Text != "Create hello.txt with the word hello" {
+		t.Errorf("first content = %+v, want the human prompt as [{text}]", first.Content)
 	}
 
-	var toolResult struct {
+	var preamble struct {
 		Type    string `json:"type"`
-		Message struct {
-			Content []struct {
-				Type      string `json:"type"`
-				ToolUseID string `json:"tool_use_id"`
-				Content   string `json:"content"`
-			} `json:"content"`
-		} `json:"message"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
 	}
-	unmarshalStrict(t, lines[3], &toolResult)
-	if toolResult.Type != "user" {
-		t.Errorf("tool_result line type = %s", toolResult.Type)
+	unmarshalStrict(t, lines[1], &preamble)
+	if preamble.Type != "assistant" || len(preamble.Content) != 1 ||
+		preamble.Content[0].Type != "text" || preamble.Content[0].Text != "I'll create the file now." {
+		t.Errorf("assistant preamble = %+v, want the output_text projected as text", preamble)
 	}
-	if len(toolResult.Message.Content) != 1 || toolResult.Message.Content[0].ToolUseID != "call-1" {
-		t.Fatalf("tool_result content = %+v", toolResult.Message.Content)
+
+	type toolUseRecord struct {
+		Type    string `json:"type"`
+		ID      string `json:"id"`
+		Content []struct {
+			Type   string         `json:"type"`
+			ID     string         `json:"id"`
+			Name   string         `json:"name"`
+			Input  map[string]any `json:"input"`
+			Result *struct {
+				Output string `json:"output"`
+				Status string `json:"status"`
+			} `json:"result"`
+		} `json:"content"`
 	}
-	if !contains(toolResult.Message.Content[0].Content, "Success") {
-		t.Errorf("tool_result content = %q, want the raw output", toolResult.Message.Content[0].Content)
+	var writeCall toolUseRecord
+	unmarshalStrict(t, lines[2], &writeCall)
+	if writeCall.Type != "assistant" || writeCall.ID != "call-1" {
+		t.Errorf("write_file record = %+v, want the assistant tool_use line keyed by call id", writeCall)
+	}
+	if len(writeCall.Content) != 1 || writeCall.Content[0].Type != "tool_use" || writeCall.Content[0].Name != "write_file" {
+		t.Fatalf("write_file block = %+v", writeCall.Content)
+	}
+	if writeCall.Content[0].Input["path"] != "hello.txt" {
+		t.Errorf("write_file input = %+v, want parsed arguments", writeCall.Content[0].Input)
+	}
+	if writeCall.Content[0].Result == nil || writeCall.Content[0].Result.Output != "Success" || writeCall.Content[0].Result.Status != "success" {
+		t.Errorf("write_file result = %+v, want the call output nested with success status", writeCall.Content[0].Result)
+	}
+
+	// The exec_command call has no output line in the fixture, so its
+	// tool_use block carries no nested result. A fresh variable: json
+	// merges into an existing map, so reusing writeCall would keep
+	// call-1's input and result.
+	var execCall toolUseRecord
+	unmarshalStrict(t, lines[3], &execCall)
+	if execCall.Content[0].Name != "exec_command" || execCall.Content[0].Result != nil {
+		t.Errorf("exec_command block = %+v, want no nested result without an output record", execCall.Content[0])
+	}
+
+	var done struct {
+		Type    string `json:"type"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	unmarshalStrict(t, lines[4], &done)
+	if done.Type != "assistant" || len(done.Content) != 1 || done.Content[0].Text != "done" {
+		t.Errorf("final record = %+v, want the closing assistant reply", done)
 	}
 
 	// The harness-context user line must be gone.
 	for _, line := range lines {
 		if contains(line, "environment_context") {
-			t.Errorf("harness context leaked into the projected transcript: %s", line)
+			t.Errorf("harness context leaked into the compacted transcript: %s", line)
 		}
+	}
+}
+
+func TestCompactTranscript_ToolResultStatus(t *testing.T) {
+	// A non-zero exec exit code is reported the way qwen's compactor
+	// reports it; a non-envelope output string is kept verbatim.
+	agent := New()
+	f := &rolloutFixture{}
+	f.functionCall(t, "exec_command", "call-1", `{"cmd":"make test"}`)
+	f.callOutput(t, "call-1", `{"output":"make: *** [test] Error 1","metadata":{"exit_code":2}}`)
+	f.functionCall(t, "exec_command", "call-2", `{"cmd":"echo hi"}`)
+	f.callOutput(t, "call-2", "plain text output")
+	path := f.write(t)
+
+	resp, err := agent.CompactTranscript(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := base64Decode(resp.Transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	lines := splitLines(string(decoded))
+	if len(lines) != 2 {
+		t.Fatalf("projected %d lines, want the two tool_use records:\n%s", len(lines), decoded)
+	}
+	var record struct {
+		Content []struct {
+			Result *struct {
+				Output string `json:"output"`
+				Status string `json:"status"`
+			} `json:"result"`
+		} `json:"content"`
+	}
+	unmarshalStrict(t, lines[0], &record)
+	if len(record.Content) != 1 || record.Content[0].Result == nil ||
+		record.Content[0].Result.Status != "error" || record.Content[0].Result.Output != "make: *** [test] Error 1" {
+		t.Errorf("failed call result = %+v, want error status with the output text", record.Content[0].Result)
+	}
+	unmarshalStrict(t, lines[1], &record)
+	if len(record.Content) != 1 || record.Content[0].Result == nil ||
+		record.Content[0].Result.Status != "success" || record.Content[0].Result.Output != "plain text output" {
+		t.Errorf("plain output result = %+v, want success with the raw string", record.Content[0].Result)
+	}
+}
+
+func TestCompactTranscript_NoProjectableContentErrors(t *testing.T) {
+	// Mirrors qwen's compactor: an empty projection is an error, so the
+	// CLI stores no transcript.jsonl rather than a file the server's gate
+	// would reject.
+	agent := New()
+	f := &rolloutFixture{}
+	f.addRaw(t, rolloutLine{Timestamp: "2026-11-16T06:00:00.000Z", Type: "session_meta", Payload: json.RawMessage(`{"id":"s-1","cwd":"/repo","source":"cli"}`)})
+	f.addRaw(t, rolloutLine{Timestamp: "2026-11-16T06:00:01.000Z", Type: "event_msg", Payload: json.RawMessage(`{"type":"token_count"}`)})
+	path := f.write(t)
+
+	if _, err := agent.CompactTranscript(path); err == nil {
+		t.Fatal("expected an error when nothing is projectable")
 	}
 }

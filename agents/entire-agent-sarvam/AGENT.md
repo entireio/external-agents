@@ -174,6 +174,7 @@ subcommand maps to a native concept. Two caveats shape the integration:
 | `uninstall-hooks` | reverse of install | Remove only entire-owned entries | If hooks capable |
 | `are-hooks-installed` | project config check | All installed events present | If hooks capable |
 | `get-transcript-position` | physical line count | Line index consumed so far; a torn final line is excluded so late bytes are not skipped | If transcript analyzer |
+| `compact-transcript` | Entire Transcript Format | Project rollout records into v:1 unified lines — top-level content array, tool outputs nested as the tool_use block's result — the shape the server's unified parser renders | If compact capable |
 | `extract-modified-files` | `function_call` entries | Write-tool allowlist: `write_file`/`edit_file` `path`; `exec_command` (`cmd`, older releases `command`) shell redirects; read-only tools excluded | If transcript analyzer |
 | `extract-prompts` | user messages | `input_text`, drop `<environment_context>` | If transcript analyzer |
 | `extract-summary` | — | No native summary in session files → `has_summary=false` | If transcript analyzer |
@@ -185,6 +186,7 @@ subcommand maps to a native concept. Two caveats shape the integration:
 |-----------|----------|---------------|
 | hooks | true | Native TOML hook config; install/uninstall/is-installed map directly |
 | transcript_analyzer | true | Native JSONL transcripts with full content |
+| compact_transcript | true | Projects the rollout into the v:1 unified transcript format the server renders |
 | transcript_preparer | false | Native transcript already structured; no preprocessing needed |
 | token_calculator | true | `token_count` events carry per-call usage |
 | text_generator | false | Would require live model API per invocation; out of scope |

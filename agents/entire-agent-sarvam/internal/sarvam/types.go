@@ -73,6 +73,10 @@ type sarvamHookInput struct {
 
 // --- Native rollout JSONL (session file) types ---
 
+// rolloutLineTypeResponseItem marks the rollout lines that carry the
+// conversation content: messages, function calls and their outputs.
+const rolloutLineTypeResponseItem = "response_item"
+
 type rolloutLine struct {
 	Timestamp string          `json:"timestamp"`
 	Type      string          `json:"type"` // session_meta | turn_context | event_msg | response_item

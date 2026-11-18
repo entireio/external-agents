@@ -103,7 +103,7 @@ func (a *Agent) ExtractModifiedFiles(path string, offset int) ([]string, int, er
 
 	seen := map[string]struct{}{}
 	for _, line := range lines[start:] {
-		if line.Type != "response_item" {
+		if line.Type != rolloutLineTypeResponseItem {
 			continue
 		}
 		var call rolloutFunctionCall
@@ -175,7 +175,7 @@ func (a *Agent) ExtractPrompts(sessionRef string, offset int) ([]string, error) 
 
 	var prompts []string
 	for _, line := range lines[start:] {
-		if line.Type != "response_item" {
+		if line.Type != rolloutLineTypeResponseItem {
 			continue
 		}
 		var message rolloutMessage
@@ -260,7 +260,7 @@ func (a *Agent) ExtractSummary(sessionRef string) (string, bool, error) {
 	}
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := lines[i]
-		if line.Type != "response_item" {
+		if line.Type != rolloutLineTypeResponseItem {
 			continue
 		}
 		var message rolloutMessage
