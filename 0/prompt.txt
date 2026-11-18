@@ -1,0 +1,102 @@
+ok, but if a user would enable it we would put the hooks into the repo local .sarvam/config.toml, right?
+
+---
+
+ok, then also commit .sarvam folder as part of this branch since it should be there for future sarvam-code usage / tests
+
+---
+
+I restarted sarvam-code in between, so the hooks were reloaded in this session and the commit has the right trailer: 
+
+commit c4b60305ecd3627337ad752aac10806cf0cb3e5a (HEAD -> soph/add-sarvam-with-sarvam)
+Author: Stefan Haubold <stefan@entire.io>
+Date:   Mon Nov 16 07:45:52 2026 +0100
+
+    Document the Sarvam Code external agent in the README.
+
+    �<9F>�� Generated with Sarvam Code
+
+    Co-authored-by: Sarvam Code <code@sarvam.ai>
+    Entire-Checkpoint: 01M7KN8YRM0P8VYWQKYN4QTPN3
+
+---
+
+ok, can you open a trail for the integration now
+
+---
+
+can you look at the trail findings
+
+---
+
+can you also look at the copilot finding on the PR that was created for this branch when the trail was opened
+
+---
+
+can you check if there are new findings?
+
+---
+
+can you check again
+
+---
+
+can you check why CI is failing?
+
+---
+
+can you look at the trail findings again
+
+---
+
+can you maybe also look on the codex implementation in the cli repo what it does on PreCompact/PostCompact might be a better reference then qwen
+
+---
+
+Trail mein jaake findings solve kar do
+
+---
+
+can you take a look, if we need this too for the agent: https://github.com/entireio/external-agents/pull/73
+
+---
+
+I found it. Sarvam's compactor writes `transcript.jsonl` in the wrong format, so the server has nothing it can read and the page shows only the checkpoint list.
+
+**What the checkpoint holds** (`refs/entire/checkpoints/7F/01M7PVCV1FKAK749K88N01AQ7F` in `entireio/external-agents`, agent `"Sarvam Code"`):
+
+- **`full.jsonl`** (19 MB) is Sarvam's own session log, in Codex rollout format (`session_meta`, `event_msg`, `response_item` lines).
+- **`transcript.jsonl`** (2 MB) has 1,669 lines, all shaped like `{"type":"user","message":{"role":...,"content":[...]}}`, which is Claude's wire format.
+
+**How the server handles it:** Sarvam has no parser of its own on the server, so `ResolveBlobWithCompactFallback` (`internal/transcript/budget.go:186`) runs:
+
+1. `full.jsonl` goes through the fallback, which is the Claude parser. It can't read Codex lines and returns 0 messages.
+2. It then tries `transcript.jsonl`. `isUnifiedTranscript` (`internal/transcript/unified.go:34`) only accepts a first line with a top-level `content` array, which is the Entire Transcript Format. Sarvam's first line has `message` instead, so this file also goes to the Claude fallback. That returns messages, but marked as a fallback parse.
+3. Line 198 only accepts a compact-file result that is *not* a fallback parse. This one is, so it gets dropped and the 0-message result from step 1 is served.
+
+I ran the server's parsers on the real files to confirm (a throwaway test, already deleted):
+
+```
+served:                msgs=0  fallback=true
+full via fallback:     msgs=0
+compact via fallback:  msgs=18 isFallback=true unified=false
+full via codex parser: msgs=34
+```
+
+**Root cause:** `agents/entire-agent-sarvam/internal/sarvam/compact.go` in your `soph/add-sarvam-with-sarvam` worktree. It copies the shape Entire's compactor *reads*, `{"type", "message": {...}}`, instead of the shape it *writes*. Qwen, Grok and Kilo emit the right format, for example in `entire-agent-qwen/internal/qwen/compact.go`:
+
+```go
+{"v":1,"agent":"...","cli_version":"...","type":"user|assistant","ts":"...","id":"...","content":[...]}
+```
+
+User lines use `[{text}]`. Assistant lines use `[{type:"text"|"thinking"|"tool_use", ..., result:{output,status}}]`, with the tool result nested inside the `tool_use` block rather than on a separate user line. The file's own doc comment even says it produces "Entire Transcript Format".
+
+**Fix:** rewrite the projection in `compact.go` to produce `v:1` lines, modelled on Qwen's or Grok's compactor. The server needs no change. This session's checkpoints will stay empty, though, because the bad `transcript.jsonl` is already stored. They only render after a fresh capture with the fixed agent.
+
+There is a server-side alternative. `full.jsonl` is plain Codex rollout, and the Codex parser already reads it (34 messages), so mapping "Sarvam Code" to the Codex parser would also render this session. I wouldn't do it: it ties the server to a fork's log format, and new agents need matching frontend changes too.
+
+Should I make the `compact.go` change in the external-agents worktree?
+
+---
+
+can you also install a new binary then, so that all new hooks firing would write the right format now
