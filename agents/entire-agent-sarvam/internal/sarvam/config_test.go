@@ -431,6 +431,59 @@ func TestUninstallHooks_RemovesEmptyManagedGroups(t *testing.T) {
 	}
 }
 
+func TestUninstallHooks_RemovesLegacyPreCompactScaffolding(t *testing.T) {
+	// An older release installed a PreCompact hook; that release's config
+	// still carries its group and entry. Uninstall must remove the owned
+	// entry and the empty group it leaves behind, while never touching a
+	// PreCompact group the user authored without our entry.
+	legacy := "[[hooks.PreCompact]]\n[[hooks.PreCompact.hooks]]\ntype = \"command\"\ncommand = " + encodeTOMLString(hookCommand("pre-compact")) + "\n"
+	path := writeConfig(t, legacy+`[[hooks.SessionStart]]
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "/usr/local/bin/my-own-start-hook"
+`)
+
+	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeHookEntries(path); err != nil {
+		t.Fatal(err)
+	}
+
+	content := readConfig(t, path)
+	if strings.Contains(content, "PreCompact") {
+		t.Fatalf("uninstall left the legacy pre-compact scaffolding behind:\n%s", content)
+	}
+	if strings.Contains(content, "entire hooks sarvam") {
+		t.Errorf("uninstall left our entries behind:\n%s", content)
+	}
+	if !strings.Contains(content, `command = "/usr/local/bin/my-own-start-hook"`) {
+		t.Errorf("uninstall removed the user's hook entry:\n%s", content)
+	}
+}
+
+func TestUninstallHooks_KeepsUserAuthoredPreCompactGroup(t *testing.T) {
+	// An empty PreCompact group the user wrote — never parented by one of
+	// our entries — is theirs, not legacy residue: uninstall leaves it.
+	path := writeConfig(t, `[[hooks.PreCompact]]
+`)
+
+	if _, err := upsertHookEntries(path, testEntries(), false); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeHookEntries(path); err != nil {
+		t.Fatal(err)
+	}
+
+	content := readConfig(t, path)
+	if !strings.Contains(content, "[[hooks.PreCompact]]") {
+		t.Fatalf("uninstall removed the user's own pre-compact group:\n%s", content)
+	}
+	if strings.Contains(content, "entire hooks sarvam") {
+		t.Errorf("uninstall left our entries behind:\n%s", content)
+	}
+}
+
 func TestUninstallHooks_ForeignEntryKeepsOnlyItsGroup(t *testing.T) {
 	// The user's own SessionStart entry shares our event. After uninstall
 	// their group and entry stay and our group is gone — an empty managed

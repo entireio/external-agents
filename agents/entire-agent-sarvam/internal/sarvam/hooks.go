@@ -88,7 +88,7 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 			ResponseMessage: native.LastAssistantMessage,
 			Metadata:        metadata,
 		}, nil
-	case "PreCompact", "PostCompact":
+	case "PostCompact":
 		return &protocol.EventJSON{
 			Type:       4,
 			SessionID:  a.sessionID(native),
@@ -98,8 +98,10 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 			Metadata:   metadata,
 		}, nil
 	default:
-		// PreToolUse, PostToolUse, PermissionRequest, and anything unknown:
-		// no lifecycle significance for Entire.
+		// PreCompact (a legacy install may still fire it — compaction is
+		// reported once, from PostCompact), PreToolUse, PostToolUse,
+		// PermissionRequest, and anything unknown: no lifecycle
+		// significance for Entire.
 		return nil, nil
 	}
 }

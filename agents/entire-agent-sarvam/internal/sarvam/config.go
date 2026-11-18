@@ -371,11 +371,12 @@ func upsertHookEntries(path string, entries []configHookEntry, force bool) (int,
 		return 0, err
 	}
 	if force {
-		blocks = dropEntireEntries(blocks)
+		var removedEvents map[string]bool
+		blocks, removedEvents = dropEntireEntries(blocks)
 		// The dropped entries strand their [[hooks.<Event>]] group headers;
 		// without this clean-up every force install would leave another
 		// empty group behind.
-		blocks = dropEmptyManagedGroups(blocks)
+		blocks = dropEmptyManagedGroups(blocks, removedEvents)
 	}
 	blocks = repairParentlessHooks(blocks)
 
@@ -446,7 +447,8 @@ func upsertOne(blocks *[]tomlBlock, entry configHookEntry) bool {
 	return true
 }
 
-// removeHookEntries deletes every entry this adapter owns.
+// removeHookEntries deletes every entry this adapter owns, plus the empty
+// matcher-group headers those entries strand behind.
 func removeHookEntries(path string) error {
 	blocks, err := loadBlocks(path)
 	if err != nil {
@@ -455,34 +457,41 @@ func removeHookEntries(path string) error {
 	if len(blocks) == 1 && len(blocks[0].body) == 0 && blocks[0].header == "" {
 		return nil // no config at all
 	}
-	kept := dropEntireEntries(blocks)
-	kept = dropEmptyManagedGroups(kept)
+	kept, removedEvents := dropEntireEntries(blocks)
+	kept = dropEmptyManagedGroups(kept, removedEvents)
 	return saveBlocks(path, kept)
 }
 
-func dropEntireEntries(blocks []tomlBlock) []tomlBlock {
+// dropEntireEntries deletes every entry this adapter owns and reports which
+// events lost one, so the group cleanup that follows only removes headers
+// our own entries stranded.
+func dropEntireEntries(blocks []tomlBlock) ([]tomlBlock, map[string]bool) {
+	removedEvents := map[string]bool{}
 	out := make([]tomlBlock, 0, len(blocks))
 	for _, block := range blocks {
 		event, kind := headerEvent(block.header)
 		if event != "" && kind == kindHooks && isEntireEntry(block) {
+			removedEvents[event] = true
 			continue
 		}
 		out = append(out, block)
 	}
-	return out
+	return out, removedEvents
 }
 
-// dropEmptyManagedGroups removes [[hooks.<Event>]] group headers for our
-// managed events that no longer parent any hook entry: an empty group is
-// kept only when a same-event [[hooks.<Event>.hooks]] entry immediately
-// follows it — the parent relationship TOML array-of-tables gives an entry.
-// A group that still carries content (a matcher) always stays, and foreign
-// events are never touched.
-func dropEmptyManagedGroups(blocks []tomlBlock) []tomlBlock {
+// dropEmptyManagedGroups removes [[hooks.<Event>]] group headers that our
+// removed entries leave stranded: an empty group goes only when the event
+// lost one of our owned entries in this pass and no same-event
+// [[hooks.<Event>.hooks]] entry immediately follows it — the parent
+// relationship TOML array-of-tables gives an entry. A group that still
+// carries content (a matcher) always stays, and a group the user authored
+// alone — including for legacy events an older release installed — is
+// theirs, never ours to clean.
+func dropEmptyManagedGroups(blocks []tomlBlock, removedEvents map[string]bool) []tomlBlock {
 	out := make([]tomlBlock, 0, len(blocks))
 	for i, block := range blocks {
 		event, kind := headerEvent(block.header)
-		if event != "" && kind == "group" && isManagedEvent(event) &&
+		if event != "" && kind == "group" && removedEvents[event] &&
 			len(block.body) == 0 && !followedBySameEventEntry(blocks, i) {
 			continue
 		}

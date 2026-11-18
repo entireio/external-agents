@@ -34,7 +34,6 @@ func TestParseHook_NativePayloads(t *testing.T) {
 		{"SessionStart", 1, "", ""},
 		{"UserPromptSubmit", 2, "Use the shell to run the command: echo hi > hi.txt and then reply done", ""},
 		{"Stop", 3, "", "done"},
-		{"PreCompact", 4, "", ""},
 		{"PostCompact", 4, "", ""},
 	}
 	for _, tc := range cases {
@@ -86,6 +85,30 @@ func TestParseHook_ToolAndPermissionEventsAreNull(t *testing.T) {
 				t.Fatalf("expected nil event for %s, got %+v", event, eventJSON)
 			}
 		})
+	}
+}
+
+func TestParseHook_PreCompactIsANoOp(t *testing.T) {
+	// PreCompact is no longer installed: compaction is reported once, from
+	// PostCompact. A config carrying the legacy entry may still fire the
+	// hook, and it must degrade to a non-lifecycle no-op rather than emit a
+	// second Compaction event.
+	agent := New()
+	event, err := agent.ParseHook("pre-compact", capturedPayload(t, "PreCompact"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event != nil {
+		t.Fatalf("legacy pre-compact must not emit a lifecycle event, got %+v", event)
+	}
+
+	// The kebab-case flag alone must degrade the same way.
+	event, err = agent.ParseHook("pre-compact", []byte(`{"session_id":"s1","hook_event_name":"PreCompact"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event != nil {
+		t.Fatalf("legacy pre-compact without a payload event name must not emit, got %+v", event)
 	}
 }
 

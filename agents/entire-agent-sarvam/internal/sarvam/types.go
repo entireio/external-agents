@@ -35,12 +35,17 @@ type hookSpec struct {
 // PostToolUse and PermissionRequest, but Entire has no event type for
 // tool/permission activity, and the native rollout transcript already
 // records tool calls, so installing them would only add /hooks review
-// burden without feeding Entire anything it consumes.
+// burden without feeding Entire anything it consumes. PreCompact is
+// deliberately absent as well: compaction needs one signal, and PostCompact
+// fires once the append-only rollout already carries the compacted record —
+// the in-CLI integrations that use a compact hook (cursor, factoryai-droid)
+// install exactly one, and Entire's compaction handler is hardened against
+// noisy pre-compress events. A config still carrying a legacy pre-compact
+// entry parses to a no-op.
 var hookSpecs = []hookSpec{
 	{SarvamEvent: "SessionStart", HookName: "session-start", EntryName: "entire-session-start", EventType: 1},
 	{SarvamEvent: "UserPromptSubmit", HookName: "user-prompt-submit", EntryName: "entire-user-prompt-submit", EventType: 2},
 	{SarvamEvent: "Stop", HookName: "stop", EntryName: "entire-stop", EventType: 3},
-	{SarvamEvent: "PreCompact", HookName: "pre-compact", EntryName: "entire-pre-compact", EventType: 4},
 	{SarvamEvent: "PostCompact", HookName: "post-compact", EntryName: "entire-post-compact", EventType: 4},
 }
 

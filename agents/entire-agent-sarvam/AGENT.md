@@ -62,8 +62,8 @@ subcommand maps to a native concept. Two caveats shape the integration:
   | `SessionStart` | session begins / first turn starts | 1 = SessionStart |
   | `UserPromptSubmit` | user submits a prompt | 2 = TurnStart |
   | `Stop` | agent ends its turn | 3 = TurnEnd |
-  | `PreCompact` | before context compaction | 4 = Compaction |
   | `PostCompact` | after context compaction | 4 = Compaction |
+  | `PreCompact` | before context compaction | not installed — compaction is reported once, from PostCompact; legacy entries parse to a no-op |
   | `PreToolUse` | before a tool call (needs matcher) | null (not forwarded) |
   | `PostToolUse` | after a tool call (needs matcher) | null (not forwarded) |
   | `PermissionRequest` | permission approval needed | null (not forwarded) |

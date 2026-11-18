@@ -17,9 +17,13 @@ content, and `token_count` events feed token usage per checkpoint.
 | `uses_terminal` | yes — Sarvam Code is a TUI agent |
 | `text_generator` / `hook_response_writer` / `subagent_aware_extractor` / `transcript_preparer` | no |
 
-Events installed: `SessionStart`, `UserPromptSubmit`, `Stop`, `PreCompact`,
+Events installed: `SessionStart`, `UserPromptSubmit`, `Stop`,
 `PostCompact`. Tool and permission events are not installed: Entire has no
 event type for them, and the native transcript already records tool calls.
+`PreCompact` is not installed either: compaction is reported once, from
+`PostCompact`, which fires after the append-only rollout has recorded the
+compacted history — a config still carrying a legacy pre-compact entry
+parses to a no-op.
 
 ## Build and install
 

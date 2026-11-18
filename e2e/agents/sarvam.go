@@ -24,7 +24,7 @@ import (
 //     (verified behavior), and the review itself is pre-seeded by writing the
 //     exact [hooks.state] entries the TUI's /hooks flow would persist:
 //     the CLI derives each entry's trusted_hash from the hook's command
-//     alone, so the five hashes below are stable per sarvam-code version.
+//     alone, so the four hashes below are stable per sarvam-code version.
 //     If a future CLI changes the derivation, the TUI re-shows the review
 //     banner and StartSession fails loudly instead of running a test with
 //     dead hooks — recapture the hashes with scripts/verify-sarvam.sh.
@@ -47,7 +47,6 @@ var sarvamHookState = []struct {
 	{"session_start", "sha256:1cd654ae23cc41c058583eece8fe97be06bd45dcbc4bf6b897ca2d5777994f86"},
 	{"user_prompt_submit", "sha256:a2cd5c4ed3c0135b417b0d5b8dda1f5a89afb1d7bd70838ad5b24579944dd2f2"},
 	{"stop", "sha256:5e31e6f47e017036524da915fee1bbf8bc93eb763a038b87a9d12a74e230d114"},
-	{"pre_compact", "sha256:fd54e6e411ead01e516ff1f394ca5c777a32ca53e66bcfeb20e76791a2a36aef"},
 	{"post_compact", "sha256:2e69c9d8c6f029b3768b05f272f45cf23944cbe34800e813cc6d7b755655c5a3"},
 }
 
@@ -196,7 +195,7 @@ func (s *Sarvam) StartSession(ctx context.Context, dir string) (Session, error) 
 
 // seedSarvamHookTrust writes the [hooks.state] entries a completed /hooks
 // review would persist: enabled = true plus the CLI's trusted_hash for each
-// of the five hooks entire-agent-sarvam installs. Missing entries are
+// of the four hooks entire-agent-sarvam installs. Missing entries are
 // appended; existing state for other repos is left untouched.
 func seedSarvamHookTrust(repoDir string) error {
 	configPath := sarvamUserConfigPath()
