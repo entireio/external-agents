@@ -339,6 +339,62 @@ func TestWriteSessionReportsFailedImport(t *testing.T) {
 	assertTranscriptWritten(t, session)
 }
 
+func TestWriteSessionRefusesEnvelopeIDThatReadsAsOption(t *testing.T) {
+	t.Parallel()
+	transcript := bytes.Replace(restoreTranscript(t), []byte(`"id":"`+restoreSessionID+`"`), []byte(`"id":"--help"`), 1)
+	runner := &fakeRestoreRunner{}
+	session := restoredSession(t, transcript)
+	session.SessionID = ""
+	err := (&Agent{CommandRunner: runner}).WriteSession(session)
+	if err == nil || !strings.Contains(err.Error(), "--help") {
+		t.Fatalf("WriteSession error = %v, want the bad id refused", err)
+	}
+	if len(runner.hasCalls) != 0 || len(runner.imported) != 0 {
+		t.Fatal("ran kilo with an id that reads as an option")
+	}
+}
+
+func TestWriteSessionReportsFailedSessionCheck(t *testing.T) {
+	t.Parallel()
+	runner := &fakeRestoreRunner{hasErr: errors.New("kilo export: exit status 1: Error: database is locked")}
+	session := restoredSession(t, restoreTranscript(t))
+	err := (&Agent{CommandRunner: runner}).WriteSession(session)
+	if err == nil || !strings.Contains(err.Error(), restoreSessionID) || !strings.Contains(err.Error(), "database is locked") {
+		t.Fatalf("WriteSession error = %v, want the failed check named", err)
+	}
+	if len(runner.imported) != 0 {
+		t.Fatal("imported without knowing whether Kilo holds the session")
+	}
+	assertTranscriptWritten(t, session)
+}
+
+// Kilo runs in RepoPath, so a SessionRef relative to this process's directory
+// must reach it as an absolute path.
+func TestWriteSessionGivesKiloAnAbsoluteImportPath(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	runner := &fakeRestoreRunner{}
+	session := restoredSession(t, restoreTranscript(t))
+	session.SessionRef = filepath.Join(".entire", "tmp", "kilo", restoreSessionID+".json")
+	if err := (&Agent{CommandRunner: runner}).WriteSession(session); err != nil {
+		t.Fatalf("WriteSession: %v", err)
+	}
+	assertTranscriptWritten(t, session)
+	if len(runner.imports) != 1 {
+		t.Fatalf("ImportSession calls = %d, want 1", len(runner.imports))
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := runner.imports[0], filepath.Join(wd, ".entire", "tmp", "kilo"); !filepath.IsAbs(got) || filepath.Dir(got) != want {
+		t.Fatalf("import path = %q, want an absolute path in %q", got, want)
+	}
+	if runner.importDirs[0] != session.RepoPath {
+		t.Fatalf("import ran in %q, want the repo %q", runner.importDirs[0], session.RepoPath)
+	}
+}
+
 func TestWriteSessionRejectsTranscriptOfAnotherSession(t *testing.T) {
 	t.Parallel()
 	runner := &fakeRestoreRunner{}
@@ -378,15 +434,19 @@ func stubCalls(t *testing.T, logPath string) []string {
 
 func TestDefaultRunnerHasSession(t *testing.T) {
 	cases := map[string]struct {
-		body string
-		want bool
+		body    string
+		want    bool
+		wantErr string
 	}{
-		"exported":       {body: `printf '{"info":{"id":"%s"},"messages":[{"info":{"id":"m1"}}]}' "$2"`, want: true},
-		"not found":      {body: `echo 'Error: Session not found' >&2; exit 1`, want: false},
+		"exported": {body: `printf '{"info":{"id":"%s"},"messages":[{"info":{"id":"m1"}}]}' "$2"`, want: true},
+		// Kilo 7.8.27's answer for an unknown id, colors included.
+		"not found":      {body: `printf 'Exporting session: %s\n\033[91m\033[1mError: \033[0mSession not found: %s\n' "$2" "$2" >&2; exit 1`, want: false},
 		"other session":  {body: `printf '{"info":{"id":"ses_other"},"messages":[{"info":{"id":"m1"}}]}'`, want: false},
 		"help exit zero": {body: `echo 'Commands: kilo run'`, want: false},
 		// What a `kilo import` that failed on its first message leaves behind.
 		"no messages": {body: `printf '{"info":{"id":"%s"},"messages":[]}' "$2"`, want: false},
+		// A failure that says nothing about the session must not read as absent.
+		"other failure": {body: `echo 'Error: database is locked' >&2; exit 1`, wantErr: "database is locked"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -396,7 +456,11 @@ func TestDefaultRunnerHasSession(t *testing.T) {
 				t.Fatal(err)
 			}
 			got, err := (&DefaultCommandRunner{}).HasSession(context.Background(), repo, restoreSessionID)
-			if err != nil {
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("HasSession error = %v, want one naming %q", err, tc.wantErr)
+				}
+			} else if err != nil {
 				t.Fatalf("HasSession: %v", err)
 			}
 			if got != tc.want {

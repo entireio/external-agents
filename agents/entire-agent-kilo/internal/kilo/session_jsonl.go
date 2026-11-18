@@ -82,6 +82,23 @@ func isJSONObject(raw json.RawMessage) bool {
 // disk.
 func decodeTranscript(data []byte) ([]SessionMessage, error) {
 	messages := make([]SessionMessage, 0)
+	err := eachTranscriptMessage(data, func(_ []byte, msg SessionMessage) error {
+		messages = append(messages, msg)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+// eachTranscriptMessage calls fn, in order, with every line of a stored
+// transcript that counts as a message, and the message it decodes to. Blank
+// and unparseable lines are skipped, and so are lines with no id, role or
+// parts. decodeTranscript and exportFromTranscript both read through it, so
+// the transcript Entire reads and the one restore imports hold the same
+// messages. fn must copy line to keep it past the call.
+func eachTranscriptMessage(data []byte, fn func(line []byte, msg SessionMessage) error) error {
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	scanner.Buffer(make([]byte, 64*1024), maxTranscriptLine)
 	for scanner.Scan() {
@@ -96,12 +113,14 @@ func decodeTranscript(data []byte) ([]SessionMessage, error) {
 		if msg.Info.ID == "" && msg.Info.Role == "" && len(msg.Parts) == 0 {
 			continue
 		}
-		messages = append(messages, msg)
+		if err := fn(line, msg); err != nil {
+			return err
+		}
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan kilo transcript: %w", err)
+		return fmt.Errorf("scan kilo transcript: %w", err)
 	}
-	return messages, nil
+	return nil
 }
 
 // parseKiloExport reads Kilo's native session export (a single JSON object
@@ -128,34 +147,29 @@ func parseKiloExport(raw []byte) (kiloExport, error) {
 // needs, so there is nothing to import.
 func exportFromTranscript(data []byte) (kiloExport, bool, error) {
 	var export kiloExport
-	for rawLine := range bytes.SplitSeq(data, []byte{'\n'}) {
-		line := bytes.TrimSpace(rawLine)
-		if len(line) == 0 {
-			continue
-		}
-		var msg SessionMessage
-		if json.Unmarshal(line, &msg) != nil {
-			continue
-		}
-		if msg.Info.ID == "" && msg.Info.Role == "" && len(msg.Parts) == 0 {
-			continue
-		}
+	err := eachTranscriptMessage(data, func(line []byte, _ SessionMessage) error {
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(line, &fields); err != nil {
-			continue
+			return fmt.Errorf("decode kilo message: %w", err)
 		}
-		if envelope, found := fields[sessionEnvelopeKey]; found {
-			if len(export.Info) == 0 {
-				export.Info = envelope
-			}
-			delete(fields, sessionEnvelopeKey)
-			stripped, err := marshalNoHTMLEscape(fields)
-			if err != nil {
-				return kiloExport{}, false, err
-			}
-			line = stripped
+		envelope, found := fields[sessionEnvelopeKey]
+		if !found {
+			export.Messages = append(export.Messages, json.RawMessage(bytes.Clone(line)))
+			return nil
 		}
-		export.Messages = append(export.Messages, json.RawMessage(bytes.Clone(line)))
+		if len(export.Info) == 0 {
+			export.Info = envelope
+		}
+		delete(fields, sessionEnvelopeKey)
+		stripped, err := marshalNoHTMLEscape(fields)
+		if err != nil {
+			return err
+		}
+		export.Messages = append(export.Messages, json.RawMessage(stripped))
+		return nil
+	})
+	if err != nil {
+		return kiloExport{}, false, err
 	}
 	if len(export.Info) == 0 || len(export.Messages) == 0 {
 		return kiloExport{}, false, nil

@@ -46,6 +46,11 @@ func (a *Agent) importRestoredSession(session protocol.AgentSessionJSON) error {
 	if envelope.ID == "" {
 		return errors.New("kilo session envelope has no id")
 	}
+	// The id goes to kilo as an argument; one starting with "-" would read as
+	// an option. Entire's own session ids never start with one.
+	if strings.HasPrefix(envelope.ID, "-") {
+		return fmt.Errorf("kilo session envelope has an invalid id %q", envelope.ID)
+	}
 	if session.SessionID != "" && envelope.ID != session.SessionID {
 		return fmt.Errorf("kilo transcript belongs to session %s, not %s", envelope.ID, session.SessionID)
 	}
@@ -66,7 +71,7 @@ func (a *Agent) importRestoredSession(session protocol.AgentSessionJSON) error {
 		return nil
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("check kilo for session %s: %w", envelope.ID, err)
 	}
 	if present {
 		return nil
@@ -91,8 +96,14 @@ func (a *Agent) importRestoredSession(session protocol.AgentSessionJSON) error {
 }
 
 // writeImportFile writes the export `kilo import` reads next to the restored
-// transcript, readable only by the user, and returns a func that removes it.
+// transcript, readable only by the user, and returns its absolute path and a
+// func that removes it. The path is absolute because Kilo runs in the
+// repository, which need not be this process's working directory.
 func writeImportFile(dir string, blob []byte) (string, func(), error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", nil, fmt.Errorf("resolve kilo import directory: %w", err)
+	}
 	tmp, err := os.CreateTemp(dir, ".kilo-import-*.json")
 	if err != nil {
 		return "", nil, fmt.Errorf("create kilo import file: %w", err)
@@ -114,26 +125,36 @@ func writeImportFile(dir string, blob []byte) (string, func(), error) {
 	return name, cleanup, nil
 }
 
+// kiloSessionNotFound is how `kilo export` reports an id its store does not
+// hold, on stderr with a non-zero exit ("Error: Session not found: <id>").
+const kiloSessionNotFound = "Session not found"
+
 // HasSession reports whether Kilo's store holds sessionID, by asking `kilo
-// export` for it. Kilo answers an unknown id with "Session not found" and a
-// non-zero exit, which reads as absent; so does output that is not that
-// session's export, and an export with no messages: a `kilo import` that fails
-// partway leaves the session row behind without them, and a retry must still
-// import. Errors are kilo failing to start (exec.ErrNotFound when it is not on
-// PATH) or the timeout.
+// export` for it. Kilo's "Session not found" reads as absent; so does output
+// that is not that session's export, and an export with no messages: a `kilo
+// import` that fails partway leaves the session row behind without them, and a
+// retry must still import. Any other failed export is an error, since it
+// cannot tell whether Kilo holds the session; so are kilo failing to start
+// (exec.ErrNotFound when it is not on PATH) and the timeout.
 func (r *DefaultCommandRunner) HasSession(ctx context.Context, dir, sessionID string) (bool, error) {
 	cmd := exec.CommandContext(ctx, "kilo", "export", sessionID)
 	cmd.Dir = dir
 	cmd.Env = pureKiloEnv()
-	var stdout bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	runErr := cmd.Run()
 	if cmd.ProcessState == nil {
 		return false, fmt.Errorf("kilo export: %w", runErr)
 	}
 	if !cmd.ProcessState.Success() {
-		// Absent, unless the timeout killed it.
-		return false, ctx.Err()
+		if ctx.Err() != nil {
+			return false, fmt.Errorf("kilo export: %w", ctx.Err())
+		}
+		if bytes.Contains(ansiEscape.ReplaceAll(stderr.Bytes(), nil), []byte(kiloSessionNotFound)) {
+			return false, nil
+		}
+		return false, kiloFailure("kilo export", runErr, stderr.Bytes())
 	}
 	var export struct {
 		Info struct {
@@ -155,12 +176,18 @@ func (r *DefaultCommandRunner) ImportSession(ctx context.Context, dir, exportPat
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		if detail := kiloErrorDetail(stderr.Bytes()); detail != "" {
-			return fmt.Errorf("kilo import: %w: %s", err, detail)
-		}
-		return fmt.Errorf("kilo import: %w", err)
+		return kiloFailure("kilo import", err, stderr.Bytes())
 	}
 	return nil
+}
+
+// kiloFailure is the error for a failed kilo command, with Kilo's own message
+// from stderr when it printed one.
+func kiloFailure(command string, err error, stderr []byte) error {
+	if detail := kiloErrorDetail(stderr); detail != "" {
+		return fmt.Errorf("%s: %w: %s", command, err, detail)
+	}
+	return fmt.Errorf("%s: %w", command, err)
 }
 
 // pureKiloEnv is kiloEnv with KILO_PURE=1, which stops Kilo loading plugins.
