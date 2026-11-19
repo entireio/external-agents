@@ -199,22 +199,25 @@ type compactToolResult struct {
 }
 
 // compactToolResultFromOutput derives the status the way qwen's compactor
-// does: a non-zero exec exit code is an error, anything else success. An
-// output that is not the CLI's {"output",...,"metadata"} envelope is kept
-// verbatim.
+// does: the CLI wraps exec results in a {"output",...,"metadata"} envelope
+// whose exit_code carries the command's fate — a non-zero code is an error,
+// anything else success. The envelope is decoded whenever it carries a
+// metadata object, empty output included (a failed `false` or a silent grep
+// miss must not read as success); anything else is tool text kept verbatim,
+// JSON-shaped or not.
 func compactToolResultFromOutput(output string) compactToolResult {
-	var parsed struct {
-		Output   string `json:"output"`
-		Metadata struct {
-			ExitCode int `json:"exit_code"`
-		} `json:"metadata"`
+	var envelope struct {
+		Output   string          `json:"output"`
+		Metadata json.RawMessage `json:"metadata"`
 	}
-	if json.Unmarshal([]byte(output), &parsed) == nil && parsed.Output != "" {
-		status := "success"
-		if parsed.Metadata.ExitCode != 0 {
-			status = "error"
+	if json.Unmarshal([]byte(output), &envelope) == nil && len(envelope.Metadata) > 0 {
+		var meta struct {
+			ExitCode int `json:"exit_code"`
 		}
-		return compactToolResult{Output: parsed.Output, Status: status}
+		if json.Unmarshal(envelope.Metadata, &meta) == nil && meta.ExitCode != 0 {
+			return compactToolResult{Output: envelope.Output, Status: "error"}
+		}
+		return compactToolResult{Output: envelope.Output, Status: "success"}
 	}
 	return compactToolResult{Output: output, Status: "success"}
 }

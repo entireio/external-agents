@@ -652,13 +652,17 @@ func TestCompactTranscript_ProjectsUnifiedRecords(t *testing.T) {
 
 func TestCompactTranscript_ToolResultStatus(t *testing.T) {
 	// A non-zero exec exit code is reported the way qwen's compactor
-	// reports it; a non-envelope output string is kept verbatim.
+	// reports it — empty output included, so a failed `false` or a silent
+	// grep miss is not read as success — and a non-envelope output string
+	// is kept verbatim.
 	agent := New()
 	f := &rolloutFixture{}
 	f.functionCall(t, "exec_command", "call-1", `{"cmd":"make test"}`)
 	f.callOutput(t, "call-1", `{"output":"make: *** [test] Error 1","metadata":{"exit_code":2}}`)
 	f.functionCall(t, "exec_command", "call-2", `{"cmd":"echo hi"}`)
 	f.callOutput(t, "call-2", "plain text output")
+	f.functionCall(t, "exec_command", "call-3", `{"cmd":"false"}`)
+	f.callOutput(t, "call-3", `{"output":"","metadata":{"exit_code":1}}`)
 	path := f.write(t)
 
 	resp, err := agent.CompactTranscript(path)
@@ -671,8 +675,8 @@ func TestCompactTranscript_ToolResultStatus(t *testing.T) {
 	}
 
 	lines := splitLines(string(decoded))
-	if len(lines) != 2 {
-		t.Fatalf("projected %d lines, want the two tool_use records:\n%s", len(lines), decoded)
+	if len(lines) != 3 {
+		t.Fatalf("projected %d lines, want the three tool_use records:\n%s", len(lines), decoded)
 	}
 	var record struct {
 		Content []struct {
@@ -691,6 +695,11 @@ func TestCompactTranscript_ToolResultStatus(t *testing.T) {
 	if len(record.Content) != 1 || record.Content[0].Result == nil ||
 		record.Content[0].Result.Status != "success" || record.Content[0].Result.Output != "plain text output" {
 		t.Errorf("plain output result = %+v, want success with the raw string", record.Content[0].Result)
+	}
+	unmarshalStrict(t, lines[2], &record)
+	if len(record.Content) != 1 || record.Content[0].Result == nil ||
+		record.Content[0].Result.Status != "error" || record.Content[0].Result.Output != "" {
+		t.Errorf("silent failure result = %+v, want error status with empty output, not the raw envelope", record.Content[0].Result)
 	}
 }
 
