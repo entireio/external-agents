@@ -32,6 +32,21 @@ func sliceFromLine(content []byte, startLine int) []byte {
 	return content[offset:]
 }
 
+// encodeMessagesJSONL stores typed messages through the production encoder, as
+// an export with no session envelope. Test-only: production keeps Kilo's own
+// message objects (encodeExportJSONL), which carry fields SessionMessage drops.
+func encodeMessagesJSONL(messages []SessionMessage) ([]byte, error) {
+	raws := make([]json.RawMessage, 0, len(messages))
+	for i := range messages {
+		raw, err := json.Marshal(&messages[i])
+		if err != nil {
+			return nil, err
+		}
+		raws = append(raws, raw)
+	}
+	return encodeExportJSONL(kiloExport{Messages: raws})
+}
+
 func fourMessageTranscript(t *testing.T) []byte {
 	t.Helper()
 	msgs := []SessionMessage{
@@ -160,6 +175,29 @@ func TestWriteSessionPayloadKeepsTranscriptOnEmpty(t *testing.T) {
 	}
 	if string(got) != string(orig) {
 		t.Fatalf("transcript clobbered by empty payload: %q", got)
+	}
+}
+
+// A payload that bundles the export and a messages array keeps the export's
+// envelope, so the transcript it writes can still be imported on restore.
+func TestWriteSessionPayloadKeepsEnvelopeWithMessages(t *testing.T) {
+	t.Parallel()
+	ref := filepath.Join(t.TempDir(), "s.json")
+	session := json.RawMessage(`{"info":{"id":"ses_1","slug":"s"},"messages":[]}`)
+	messages := json.RawMessage(`[{"info":{"id":"m1","role":"user","agent":"code"},"parts":[{"id":"p1","type":"text","text":"hi"}]}]`)
+	if err := writeSessionPayload(ref, session, messages); err != nil {
+		t.Fatalf("writeSessionPayload: %v", err)
+	}
+	data, err := os.ReadFile(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	export, ok, err := exportFromTranscript(data)
+	if err != nil || !ok {
+		t.Fatalf("transcript not importable: ok=%v err=%v (%s)", ok, err, data)
+	}
+	if string(export.Info) != `{"id":"ses_1","slug":"s"}` || len(export.Messages) != 1 {
+		t.Fatalf("export = info %s, %d messages", export.Info, len(export.Messages))
 	}
 }
 

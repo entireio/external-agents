@@ -77,11 +77,13 @@ scripts/                 helpers for local verification
 
 `kilo run --session <id> "<prompt>"`
 
-> **Experimental:** resume works only while Kilo still has the session in its
-> local store (`~/.local/share/kilo/kilo.db`). Entire cannot yet re-import a
-> session Kilo has lost (after `kilo session delete`, a fresh clone, or another
-> machine) — that requires `kilo import` and is future work. All other
-> functionality is unaffected. See AGENT.md → Gaps & Limitations.
+Kilo looks sessions up in its own store (`~/.local/share/kilo/kilo.db`), not in
+`.entire/`. When `entire session resume` restores a session that store no longer
+has (after `kilo session delete`, in a fresh clone, or on another machine), the
+adapter runs `kilo import` on the restored transcript so `kilo run --session`
+finds it. A session Kilo still holds is left alone. Checkpoints written before
+this adapter stored Kilo's full export cannot be imported. See AGENT.md → Gaps &
+Limitations.
 
 ## Notes
 

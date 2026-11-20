@@ -1,7 +1,6 @@
 package kilo
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -10,39 +9,97 @@ import (
 	"path/filepath"
 )
 
-const maxTranscriptLine = 10 * 1024 * 1024
-
-// The on-disk transcript is stored as JSONL: exactly one SessionMessage per
+// The on-disk transcript is stored as JSONL: exactly one Kilo message per
 // line, in order, with no header line. Entire scopes external-agent
 // transcripts by LINE offset (transcript.SliceFromLine) before handing them to
 // compact-transcript, so a single-JSON-blob layout would be destroyed by that
 // slicing. One-message-per-line keeps line index == message index, which is
 // also the unit Entire records via get-transcript-position, so scoping lands on
 // message boundaries and header-less slices remain valid JSONL.
+//
+// Each line is Kilo's own message object as `kilo export` printed it, not a
+// re-encoding of SessionMessage: SessionMessage models only what this adapter
+// reads, and `kilo import` rejects messages missing the fields it drops
+// (parentID, path, cost, agent and others). The first line also carries the
+// export's session envelope under sessionEnvelopeKey, which import needs to
+// recreate the session. It rides on a message line instead of its own line so
+// line index stays message index; decodeTranscript ignores it.
+const sessionEnvelopeKey = "kilo_session"
 
-// encodeMessagesJSONL serializes messages as one JSON object per line.
-func encodeMessagesJSONL(messages []SessionMessage) ([]byte, error) {
+// kiloExport is Kilo's native session export (`kilo export <id>`): the session
+// envelope ("info") and every message exactly as Kilo wrote it.
+type kiloExport struct {
+	Info     json.RawMessage   `json:"info,omitempty"`
+	Messages []json.RawMessage `json:"messages"`
+}
+
+// encodeExportJSONL stores an export as one message object per line, with the
+// session envelope on the first line. Entries that are not JSON objects cannot
+// be messages and are dropped.
+func encodeExportJSONL(export kiloExport) ([]byte, error) {
 	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf) // Encode writes directly into buf and appends '\n'.
-	for i := range messages {
-		if err := enc.Encode(&messages[i]); err != nil {
+	enc := json.NewEncoder(&buf) // Encode compacts each value onto one line and appends '\n'.
+	enc.SetEscapeHTML(false)
+	envelope := bytes.TrimSpace(export.Info)
+	first := true
+	for _, raw := range export.Messages {
+		if !isJSONObject(raw) {
+			continue
+		}
+		if first && len(envelope) > 0 && !bytes.Equal(envelope, []byte("null")) {
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				return nil, fmt.Errorf("decode message: %w", err)
+			}
+			fields[sessionEnvelopeKey] = envelope
+			if err := enc.Encode(fields); err != nil {
+				return nil, fmt.Errorf("encode message: %w", err)
+			}
+			first = false
+			continue
+		}
+		if err := enc.Encode(raw); err != nil {
 			return nil, fmt.Errorf("encode message: %w", err)
 		}
+		first = false
 	}
 	return buf.Bytes(), nil
 }
 
+func isJSONObject(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) > 0 && trimmed[0] == '{'
+}
+
 // decodeTranscript reads the on-disk transcript, which is always one JSON
-// message per line (see encodeMessagesJSONL). Blank/unparseable lines are
-// skipped, so header-less scoped slices decode cleanly. Kilo's native session
-// export blob is handled separately by parseKiloExport at the ingestion
-// boundary — it never reaches disk.
+// message per line (see encodeExportJSONL). Blank/unparseable lines are
+// skipped, so header-less scoped slices decode cleanly, and the envelope key on
+// the first line is ignored. Kilo's native session export blob is handled
+// separately by parseKiloExport at the ingestion boundary — it never reaches
+// disk.
 func decodeTranscript(data []byte) ([]SessionMessage, error) {
 	messages := make([]SessionMessage, 0)
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	scanner.Buffer(make([]byte, 64*1024), maxTranscriptLine)
-	for scanner.Scan() {
-		line := bytes.TrimSpace(scanner.Bytes())
+	err := eachTranscriptMessage(data, func(_ []byte, msg SessionMessage) error {
+		messages = append(messages, msg)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+// eachTranscriptMessage calls fn, in order, with every line of a stored
+// transcript that counts as a message, and the message it decodes to. Blank
+// and unparseable lines are skipped, and so are lines with no id, role or
+// parts. decodeTranscript and exportFromTranscript both read through it, so
+// the transcript Entire reads and the one restore imports hold the same
+// messages. Lines have no length limit: a message keeps every field Kilo
+// exported, such as summary diffs, and data is already in memory. line
+// aliases data; fn must copy it to keep it independent.
+func eachTranscriptMessage(data []byte, fn func(line []byte, msg SessionMessage) error) error {
+	for rawLine := range bytes.SplitSeq(data, []byte{'\n'}) {
+		line := bytes.TrimSpace(rawLine)
 		if len(line) == 0 {
 			continue
 		}
@@ -53,30 +110,77 @@ func decodeTranscript(data []byte) ([]SessionMessage, error) {
 		if msg.Info.ID == "" && msg.Info.Role == "" && len(msg.Parts) == 0 {
 			continue
 		}
-		messages = append(messages, msg)
+		if err := fn(line, msg); err != nil {
+			return err
+		}
 	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("scan kilo transcript: %w", err)
-	}
-	return messages, nil
+	return nil
 }
 
-// parseKiloExport reads Kilo's native session export (a single JSON object with
-// a "messages" array) into its messages. Used only when ingesting a fresh
-// export from the plugin payload or `kilo session show`; the result is stored
-// as JSONL via encodeMessagesJSONL.
-func parseKiloExport(raw []byte) ([]SessionMessage, error) {
+// parseKiloExport reads Kilo's native session export (a single JSON object
+// with "info" and a "messages" array). Used only when ingesting a fresh export
+// from the plugin payload or the Kilo CLI; the result is stored as JSONL via
+// encodeExportJSONL.
+func parseKiloExport(raw []byte) (kiloExport, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
-		return nil, nil
+		return kiloExport{}, nil
 	}
-	var export struct {
-		Messages []SessionMessage `json:"messages"`
-	}
+	var export kiloExport
 	if err := json.Unmarshal(trimmed, &export); err != nil {
-		return nil, fmt.Errorf("parse kilo session export: %w", err)
+		return kiloExport{}, fmt.Errorf("parse kilo session export: %w", err)
 	}
-	return export.Messages, nil
+	return export, nil
+}
+
+// exportFromTranscript rebuilds the `kilo import` input from a stored
+// transcript: the envelope from the first line that carries one, and every
+// line decodeTranscript would count as a message, minus the envelope key. ok
+// is false when no line carries an envelope, which is every transcript written
+// before the envelope was stored; those also lack the message fields import
+// needs, so there is nothing to import.
+func exportFromTranscript(data []byte) (kiloExport, bool, error) {
+	var export kiloExport
+	err := eachTranscriptMessage(data, func(line []byte, _ SessionMessage) error {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(line, &fields); err != nil {
+			return fmt.Errorf("decode kilo message: %w", err)
+		}
+		envelope, found := fields[sessionEnvelopeKey]
+		if !found {
+			export.Messages = append(export.Messages, json.RawMessage(bytes.Clone(line)))
+			return nil
+		}
+		if len(export.Info) == 0 {
+			export.Info = envelope
+		}
+		delete(fields, sessionEnvelopeKey)
+		stripped, err := marshalNoHTMLEscape(fields)
+		if err != nil {
+			return err
+		}
+		export.Messages = append(export.Messages, json.RawMessage(stripped))
+		return nil
+	})
+	if err != nil {
+		return kiloExport{}, false, err
+	}
+	if len(export.Info) == 0 || len(export.Messages) == 0 {
+		return kiloExport{}, false, nil
+	}
+	return export, true, nil
+}
+
+// marshalNoHTMLEscape is json.Marshal without rewriting <, > and & as \u
+// escapes, so Kilo gets its strings back byte for byte.
+func marshalNoHTMLEscape(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, fmt.Errorf("encode: %w", err)
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 // atomicWriteFile writes data to path via a temp file + rename so a crash
