@@ -1,0 +1,93 @@
+{
+ "session_start": {
+  "hook_event_name": "session_start",
+  "session_id": "3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "transcript_path": "/probe/vibe-home/logs/session/unified/3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "cwd": "/repo",
+  "parent_session_id": null,
+  "source": "startup",
+  "agent_name": "auto-approve",
+  "model": "mistral-medium-3.5"
+ },
+ "pre_agent": {
+  "session_id": "3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "transcript_path": "/probe/vibe-home/logs/session/unified/3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "cwd": "/repo",
+  "parent_session_id": null,
+  "hook_event_name": "pre_agent",
+  "agent_name": "auto-approve",
+  "turn_id": "turn-84570b9d55797f528e7dcbb6195b5abe",
+  "prompt": "Create a file named probe-entire.txt containing the text PROBE-FILE-7391. Then reply with exactly one word: the word formed by joining 'ZEB' and 'RA4412' with nothing between them."
+ },
+ "pre_tool": {
+  "session_id": "3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "transcript_path": "/probe/vibe-home/logs/session/unified/3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "cwd": "/repo",
+  "parent_session_id": null,
+  "hook_event_name": "pre_tool",
+  "tool_name": "file_system.write_file",
+  "tool_call_id": "YaJMmky2Y",
+  "tool_input": {
+   "file_path": "probe-entire.txt",
+   "content": "PROBE-FILE-7391"
+  }
+ },
+ "post_tool": {
+  "session_id": "3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "transcript_path": "/probe/vibe-home/logs/session/unified/3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "cwd": "/repo",
+  "parent_session_id": null,
+  "hook_event_name": "post_tool",
+  "tool_name": "file_system.write_file",
+  "tool_call_id": "YaJMmky2Y",
+  "tool_input": {
+   "file_path": "probe-entire.txt",
+   "content": "PROBE-FILE-7391"
+  },
+  "tool_status": "success",
+  "tool_output": {
+   "bytes_written": 15,
+   "file_existed": false,
+   "path": "/repo/probe-entire.txt"
+  },
+  "tool_output_text": "bytes_written: 15\nfile_existed: False\npath: /repo/probe-entire.txt",
+  "tool_error": null,
+  "duration_ms": 0
+ },
+ "post_agent": {
+  "session_id": "3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "transcript_path": "/probe/vibe-home/logs/session/unified/3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "cwd": "/repo",
+  "parent_session_id": null,
+  "hook_event_name": "post_agent",
+  "agent_name": "auto-approve"
+ },
+ "notification": {
+  "hook_event_name": "notification",
+  "session_id": "3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "transcript_path": "/probe/vibe-home/logs/session/unified/3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "cwd": "/repo",
+  "parent_session_id": null,
+  "notification_type": "turn_completed",
+  "message": "Vibe finished its turn",
+  "agent_name": "auto-approve"
+ },
+ "session_end": {
+  "hook_event_name": "session_end",
+  "session_id": "3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "transcript_path": "/probe/vibe-home/logs/session/unified/3aba6924-25dd-7098-7afd-c9ea6384aa75",
+  "cwd": "/repo",
+  "parent_session_id": null,
+  "reason": "exit"
+ },
+ "notification_failed": {
+  "hook_event_name": "notification",
+  "session_id": "9376beb3-8306-e31c-fa0f-9afc3d5e980f",
+  "transcript_path": "/probe/vibe-home/logs/session/unified/9376beb3-8306-e31c-fa0f-9afc3d5e980f",
+  "cwd": "/probe/repo",
+  "parent_session_id": null,
+  "notification_type": "turn_failed",
+  "message": "Vibe's turn failed: Invalid API key. Please check your API key and try again.",
+  "agent_name": "auto-approve"
+ }
+}
