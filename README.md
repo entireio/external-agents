@@ -26,6 +26,7 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 | [Kilo](agents/entire-agent-kilo/) | `agents/entire-agent-kilo/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
 | [Goose](agents/entire-agent-goose/) | `agents/entire-agent-goose/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
 | [Hermes Agent](agents/entire-agent-hermes/) | `agents/entire-agent-hermes/` | Implemented (preview) — sanitized observer hooks + transcript analysis + compact transcripts |
+| [Sarvam Code](agents/entire-agent-sarvam/) | `agents/entire-agent-sarvam/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
 | [Mistral Vibe](agents/entire-agent-vibe/) | `agents/entire-agent-vibe/` | Implemented — hooks + transcript analysis + transcript preparation + token calculation + compact transcripts |
 
 See each agent's own README for setup and usage instructions.
@@ -218,6 +219,7 @@ agents/                          # Standalone external agent projects
   entire-agent-omp/              # Oh My Pi agent (Go binary)
   entire-agent-kilo/             # Kilo agent (Go binary)
   entire-agent-hermes/           # Hermes Agent (Go binary + embedded observer plugin)
+  entire-agent-sarvam/           # Sarvam Code agent (Go binary)
   entire-agent-vibe/             # Mistral Vibe agent (single-file Python script)
 e2e/                             # Lifecycle integration harness
 .github/workflows/               # CI, including protocol compliance via external-agents-tests
