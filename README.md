@@ -27,6 +27,7 @@ External agents communicate with Entire CLI via subcommands that accept and retu
 | [Goose](agents/entire-agent-goose/) | `agents/entire-agent-goose/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
 | [Hermes Agent](agents/entire-agent-hermes/) | `agents/entire-agent-hermes/` | Implemented (preview) — sanitized observer hooks + transcript analysis + compact transcripts |
 | [Sarvam Code](agents/entire-agent-sarvam/) | `agents/entire-agent-sarvam/` | Implemented (preview) — hooks + transcript analysis + token calculation + compact transcripts |
+| [Mistral Vibe](agents/entire-agent-vibe/) | `agents/entire-agent-vibe/` | Implemented — hooks + transcript analysis + transcript preparation + token calculation + compact transcripts |
 
 See each agent's own README for setup and usage instructions.
 
@@ -117,6 +118,21 @@ hermes --yolo --ignore-rules -z "Create hello.txt with hello world"
 
 One profile can register multiple repositories. Uninstalling the adapter from one repository leaves unrelated Hermes plugins and other repository registrations intact. See the [Hermes adapter README](agents/entire-agent-hermes/) for the disposable-profile verification flow.
 
+### Mistral Vibe
+
+Mistral Vibe support targets the [Mistral Vibe Code](https://github.com/ChrisFist/EntireMistralVibe) VS Code extension / CLI (by Mistral AI):
+
+```bash
+cd agents/entire-agent-vibe
+mise run build
+cp entire-agent-vibe ~/.local/bin/
+
+cd /path/to/your/repo
+entire enable --agent vibe --telemetry=false
+```
+
+The adapter installs a managed `post_agent` hook in `.vibe/hooks.toml` that maps to Entire's TurnEnd event so the CLI stores a checkpoint per turn. Vibe journals sessions under `~/.vibe/logs/session/unified/<session-uuid>/journal/` as a rolling window, so transcripts are captured at turn end: `prepare-transcript` waits for the journal to settle (the final assistant message is flushed after the hook fires) and renders readable Markdown, and `compact-transcript` merges that Markdown with the live journal so the compact transcript carries the full history plus the complete recent tail. On Windows, use the `.cmd` wrapper described in the [agent README](agents/entire-agent-vibe/).
+
 ## Building a New External Agent
 
 This repo includes a skill that guides you through building a new external agent with two test layers:
@@ -204,6 +220,7 @@ agents/                          # Standalone external agent projects
   entire-agent-kilo/             # Kilo agent (Go binary)
   entire-agent-hermes/           # Hermes Agent (Go binary + embedded observer plugin)
   entire-agent-sarvam/           # Sarvam Code agent (Go binary)
+  entire-agent-vibe/             # Mistral Vibe agent (single-file Python script)
 e2e/                             # Lifecycle integration harness
 .github/workflows/               # CI, including protocol compliance via external-agents-tests
 .claude/skills/entire-external-agent/  # Skill files (research, test-writer, implementer)
