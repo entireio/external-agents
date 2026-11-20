@@ -147,16 +147,27 @@ func TestLifecycle_RewindAfterCommit(t *testing.T) {
 		s.Git(t, "commit", "-m", "add first.txt")
 		testutil.WaitForCheckpoint(t, s, 30*time.Second)
 
-		// Old shadow point should no longer be listed as non-logs-only.
-		pointsAfter := entire.RewindList(t, s.Dir)
-		found := false
-		for _, p := range pointsAfter {
-			if p.ID == oldID && !p.IsLogsOnly {
-				found = true
+		// Wait for condensation to convert old shadow point to logs-only.
+		// Condensation runs asynchronously after checkpoint advancement,
+		// so we poll the rewind list instead of checking once.
+		deadline := time.Now().Add(30 * time.Second)
+		condensed := false
+		for time.Now().Before(deadline) {
+			pointsAfter := entire.RewindList(t, s.Dir)
+			found := false
+			for _, p := range pointsAfter {
+				if p.ID == oldID && !p.IsLogsOnly {
+					found = true
+					break
+				}
+			}
+			if !found {
+				condensed = true
 				break
 			}
+			time.Sleep(500 * time.Millisecond)
 		}
-		assert.False(t, found, "old shadow branch rewind point %s should no longer be listed as non-logs-only", oldID)
+		assert.True(t, condensed, "old shadow branch rewind point %s should no longer be listed as non-logs-only within 30s", oldID)
 
 		// Attempting to rewind to the old shadow branch ID should fail.
 		err = entire.Rewind(t, s.Dir, oldID)
