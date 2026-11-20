@@ -10,7 +10,30 @@ External agent binary that teaches the Entire CLI how to work with Qwen Code.
 | transcript_analyzer | Yes, via Entire sidecar JSONL |
 | compact_transcript | Yes, emits Entire compact transcript JSONL |
 | transcript_preparer | No |
-| token_calculator | No |
+| token_calculator | Yes, from the per-call usage Qwen Code writes to its own chat log, copied into the sidecar at hooks |
+
+## Token Usage
+
+Qwen Code's hook payloads carry no token counts, but its chat log
+(`~/.qwen/projects/<project>/chats/<session>.jsonl`, the hooks'
+`transcript_path`) stores the provider's `usageMetadata` on every assistant
+record. At `PreToolUse`, `Stop`, `StopFailure`, `SubagentStop` and
+`SessionEnd` the adapter copies the usage of each new assistant record into the
+sidecar as an `AssistantUsage` line, and `calculate-tokens` sums those lines
+after `--offset`. The sidecar stays the only transcript, so a stored checkpoint
+still reports its tokens on a machine without the chat log.
+
+Qwen writes its log through a queue and fires `Stop` without waiting for it,
+so a turn's last API call can still be on its way when the `Stop` hook reads
+the log. Until the log holds the model's answer to the turn's last prompt,
+`Stop` waits up to a second for it. A call that arrives later still is copied
+at the next hook and counted with the next turn or checkpoint; totals are
+unaffected. A session that an older adapter started is counted from
+the first hook after the upgrade, or from the prompt of a turn still under way
+then. Calls Qwen does not record in the session's
+chat log, such as subagents and background helpers like its auto-memory
+extractor, are not counted. Cache writes are not reported separately: for Anthropic models Qwen
+folds them into the prompt count, so they appear as input tokens.
 
 ## Installation
 

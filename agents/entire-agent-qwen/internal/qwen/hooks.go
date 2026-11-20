@@ -21,6 +21,12 @@ func (a *Agent) ParseHook(hookName string, input []byte) (*protocol.EventJSON, e
 	raw.HookEventName = qwenEventName(hookName, raw.HookEventName)
 	normalizeRawHook(&raw, hookName)
 
+	if syncsUsage(hookName) {
+		// Copy token usage from Qwen's own chat log first, so it precedes
+		// this hook's record; see tokens.go. Best effort: the hook itself
+		// must not fail because the native log could not be read.
+		_ = a.syncNativeUsage(hookName, raw)
+	}
 	if err := a.appendSidecar(raw); err != nil {
 		return nil, err
 	}
@@ -189,7 +195,10 @@ func normalizeRawHook(raw *qwenHookInputRaw, hookName string) {
 		raw.SessionID = stubSessionID
 	}
 	if strings.TrimSpace(raw.Timestamp) == "" {
-		raw.Timestamp = time.Now().UTC().Format(time.RFC3339)
+		// Sub-second, like Qwen's own timestamps: the Stop wait tells a
+		// turn's answer from the previous turn's by comparing record times
+		// with the prompt's (tokens.go).
+		raw.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
 	}
 	if strings.TrimSpace(raw.Prompt) == "" {
 		raw.Prompt = raw.UserPrompt

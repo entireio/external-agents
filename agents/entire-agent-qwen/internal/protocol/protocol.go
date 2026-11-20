@@ -60,6 +60,10 @@ type transcriptAnalyzer interface {
 	ExtractSummary(sessionRef string) (string, bool, error)
 }
 
+type tokenCalculator interface {
+	CalculateTokens(data []byte, offset int) (TokenUsageResponse, error)
+}
+
 func WriteJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
@@ -319,6 +323,24 @@ func HandleExtractSummary(args []string, stdout io.Writer, analyzer transcriptAn
 		return err
 	}
 	return WriteJSON(stdout, ExtractSummaryResponse{Summary: summary, HasSummary: hasSummary})
+}
+
+func HandleCalculateTokens(args []string, stdin io.Reader, stdout io.Writer, calculator tokenCalculator) error {
+	fs := flag.NewFlagSet("calculate-tokens", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	offset := fs.Int("offset", 0, "offset")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	data, err := io.ReadAll(stdin)
+	if err != nil {
+		return err
+	}
+	usage, err := calculator.CalculateTokens(data, *offset)
+	if err != nil {
+		return err
+	}
+	return WriteJSON(stdout, usage)
 }
 
 func DefaultSessionDir(repoPath string) string {
