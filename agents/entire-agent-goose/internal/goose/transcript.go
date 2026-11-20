@@ -15,7 +15,8 @@ import (
 )
 
 // gooseExport models the output of `goose session export --format json`
-// (verified against goose 1.37.0). Message content is camelCase, unlike the
+// (verified against goose 1.37.0; goose 1.39.0+ token fields read per
+// gooseUsage). Message content is camelCase, unlike the
 // snake_case hook payloads. The session-level fields live in gooseSessionMeta,
 // embedded so they stay at the top level of the native document and can also be
 // stamped onto every stored JSONL record (see session_jsonl.go).
@@ -276,16 +277,61 @@ func (a *Agent) CalculateTokens(data []byte, _ int) (protocol.TokenUsageResponse
 	if err != nil {
 		return protocol.TokenUsageResponse{}, err
 	}
-	usage := protocol.TokenUsageResponse{
-		InputTokens:  export.AccumulatedInputTokens,
-		OutputTokens: export.AccumulatedOutput,
-	}
+	usage := sessionTokenUsage(&export.gooseSessionMeta)
 	for _, msg := range export.Conversation {
 		if msg.Role == roleAssistant {
 			usage.APICallCount++
 		}
 	}
 	return usage, nil
+}
+
+// sessionTokenUsage reads whichever token shape the export carries. goose
+// 1.39.0+ writes nested Usage objects: accumulated_usage spans the whole
+// session including compacted history, usage only the current context window,
+// so accumulated_usage wins whenever goose reported it. Older exports carry
+// only the flat accumulated_input/output_tokens fields, with no cache split.
+func sessionTokenUsage(meta *gooseSessionMeta) protocol.TokenUsageResponse {
+	for _, nested := range []*gooseUsage{meta.AccumulatedUsage, meta.Usage} {
+		if nested.reported() {
+			return nested.tokenUsage()
+		}
+	}
+	return protocol.TokenUsageResponse{
+		InputTokens:  meta.AccumulatedInputTokens,
+		OutputTokens: meta.AccumulatedOutput,
+	}
+}
+
+// reported is true when the object carries an input or output count; zeros
+// goose did report count. A missing object, goose's all-null default, or one
+// holding only total/cache figures (which cannot be split into input and
+// output) falls through to the next shape. Fields are never mixed across
+// objects: accumulated_usage and usage cover different spans.
+func (u *gooseUsage) reported() bool {
+	return u != nil && (u.InputTokens != nil || u.OutputTokens != nil)
+}
+
+// tokenUsage maps goose's Usage onto Entire's split. goose's input_tokens
+// counts every prompt token, cache reads and writes included, while Entire's
+// InputTokens is fresh input only and is summed with the cache fields, so the
+// cache share is subtracted to avoid counting it twice.
+func (u *gooseUsage) tokenUsage() protocol.TokenUsageResponse {
+	cacheRead := intValue(u.CacheReadInputTokens)
+	cacheWrite := intValue(u.CacheWriteInputTokens)
+	return protocol.TokenUsageResponse{
+		InputTokens:         max(0, intValue(u.InputTokens)-cacheRead-cacheWrite),
+		CacheCreationTokens: cacheWrite,
+		CacheReadTokens:     cacheRead,
+		OutputTokens:        intValue(u.OutputTokens),
+	}
+}
+
+func intValue(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 func messagesFromOffset(export *gooseExport, offset int) []gooseMessage {

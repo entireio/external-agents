@@ -94,6 +94,7 @@ real captured payloads unless marked `(unverified)`.
 - User prompt field: `conversation[].content[].text` where `role=="user"` and `content[].type=="text"` (skip `toolResponse` user messages).
 - Modified files field: `conversation[].content[]` where `type=="toolRequest"`, `toolCall.value.name` in `write`/`text_editor`/`edit`-style tools; file path at `toolCall.value.arguments.path`. Shell commands at `arguments.command` for heuristics.
 - Token usage field: session-level `accumulated_input_tokens`/`accumulated_output_tokens` (export and `sessions` table). Per-message `tokens` column exists but was NULL in verification. No cache token split available.
+- Token usage since goose 1.39.0 **(read from goose source, not re-run)**: the flat token fields are replaced by nested `usage` (current context window) and `accumulated_usage` (whole session) objects with nullable `input_tokens`, `output_tokens`, `total_tokens`, `cache_read_input_tokens`, `cache_write_input_tokens`. goose's `input_tokens` includes the cache reads and writes, so `calculate-tokens` subtracts them to report fresh input. The export spells them `cache_*_input_tokens`; the `sessions` table columns are `cache_read_tokens`/`cache_write_tokens`.
 - Example tool entry **(verified)**:
   ```json
   {"type":"toolRequest","id":"toolu_...","toolCall":{"status":"success",
@@ -129,7 +130,7 @@ real captured payloads unless marked `(unverified)`.
 | `extract-prompts` | user text messages | parse `conversation` | transcript_analyzer |
 | `extract-summary` | session `name` | auto-generated session name (`"File verification request"`) as summary | transcript_analyzer |
 | `prepare-transcript` | `goose session export` | shell out: `goose session export --session-id <id> --format json -o <scratch>`, then materialize as JSONL and write atomically to `session_ref` | transcript_preparer |
-| `calculate-tokens` | export token fields | `accumulated_input/output_tokens`; `api_call_count` = assistant message count | token_calculator |
+| `calculate-tokens` | export token fields | `accumulated_usage`, else `usage`, else flat `accumulated_input/output_tokens`; `api_call_count` = assistant message count | token_calculator |
 
 ## Selected Capabilities
 | Capability | Declared | Justification |
@@ -138,7 +139,7 @@ real captured payloads unless marked `(unverified)`.
 | transcript_analyzer | true | export JSON has prompts, tool calls with file paths |
 | transcript_preparer | true | transcript must be materialized from sessions.db via `goose session export` |
 | compact_transcript | true | converts the export to Entire Transcript Format so assistant responses and tool calls render in `entire explain` / web UI |
-| token_calculator | true | accumulated input/output tokens in export |
+| token_calculator | true | accumulated token totals in export (with cache split on goose 1.39.0+) |
 | text_generator | false | possible later via headless `goose run -t --no-session`, but output includes UI text; defer |
 | hook_response_writer | false | no clean native channel for display-only messages (Stop deny blocks the turn) |
 | subagent_aware_extractor | false | subagent sessions are separate `sessions.db` rows (`session_type='subagent'`), not per-dir transcripts; defer |

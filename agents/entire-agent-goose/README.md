@@ -20,8 +20,10 @@ goose 1.37.0).
   (`~/.local/share/goose/sessions/sessions.db`). There is no per-session
   file, so `prepare-transcript` materializes one via
   `goose session export --session-id <id> --format json`.
-- **Tokens** — accumulated input/output token totals come from the exported
-  session JSON.
+- **Tokens** — session token totals come from the exported session JSON:
+  `accumulated_usage` (falling back to `usage`) on goose 1.39.0+, with its
+  cache read/write split, or the flat `accumulated_input/output_tokens` fields
+  on older goose.
 
 ## Build
 
