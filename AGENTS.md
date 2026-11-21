@@ -39,3 +39,10 @@ The skill files reference Claude Code tool names. Map them to Codex equivalents:
 
 The external agent protocol is defined at:
 `https://github.com/entireio/cli/blob/main/docs/architecture/external-agent-protocol.md`
+
+<!-- entire-graph:begin -->
+This repo has the entire-graph code graph installed. Before exploring code with
+grep/find/whole-file reads, read .entire/graph-agent.md — resolution-first guidance
+for using graph retrieval, focused source inspection, and verification.
+@.entire/graph-agent.md
+<!-- entire-graph:end -->
