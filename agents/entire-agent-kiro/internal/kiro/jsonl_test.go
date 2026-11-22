@@ -660,7 +660,7 @@ func TestEnsureCachedTranscriptStoresJSONLOnDisk(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("ENTIRE_REPO_ROOT", repoRoot)
-	t.Setenv("HOME", home)
+	setupTestKiroHome(t, home)
 
 	stubData := buildTranscript("cli-session", 3)
 	createFakeKiroDB(t, home)

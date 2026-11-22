@@ -14,28 +14,55 @@ import (
 )
 
 func TestEncodeRepoCWD(t *testing.T) {
-	repo := "/Users/test/project"
-	encoded := encodeRepoCWD(repo)
-	want := "%2FUsers%2Ftest%2Fproject"
-	if runtime.GOOS == "windows" {
-		want = "%5CUsers%5Ctest%5Cproject"
-	}
-	if encoded != want {
-		t.Fatalf("unexpected encoded cwd: %q", encoded)
+	for name, repo := range map[string]string{
+		"forward slashes":   "/Users/test/project",
+		"native separators": filepath.FromSlash("/Users/test/project"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if encoded := encodeRepoCWD(repo); encoded != "%2FUsers%2Ftest%2Fproject" {
+				t.Fatalf("unexpected encoded cwd: %q", encoded)
+			}
+		})
 	}
 }
 
 func TestNativeTranscriptPath(t *testing.T) {
-	t.Setenv("GROK_HOME", t.TempDir())
-	repo := "/Users/test/project"
-	path := nativeTranscriptPath(repo, "session-123")
-	encoded := "%2FUsers%2Ftest%2Fproject"
-	if runtime.GOOS == "windows" {
-		encoded = "%5CUsers%5Ctest%5Cproject"
+	home := t.TempDir()
+	t.Setenv("GROK_HOME", home)
+	for name, repo := range map[string]string{
+		"forward slashes":   "/Users/test/project",
+		"native separators": filepath.FromSlash("/Users/test/project"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := nativeTranscriptPath(repo, "session-123")
+			want := filepath.Join(home, "sessions", "%2FUsers%2Ftest%2Fproject", "session-123", "chat_history.jsonl")
+			if path != want {
+				t.Fatalf("transcript path = %q, want %q", path, want)
+			}
+		})
 	}
-	wantSuffix := filepath.Join("sessions", encoded, "session-123", "chat_history.jsonl")
-	if !strings.HasSuffix(path, wantSuffix) {
-		t.Fatalf("unexpected transcript path %q", path)
+}
+
+func TestNativeSessionDirMatchesMarkerSeparators(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GROK_HOME", home)
+	repo := "/very/long/path/" + strings.Repeat("segmentxxxxxxxxxx/", 20) + "tail"
+	hashed := filepath.Join(home, "sessions", "tail-test-hash")
+	if err := os.MkdirAll(hashed, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, marker := range map[string]string{
+		"forward slashes":   repo,
+		"native separators": filepath.FromSlash(repo),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(filepath.Join(hashed, cwdMarkerFile), []byte(marker+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if got := nativeSessionDir(filepath.FromSlash(repo)); got != hashed {
+				t.Fatalf("session directory = %q, want %q", got, hashed)
+			}
+		})
 	}
 }
 
