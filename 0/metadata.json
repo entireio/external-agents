@@ -1,0 +1,92 @@
+{
+  "cli_version": "0.12.3-nightly.202610280619.04e1a6b2e.0.20261028134751-6870b7b18e66",
+  "checkpoint_id": "01M87JG8ERJBNPSM7MVBBRK28W",
+  "session_id": "8c4018bd-10a7-4c24-91ad-f167ffcad54a",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-24T20:03:41.980014Z",
+  "branch": "peyton/declare-transcript-format",
+  "checkpoints_count": 31,
+  "files_touched": [
+    "agents/entire-agent-kilo/README.md",
+    "agents/entire-agent-kilo/internal/kilo/agent.go",
+    "agents/entire-agent-kilo/internal/kilo/hooks_test.go",
+    "agents/entire-agent-kilo/internal/protocol/types.go",
+    "agents/entire-agent-omp/README.md",
+    "agents/entire-agent-omp/internal/omp/agent.go",
+    "agents/entire-agent-omp/internal/protocol/info_test.go",
+    "agents/entire-agent-omp/internal/protocol/types.go",
+    "agents/entire-agent-sarvam/README.md",
+    "agents/entire-agent-sarvam/internal/protocol/types.go",
+    "agents/entire-agent-sarvam/internal/sarvam/agent.go",
+    "agents/entire-agent-sarvam/internal/sarvam/agent_test.go"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "75ed1928c17a",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 620,
+    "cache_creation_tokens": 640297,
+    "cache_read_tokens": 53342509,
+    "output_tokens": 144165,
+    "api_call_count": 279,
+    "subagent_tokens": {
+      "input_tokens": 66,
+      "cache_creation_tokens": 272322,
+      "cache_read_tokens": 3274938,
+      "output_tokens": 28278,
+      "api_call_count": 33
+    }
+  },
+  "redaction": {
+    "replacements": 12,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 12,
+      "key_context": 0,
+      "provider_token": 8,
+      "shell_stdin": 0
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01P5XrcY67TzsR2YNFmWcFnB",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "codex:adversarial-review"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "75ed1928c17a",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1610,
+        "end": 1611,
+        "entry_ids": [
+          "d538deb0-18ab-4bcc-8e0e-aa1172806125"
+        ],
+        "tool_use_id": "toolu_01P5XrcY67TzsR2YNFmWcFnB"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01P5XrcY67TzsR2YNFmWcFnB"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: codex:adversarial-review",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 31
+  }
+}

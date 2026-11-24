@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_011YWsGa8QDPJUYRxkfM6Wno",
+  "agent_id": "afae87f8835beed15",
+  "subagent_type": "general-purpose",
+  "task_description": "Adversarial correctness review",
+  "token_usage": {
+    "input_tokens": 34,
+    "cache_creation_tokens": 144146,
+    "cache_read_tokens": 1803036,
+    "output_tokens": 20442,
+    "api_call_count": 17
+  },
+  "started_at": "2026-11-19T10:16:12.510849+07:00",
+  "completed_at": "2026-11-19T10:19:51.370388+07:00"
+}
