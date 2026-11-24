@@ -25,6 +25,10 @@ type InfoResponse struct {
 	ProtectedDirs   []string             `json:"protected_dirs"`
 	HookNames       []string             `json:"hook_names"`
 	Capabilities    DeclaredCapabilities `json:"capabilities"`
+	// TranscriptFormat names the built-in CLI converter for this agent's
+	// transcript. A CLI that knows it uses that converter ahead of
+	// compact-transcript; older CLIs ignore it and keep using compact-transcript.
+	TranscriptFormat string `json:"transcript_format,omitempty"`
 }
 
 type DetectResponse struct {

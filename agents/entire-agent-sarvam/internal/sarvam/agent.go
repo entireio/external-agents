@@ -30,13 +30,14 @@ func (a *Agent) Info() protocol.InfoResponse {
 		hookNames = append(hookNames, spec.HookName)
 	}
 	return protocol.InfoResponse{
-		ProtocolVersion: protocol.ProtocolVersion,
-		Name:            AgentName,
-		Type:            AgentType,
-		Description:     "Sarvam Code external agent integration for Entire",
-		IsPreview:       true,
-		ProtectedDirs:   []string{".sarvam"},
-		HookNames:       hookNames,
+		ProtocolVersion:  protocol.ProtocolVersion,
+		Name:             AgentName,
+		Type:             AgentType,
+		Description:      "Sarvam Code external agent integration for Entire",
+		IsPreview:        true,
+		TranscriptFormat: "codex",
+		ProtectedDirs:    []string{".sarvam"},
+		HookNames:        hookNames,
 		Capabilities: protocol.DeclaredCapabilities{
 			Hooks:              true,
 			TranscriptAnalyzer: true,

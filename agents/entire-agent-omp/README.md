@@ -61,6 +61,7 @@ Interactive `omp` sessions use the same extension. Entire can resume a recorded 
 | `hooks` | Maps `omp` initial load, session switch/branch, the first actual `agent_start`, and the final `agent_end` to Entire session start, turn start, and turn end events. The preceding prompt is captured from `before_agent_start`; automatic continuations remain within the open Entire turn. |
 | `transcript_analyzer` | Reads `omp` JSONL, follows the active parent chain, extracts user prompts, the latest assistant text, and paths from `write`, `edit`, and `apply_patch` tool calls. |
 | `compact_transcript` | Emits Entire v1 compact JSONL with user text, assistant text, tool calls/results, and available per-message token counts. |
+| `transcript_format` (info field) | `pi`. CLIs that know it convert the transcript with their Pi converter, which also records the model and keeps native tool names; older CLIs keep using `compact_transcript`. |
 | `uses_terminal` | Supports print and interactive `omp` sessions. |
 
 At turn end, the adapter copies the native transcript to `<omp project session directory>/.entire/<session-id>.jsonl`. The copy is private and stable while Entire records the turn. The source must be a regular `.jsonl` file directly inside the project session directory managed by `omp`.

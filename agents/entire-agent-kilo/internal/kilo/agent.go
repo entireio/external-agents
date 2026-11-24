@@ -17,13 +17,14 @@ func New() *Agent {
 
 func (a *Agent) Info() protocol.InfoResponse {
 	return protocol.InfoResponse{
-		ProtocolVersion: protocol.ProtocolVersion,
-		Name:            "kilo",
-		Type:            "Kilo",
-		Description:     "Kilo Code coding agent integration for Entire",
-		IsPreview:       true,
-		ProtectedDirs:   []string{".kilo"},
-		ProtectedFiles:  []string{".kilo/plugins/entire.ts"},
+		ProtocolVersion:  protocol.ProtocolVersion,
+		Name:             "kilo",
+		Type:             "Kilo",
+		Description:      "Kilo Code coding agent integration for Entire",
+		IsPreview:        true,
+		TranscriptFormat: "opencode-messages",
+		ProtectedDirs:    []string{".kilo"},
+		ProtectedFiles:   []string{".kilo/plugins/entire.ts"},
 		HookNames: []string{
 			HookNameSessionStart,
 			HookNameTurnStart,

@@ -25,6 +25,9 @@ func TestInfoResponseShape(t *testing.T) {
 	if !info.IsPreview {
 		t.Fatal("is_preview = false")
 	}
+	if info.TranscriptFormat != "pi" {
+		t.Fatalf("transcript_format = %q, want pi", info.TranscriptFormat)
+	}
 	if !reflect.DeepEqual(info.ProtectedDirs, []string{".omp"}) {
 		t.Fatalf("protected_dirs = %#v", info.ProtectedDirs)
 	}

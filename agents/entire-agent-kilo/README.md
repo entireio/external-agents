@@ -17,6 +17,7 @@ Standalone external agent binary that teaches the [Entire CLI](https://github.co
 | transcript_analyzer      | true     |
 | transcript_preparer      | true     |
 | compact_transcript       | true     |
+| transcript_format (info) | opencode-messages |
 | token_calculator         | true     |
 | text_generator           | false    |
 | hook_response_writer     | false    |

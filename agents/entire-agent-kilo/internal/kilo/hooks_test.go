@@ -17,6 +17,9 @@ func TestAgentInfo(t *testing.T) {
 	if info.Name != "kilo" {
 		t.Fatalf("Name = %q, want %q", info.Name, "kilo")
 	}
+	if info.TranscriptFormat != "opencode-messages" {
+		t.Fatalf("TranscriptFormat = %q, want opencode-messages", info.TranscriptFormat)
+	}
 	if !info.Capabilities.Hooks {
 		t.Fatal("Hooks capability should be true")
 	}

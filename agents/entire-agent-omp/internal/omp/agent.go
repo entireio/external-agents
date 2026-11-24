@@ -13,13 +13,14 @@ func New() *Agent { return &Agent{} }
 
 func (a *Agent) Info() protocol.InfoResponse {
 	return protocol.InfoResponse{
-		ProtocolVersion: protocol.ProtocolVersion,
-		Name:            "omp",
-		Type:            "Oh My Pi",
-		Description:     "Oh My Pi terminal coding agent",
-		IsPreview:       true,
-		ProtectedDirs:   []string{".omp"},
-		ProtectedFiles:  []string{extensionRelFile},
+		ProtocolVersion:  protocol.ProtocolVersion,
+		Name:             "omp",
+		Type:             "Oh My Pi",
+		Description:      "Oh My Pi terminal coding agent",
+		IsPreview:        true,
+		TranscriptFormat: "pi",
+		ProtectedDirs:    []string{".omp"},
+		ProtectedFiles:   []string{extensionRelFile},
 		HookNames: []string{
 			HookNameSessionStart,
 			HookNameAgentStart,

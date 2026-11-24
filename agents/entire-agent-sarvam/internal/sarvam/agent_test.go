@@ -26,6 +26,9 @@ func TestInfo(t *testing.T) {
 	if info.IsPreview != true {
 		t.Error("is_preview must be true while the integration is in preview")
 	}
+	if info.TranscriptFormat != "codex" {
+		t.Errorf("transcript_format = %q, want codex (Sarvam writes Codex rollouts)", info.TranscriptFormat)
+	}
 	if len(info.HookNames) != len(hookSpecs) {
 		t.Fatalf("hook_names = %v, want one per installed event", info.HookNames)
 	}

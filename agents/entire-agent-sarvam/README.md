@@ -13,6 +13,7 @@ content, and `token_count` events feed token usage per checkpoint.
 | `hooks` | yes — project `.sarvam/config.toml`, five lifecycle events |
 | `transcript_analyzer` | yes — native rollout JSONL |
 | `compact_transcript` | yes — projects the rollout into Entire Transcript Format |
+| `transcript_format` (info field) | `codex` — CLIs that know it convert the rollout with their Codex converter, which adds per-call model and usage and exit codes; older CLIs keep using `compact_transcript` |
 | `token_calculator` | yes — per-call usage from `token_count` events |
 | `uses_terminal` | yes — Sarvam Code is a TUI agent |
 | `text_generator` / `hook_response_writer` / `subagent_aware_extractor` / `transcript_preparer` | no |
