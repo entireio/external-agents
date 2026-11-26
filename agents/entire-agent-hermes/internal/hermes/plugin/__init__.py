@@ -444,6 +444,21 @@ def _session_key(session_id: Any) -> Optional[str]:
     return session_id
 
 
+def _hook_session_id(kwargs: Dict[str, Any]) -> Optional[str]:
+    """Return the session identifier carried by a Hermes hook payload.
+
+    Hermes 0.22.x sends empty ``session_id``, ``turn_id``, ``tool_call_id`` and
+    ``api_request_id`` strings to the tool hooks and carries the session
+    identifier in ``task_id`` instead. Older releases populate ``session_id``.
+    Accept either, preferring ``session_id`` when both are present.
+    """
+    for key in ("session_id", "task_id"):
+        value = kwargs.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def _session_state(session_id: Any) -> Optional[Dict[str, Any]]:
     key = _session_key(session_id)
     if key is None:
@@ -500,7 +515,7 @@ def _ensure_projection(
 
 def _on_session_start(**kwargs: Any) -> None:
     try:
-        session_id = _session_key(kwargs.get("session_id"))
+        session_id = _session_key(_hook_session_id(kwargs))
         if session_id is None:
             return
         with _LOCK:
@@ -519,7 +534,7 @@ def _on_session_start(**kwargs: Any) -> None:
 
 def _on_pre_llm_call(**kwargs: Any) -> None:
     try:
-        session_id = _session_key(kwargs.get("session_id"))
+        session_id = _session_key(_hook_session_id(kwargs))
         if session_id is None:
             return
         with _LOCK:
@@ -542,7 +557,7 @@ def _on_pre_llm_call(**kwargs: Any) -> None:
 
 def _on_pre_tool_call(**kwargs: Any) -> None:
     try:
-        session_id = _session_key(kwargs.get("session_id"))
+        session_id = _session_key(_hook_session_id(kwargs))
         if session_id is None:
             return
         with _LOCK:
@@ -563,7 +578,7 @@ def _on_pre_tool_call(**kwargs: Any) -> None:
 
 def _on_post_tool_call(**kwargs: Any) -> None:
     try:
-        session_id = _session_key(kwargs.get("session_id"))
+        session_id = _session_key(_hook_session_id(kwargs))
         if session_id is None:
             return
         status = str(kwargs.get("status") or "ok").lower()
@@ -588,7 +603,7 @@ def _on_post_tool_call(**kwargs: Any) -> None:
 
 def _on_post_llm_call(**kwargs: Any) -> None:
     try:
-        session_id = _session_key(kwargs.get("session_id"))
+        session_id = _session_key(_hook_session_id(kwargs))
         if session_id is None:
             return
         response = _sanitize_text(kwargs.get("assistant_response"))
@@ -638,7 +653,7 @@ def _on_post_llm_call(**kwargs: Any) -> None:
 
 def _on_session_end(**kwargs: Any) -> None:
     try:
-        session_id = _session_key(kwargs.get("session_id"))
+        session_id = _session_key(_hook_session_id(kwargs))
         if session_id is None:
             return
         status = "interrupted" if kwargs.get("interrupted") else "error" if kwargs.get("failed") else "ok"
@@ -659,7 +674,7 @@ def _on_session_end(**kwargs: Any) -> None:
 
 def _on_session_finalize(**kwargs: Any) -> None:
     try:
-        session_id = _session_key(kwargs.get("session_id"))
+        session_id = _session_key(_hook_session_id(kwargs))
         if session_id is None:
             return
         with _LOCK:
